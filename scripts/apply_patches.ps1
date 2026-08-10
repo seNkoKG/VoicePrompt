@@ -97,4 +97,29 @@ Apply-Patch "$site\engine\local.py" @'
         )
 '@ "engine/local.py -- auto-detect mapping"
 
+# 4. engine/local.py - log detected language + confidence per utterance (debugging auto-detect)
+Apply-Patch "$site\engine\local.py" @'
+        segments, _ = self._model.transcribe(
+            audio,
+            language=self._language,
+            vad_filter=True,
+        )
+
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+'@ @'
+        segments, info = self._model.transcribe(
+            audio,
+            language=self._language,
+            vad_filter=True,
+        )
+
+        log.info(
+            "Detected language: %s (conf %.2f) [%d segments]",
+            info.language,
+            info.language_probability,
+            len(segments),
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+'@ "engine/local.py -- detected-language logging"
+
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"
