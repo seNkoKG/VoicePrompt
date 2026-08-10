@@ -1,0 +1,105 @@
+param(
+    [string]$Wav = "C:\Users\senke\AppData\Local\Temp\opencode\vtest\mix_loud.wav",
+    [string]$Label = "MIX"
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$resultFile = "C:\Users\senke\AppData\Local\Temp\opencode\vtest\paste_result.txt"
+if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "VP-DICTATION-TARGET"
+$form.Width = 720
+$form.Height = 440
+$form.StartPosition = "Manual"
+$form.Left = 60
+$form.Top = 60
+$form.TopMost = $true
+
+$box = New-Object System.Windows.Forms.TextBox
+$box.Multiline = $true
+$box.Dock = "Fill"
+$box.ScrollBars = "Vertical"
+$box.AcceptsReturn = $true
+$box.AcceptsTab = $true
+$box.Font = New-Object System.Drawing.Font("Consolas", 14)
+$lastLogged = ""
+$box.Add_TextChanged({
+    $t = $box.Text
+    if ($t -and $t -ne $lastLogged) {
+        $lastLogged = $t
+        "[$(Get-Date -Format 'HH:mm:ss.fff')] $t" | Add-Content -Path $resultFile -Encoding UTF8
+    }
+})
+$form.Controls.Add($box)
+$form.Shown = {
+    $box.Focus()
+}
+$form.Show()
+$form.Activate()
+$box.Focus() | Out-Null
+Start-Sleep -Milliseconds 600
+[System.Windows.Forms.Application]::DoEvents()
+
+Write-Output "Target window 'VP-DICTATION-TARGET' is up (in-process)."
+
+$sig = @"
+using System;
+using System.Runtime.InteropServices;
+public static class KeySim
+{
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    public static void HoldAltV() { keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x56, 0, 0, UIntPtr.Zero); }
+    public static void ReleaseAltV() { keybd_event(0x56, 0, 2, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero); }
+}
+"@
+Add-Type -TypeDefinition $sig
+
+[KeySim]::SetForegroundWindow($form.Handle) | Out-Null
+Start-Sleep -Milliseconds 500
+[System.Windows.Forms.Application]::DoEvents()
+
+[System.Windows.Forms.SendKeys]::SendWait("^a")
+[System.Windows.Forms.Application]::DoEvents()
+Start-Sleep -Milliseconds 200
+[System.Windows.Forms.SendKeys]::SendWait("{DELETE}")
+[System.Windows.Forms.Application]::DoEvents()
+Start-Sleep -Milliseconds 300
+
+Write-Output "Hotkey DOWN (recording start)"
+[KeySim]::HoldAltV()
+Start-Sleep -Milliseconds 400
+
+$player = New-Object System.Media.SoundPlayer($Wav)
+$player.Play()
+$info = & ffprobe -v error -show_entries format=duration -of csv=p=0 $Wav 2>$null
+$wavDuration = if ($info) { [double]$info } else { 8.0 }
+Write-Output "Playing $Wav ($wavDuration s)"
+$end = Get-Date
+for ($i = 0; $i -lt [math]::Ceiling($wavDuration + 0.7); $i++) { Start-Sleep -Milliseconds 1000; [System.Windows.Forms.Application]::DoEvents() }
+
+Write-Output "Hotkey UP (transcribe + paste)"
+[KeySim]::ReleaseAltV()
+$t1 = Get-Date
+
+$firstLine = $null
+for ($i = 0; $i -lt 40; $i++) {
+    [System.Windows.Forms.Application]::DoEvents()
+    if (Test-Path $resultFile) {
+        $firstLine = Get-Content $resultFile -First 1
+        if ($firstLine) { break }
+    }
+    Start-Sleep -Milliseconds 250
+}
+if ($firstLine) {
+    $stamp = ($firstLine -split '\]')[0] -replace '\[', ''
+    Write-Output "TEXT-LANDED at $stamp (release was $($t1.ToString('HH:mm:ss.fff')))"
+    Write-Output "CONTENT: $firstLine"
+} else {
+    Write-Output "RESULT: NO TEXT ARRIVED within ~10s"
+}
+$form.Close()
+Start-Sleep -Milliseconds 300

@@ -1,0 +1,16 @@
+# Python / venv
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Logs & state
+*.log
+daemon.log
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Tests cache (HF models live in user cache)
+.cache/

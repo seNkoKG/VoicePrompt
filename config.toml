@@ -1,0 +1,35 @@
+# faster-whisper-dictation configuration
+# See: https://github.com/bhargavchippada/faster-whisper-dictation
+
+[server]
+url = "http://localhost:8000"         # WhisperLiveKit server URL (unused in local engine)
+model = "Systran/faster-whisper-large-v3"
+language = ""                         # empty = auto-detect per utterance (Slovenian/English)
+timeout = 10                          # Request timeout in seconds
+prompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request."
+# temperature = 0.0                    # 0.0 = accurate, higher = creative
+# hotwords = ""                        # Comma-separated words to boost
+
+[hotkey]
+binding = "alt+v"                     # Modifiers + single letter (e.g. "alt+v", "ctrl+shift+d")
+mode = "hold"                         # "toggle" (press to start/stop) or "hold" (hold to speak)
+
+[vad]
+threshold = 0.6                       # Speech detection sensitivity (0.0-1.0)
+silence_ms = 250                      # Wait after speech stops before transcribing (ms)
+min_speech_ms = 250                   # Ignore utterances shorter than this (ms)
+max_speech_s = 90.0                   # Maximum single utterance length (seconds)
+
+[audio]
+sample_rate = 16000                   # Sample rate in Hz (16000 is optimal for Whisper)
+channels = 1                          # Number of audio channels (1 = mono)
+# device = ""                        # "" = Windows default input device (HyperX Quadcast)
+
+[engine]
+type = "local"                        # "server" (WhisperLiveKit/remote) or "local" (local)
+compute_type = "float16"              # "auto", "float16" (GPU), "int8" (CPU)
+device = "cuda"                       # "auto", "cuda", "cpu"
+
+[websocket]
+reconnect_attempts = 3                # Number of reconnection attempts
+reconnect_delay = 1.0                 # Seconds between reconnection attempts
