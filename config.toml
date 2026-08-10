@@ -11,7 +11,7 @@ prompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript inte
 # hotwords = ""                        # Comma-separated words to boost
 
 [hotkey]
-binding = "alt+v"                     # Modifiers + single letter (e.g. "alt+v", "ctrl+shift+d")
+binding = "f1"                        # Hotkey: modifiers + key (e.g. "alt+v", "ctrl+shift+d", "f1")
 mode = "hold"                         # "toggle" (press to start/stop) or "hold" (hold to speak)
 
 [vad]

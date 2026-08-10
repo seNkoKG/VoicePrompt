@@ -52,8 +52,8 @@ public static class KeySim
 {
     [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    public static void HoldAltV() { keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x56, 0, 0, UIntPtr.Zero); }
-    public static void ReleaseAltV() { keybd_event(0x56, 0, 2, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero); }
+    public static void HoldF1() { keybd_event(0x70, 0, 0, UIntPtr.Zero); }
+    public static void ReleaseF1() { keybd_event(0x70, 0, 2, UIntPtr.Zero); }
 }
 "@
 Add-Type -TypeDefinition $sig
@@ -70,7 +70,7 @@ Start-Sleep -Milliseconds 200
 Start-Sleep -Milliseconds 300
 
 Write-Output "Hotkey DOWN (recording start)"
-[KeySim]::HoldAltV()
+[KeySim]::HoldF1()
 Start-Sleep -Milliseconds 400
 
 $player = New-Object System.Media.SoundPlayer($Wav)
@@ -82,7 +82,7 @@ $end = Get-Date
 for ($i = 0; $i -lt [math]::Ceiling($wavDuration + 0.7); $i++) { Start-Sleep -Milliseconds 1000; [System.Windows.Forms.Application]::DoEvents() }
 
 Write-Output "Hotkey UP (transcribe + paste)"
-[KeySim]::ReleaseAltV()
+[KeySim]::ReleaseF1()
 $t1 = Get-Date
 
 $firstLine = $null

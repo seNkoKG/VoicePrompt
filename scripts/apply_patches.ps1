@@ -123,4 +123,17 @@ Apply-Patch "$site\engine\local.py" @'
         text = " ".join(seg.text.strip() for seg in segments).strip()
 '@ "engine/local.py -- detected-language logging"
 
+# 5. config.py - allow function keys (f1-f24) in hotkey binding validation
+Apply-Patch "$site\config.py" @'
+    key = parts[-1]
+    modifiers = parts[:-1]
+    return key.isalpha() and len(key) == 1 and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
+'@ @'
+    key = parts[-1]
+    modifiers = parts[:-1]
+    single_letter = key.isalpha() and len(key) == 1
+    function_key = re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key) is not None
+    return (single_letter or function_key) and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
+'@ "config.py -- allow function keys (f1-f24)"
+
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"

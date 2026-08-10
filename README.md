@@ -21,7 +21,7 @@
 
 ## ✅ What it does
 
-Hold **`Alt+V`**, talk, release. ~0.5–1 second later the transcription is typed into the focused window — Notepad, Discord, browser chat, IDE, game chat. Works with **Slovenian and English**, and it auto-detects the language per utterance.
+Hold **`F1`**, talk, release. ~0.5–1 second later the transcription is typed into the focused window — Notepad, Discord, browser chat, IDE, game chat. Works with **Slovenian and English**, and it auto-detects the language per utterance.
 
 Measured on an RTX 5080:
 
@@ -37,7 +37,7 @@ Measured on an RTX 5080:
 
 ```
         ┌────────────┐       ┌────────────────┐       ┌──────────────────┐
- Alt+V  │  hotkey    │       │  Windows       │       │  faster-whisper  │
+ F1    │  hotkey    │       │  Windows       │       │  faster-whisper  │
  hold─▶ │  listener  │─────▶ │  audio capture │─────▶ │  large-v3 (CUDA) │
         │  (pynput)  │       │  (16 kHz mono) │       │  float16         │
         └────────────┘       └────────────────┘       └────────┬─────────┘
@@ -66,7 +66,7 @@ py -m venv "$env:USERPROFILE\.voice-typing\venv"
 # 3. Apply the two Windows fixes (see "Patches")
 powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1
 
-# 4. Start the daemon, then hold Alt+V anywhere
+# 4. Start the daemon, then hold F1 anywhere
 pyw run_daemon.pyw
 ```
 
@@ -79,7 +79,7 @@ Live config: `%LOCALAPPDATA%\faster-whisper-dictation\faster-whisper-dictation\c
 
 | Key | Meaning | Example |
 |---|---|---|
-| `[hotkey] binding` | Global hotkey | `"alt+v"`, `"ctrl+shift+d"`, `"alt+space"` |
+| `[hotkey] binding` | Global hotkey | `"f1"`, `"alt+v"`, `"ctrl+shift+d"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
 | `[server] language` | `""` = auto-detect per utterance | `"sl"`, `"en"` to pin |
