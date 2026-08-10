@@ -112,6 +112,7 @@ Apply-Patch "$site\engine\local.py" @'
             language=self._language,
             vad_filter=True,
         )
+        segments = list(segments)  # generator -> list (len() + reuse)
 
         log.info(
             "Detected language: %s (conf %.2f) [%d segments]",
