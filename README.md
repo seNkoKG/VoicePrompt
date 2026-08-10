@@ -63,23 +63,38 @@ py -m venv "$env:USERPROFILE\.voice-typing\venv"
 # 2. CUDA 12 DLLs (needed on driver 600+ / CUDA 13 UMD systems without a CUDA toolkit)
 & "$env:USERPROFILE\.voice-typing\venv\Scripts\pip" install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12
 
-# 3. Apply the two Windows fixes (see "Patches")
+# 3. Apply the Windows fixes (see "Patches")
 powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1
 
-# 4. Start the daemon, then hold F1 anywhere
-pyw run_daemon.pyw
+# 4. Build the tray UI (requires .NET SDK 8+; only once)
+powershell -ExecutionPolicy Bypass -File scripts\build_ui.ps1
+
+# 5. Start Voice Typing — it runs in the system tray and auto-starts the daemon
+.\ui\publish\VoicePromptTray.exe --tray
 ```
 
 First start downloads the model (~1.6 GB turbo / ~3.1 GB full) into `~/.cache/huggingface/hub` — one-time.
 
+## 🖥️ Tray UI (`ui/VoicePromptTray`)
+
+A dark-themed Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
+
+- **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **Voice Typing Settings** shortcut) to open settings. The tray menu starts/stops/restarts the daemon and quits the app.
+- **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
+- **All settings** — language (auto / sl / en), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
+- **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
+- **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.
+
+Rebuild after changes: `scripts\build_ui.ps1` (outputs `ui\publish\VoicePromptTray.exe`).
+
 ## ⚙️ Configuration
 
-Live config: `%LOCALAPPDATA%\faster-whisper-dictation\faster-whisper-dictation\config.toml`
-(snapshot in this repo: [`config.toml`](config.toml)) — settings load at daemon start, then restart via **Stop / Start Voice Typing**.
+The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\faster-whisper-dictation\config.toml`
+(snapshot in this repo: [`config.toml`](config.toml)). Settings load at daemon start — the UI restarts it for you on Save.
 
 | Key | Meaning | Example |
 |---|---|---|
-| `[hotkey] binding` | Global hotkey | `"f1"`, `"alt+v"`, `"ctrl+shift+d"` |
+| `[hotkey] binding` | Global hotkey (single key or combo) | `"f1"`, `"ctrl+shift+f1"`, `"alt+space"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
 | `[server] language` | `""` = auto-detect per utterance | `"sl"`, `"en"` to pin |
@@ -90,11 +105,13 @@ Live config: `%LOCALAPPDATA%\faster-whisper-dictation\faster-whisper-dictation\c
 
 ## 🔧 Patches (required on Windows)
 
-Three small fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Five small fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures.
 3. **`engine/local.py`** — `language = ""` / `"auto"` crashed with `ValueError: 'auto' is not a valid language code`; now maps to `None` = proper per-utterance auto-detect.
+4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
+5. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -105,6 +122,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/e2e_test.ps1` — opens a live text target window, presses the hotkey via `keybd_event`, plays an audio file through the speakers/microphone path, and proves the transcribed text lands there (timestamps the release→paste latency).
 - `tests/bench_one.py` — model load time, VRAM delta, decode time per utterance.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
+- `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
 
 Verified end-to-end results (simulated): **hotkey → record → GPU transcribe → paste ≈ 0.8 s** after key release, with text matching the spoken source.
 
@@ -114,16 +132,17 @@ Verified end-to-end results (simulated): **hotkey → record → GPU transcribe 
 |---|---|
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
-| Hotkey does nothing in a game | Another app grabbed the binding → change `binding` in config.toml |
+| Hotkey does nothing in a game | Another app grabbed the binding → change it in the tray UI (Hotkey card) or `config.toml` |
 | Bad Slovenian accuracy | Switch to `large-v3` full model; prefer full sentences over 2–3 words; optionally pin `language = "sl"` |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 
 ## 🖥️ Lifecycle
 
-- **Auto-start on login**: `shell:startup` shortcut → `pythonw run_daemon.pyw`
-- Desktop shortcuts: **Start Voice Typing**, **Stop Voice Typing**
+- **Auto-start on login**: `shell:startup` shortcut → `VoicePromptTray.exe --tray` (tray UI; starts the daemon itself)
+- Desktop shortcuts: **Voice Typing Settings** (tray UI), **Start Voice Typing** / **Stop Voice Typing** (daemon only)
 - Logs: `%USERPROFILE%\.voice-typing\daemon.log`
 - State: daemon PID/status via `faster-whisper-dictation.exe status`
+- UI prefs: `%APPDATA%\VoicePrompt\prefs.json`
 
 ## 📜 Credits
 

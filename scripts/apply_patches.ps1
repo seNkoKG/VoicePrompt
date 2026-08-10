@@ -123,17 +123,35 @@ Apply-Patch "$site\engine\local.py" @'
         text = " ".join(seg.text.strip() for seg in segments).strip()
 '@ "engine/local.py -- detected-language logging"
 
-# 5. config.py - allow function keys (f1-f24) in hotkey binding validation
+# 5. config.py - allow single keys (letters, digits, f1-f24, named keys like space/enter)
 Apply-Patch "$site\config.py" @'
-    key = parts[-1]
-    modifiers = parts[:-1]
-    return key.isalpha() and len(key) == 1 and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
+_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift", "cmd", "super", "meta"}
 '@ @'
+_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift", "cmd", "super", "meta"}
+_HOTKEY_NAMED_KEYS = frozenset(
+    {
+        "space", "tab", "enter", "esc", "backspace", "insert", "delete",
+        "home", "end", "page_up", "page_down", "up", "down", "left", "right",
+        "print_screen", "pause", "caps_lock", "scroll_lock", "num_lock", "menu",
+    }
+)
+'@ "config.py -- named keys set"
+Apply-Patch "$site\config.py" @'
     key = parts[-1]
     modifiers = parts[:-1]
     single_letter = key.isalpha() and len(key) == 1
     function_key = re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key) is not None
     return (single_letter or function_key) and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
-'@ "config.py -- allow function keys (f1-f24)"
+'@ @'
+    key = parts[-1]
+    modifiers = parts[:-1]
+    if not all(mod in _HOTKEY_MODIFIERS for mod in modifiers):
+        return False
+    if len(key) == 1 and (key.isalpha() or key.isdigit()):
+        return True
+    if key in _HOTKEY_NAMED_KEYS or re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key):
+        return True
+    return False
+'@ "config.py -- single/multi-key validation"
 
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"
