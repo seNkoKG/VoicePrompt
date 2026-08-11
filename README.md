@@ -36,17 +36,20 @@ Measured on an RTX 5080:
 
 ## 🏗️ Architecture
 
-```
-        ┌────────────┐       ┌────────────────┐       ┌──────────────────┐
- F1    │  hotkey    │       │  Windows       │       │  faster-whisper  │
- hold─▶ │  listener  │─────▶ │  audio capture │─────▶ │  large-v3 (CUDA) │
-        │  (pynput)  │       │  (16 kHz mono) │       │  float16         │
-        └────────────┘       └────────────────┘       └────────┬─────────┘
-                                                                │ text
-        ┌────────────┐       ┌────────────────┐       ┌────────▼─────────┐
- chat / │  focused   │◀───── │  clipboard     │◀────── │  language auto-  │
- IDE /  │  window    │ Ctrl+V│  paste         │        │  detect + prompt │
- Notepad└────────────┘       └────────────────┘       └──────────────────┘
+```mermaid
+flowchart LR
+    trigger["Hold F1"] --> hotkey["Hotkey listener<br/>pynput"]
+    hotkey --> audio["Windows audio capture<br/>16 kHz mono"]
+    audio --> whisper["faster-whisper<br/>large-v3 · CUDA · float16"]
+    whisper -->|text| language["Language auto-detect<br/>+ prompt"]
+    language --> clipboard["Clipboard paste<br/>Ctrl+V"]
+    clipboard --> focused["Focused window<br/>Chat · IDE · Notepad"]
+
+    classDef stage fill:#161b22,stroke:#8b949e,color:#f0f6fc,stroke-width:1px;
+    classDef triggerNode fill:#21262d,stroke:#8b949e,color:#f0f6fc,stroke-width:1px;
+    class trigger triggerNode;
+    class hotkey,audio,whisper,language,clipboard,focused stage;
+    linkStyle default stroke:#8b949e,stroke-width:1.5px;
 ```
 
 - **Hold mode**: recording only while you hold the key → no accidental captures.
