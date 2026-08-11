@@ -31,6 +31,8 @@ class DecodingOptionsTests(unittest.TestCase):
         self.assertIn("$packageDecodingOptions", installer)
         self.assertIn('"decoding_options.py") -Force', installer)
         self.assertIn('Invoke-Checked $daemonExe @("stop")', installer)
+        self.assertIn("$normalizedContent", patch)
+        self.assertIn("$normalizedFind", patch)
 
 
 if __name__ == "__main__":

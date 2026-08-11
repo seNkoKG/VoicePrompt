@@ -12,13 +12,22 @@ if (-not (Test-Path $site)) { Write-Error "site-packages not found: $site"; exit
 
 function Apply-Patch($path, $find, $replace, $name, $marker = $null) {
     $content = [System.IO.File]::ReadAllText($path)
+    # Release archives are built on Windows (CRLF) while an existing Python
+    # environment may contain LF files. Compare normalized text so upgrades do
+    # not mistake an already-patched multiline block for missing source.
+    $normalizedContent = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalizedFind = ([string]$find).Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalizedReplace = ([string]$replace).Replace("`r`n", "`n").Replace("`r", "`n")
     $patchedMarkers = if ($marker) { @($marker) } else { @($replace) }
-    $alreadyPatched = @($patchedMarkers | Where-Object { $content.Contains([string]$_) }).Count -gt 0
+    $alreadyPatched = @($patchedMarkers | Where-Object {
+        $normalizedMarker = ([string]$_).Replace("`r`n", "`n").Replace("`r", "`n")
+        $normalizedContent.Contains($normalizedMarker)
+    }).Count -gt 0
     if ($alreadyPatched) {
         Write-Output "[SKIPPED ] $name (already patched)"
-    } elseif ($content.Contains($find)) {
-        $content = $content.Replace($find, $replace)
-        [System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
+    } elseif ($normalizedContent.Contains($normalizedFind)) {
+        $normalizedContent = $normalizedContent.Replace($normalizedFind, $normalizedReplace)
+        [System.IO.File]::WriteAllText($path, $normalizedContent, (New-Object System.Text.UTF8Encoding($false)))
         Write-Output "[PATCHED ] $name"
     } else {
         Write-Error "$name -- expected source not found; installed package changed"

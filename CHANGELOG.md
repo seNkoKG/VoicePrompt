@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2] - 2026-08-11
+
+### Fixed
+
+- Made the Windows patcher newline-independent so upgrades work across locally built LF files and GitHub-built CRLF release archives.
+- Stopped the active dictation daemon before upgrading its Python runtime, preventing mixed old/new code during installation.
+
 ## [1.1.1] - 2026-08-11
 
 ### Fixed

@@ -113,6 +113,11 @@ New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 if (-not (Test-Path -LiteralPath $venvPython)) {
     Invoke-Checked $pythonExe @("-m", "venv", $venvRoot)
 }
+$daemonExe = Join-Path $venvRoot "Scripts\faster-whisper-dictation.exe"
+if (Test-Path -LiteralPath $daemonExe) {
+    Write-Step "Stopping the dictation runtime for a clean upgrade"
+    Invoke-Checked $daemonExe @("stop")
+}
 Invoke-Checked $venvPython @("-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "pip")
 Invoke-Checked $venvPython @(
     "-m", "pip", "install", "--disable-pip-version-check", "--upgrade",
@@ -127,12 +132,6 @@ Invoke-Checked $hostExe @(
     "-Site", (Join-Path $venvRoot "Lib\site-packages\whisper_dictation"),
     "-RunnerTarget", (Join-Path $runtimeRoot "run_daemon.pyw")
 )
-
-$daemonExe = Join-Path $venvRoot "Scripts\faster-whisper-dictation.exe"
-if (Test-Path -LiteralPath $daemonExe) {
-    Write-Step "Restarting the patched dictation runtime"
-    Invoke-Checked $daemonExe @("stop")
-}
 
 if (-not $NoShortcuts) {
     Write-Step "Creating shortcuts"
