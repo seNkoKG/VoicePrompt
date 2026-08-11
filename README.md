@@ -65,7 +65,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.1.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.1.1-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -147,17 +147,18 @@ Only the completed transcript text is sent when cleanup is enabled; microphone a
 
 ## 🔧 Patches (required on Windows)
 
-Nine Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Ten Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures.
 3. **`engine/local.py` / `slang_retry.py`** — maps automatic modes correctly and lets `sl-slang` preserve English while retrying only third-language mistakes as Slovenian.
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
-6. **`daemon.py` / `meter.py`** — publishes recording state, microphone level, and live waveform samples through named shared memory, without a second audio capture or disk polling.
-7. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
-8. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
-9. **`typer.py` / `ai_rewriter.py`** — optionally cleans completed transcript text before the clipboard is opened, with a strict deadline and raw-text fallback.
+6. **`engine/local.py` / `decoding_options.py`** — prevents repeated-sentence failure loops with independent 30-second windows, temperature fallback, repetition penalty, and native no-repeat decoding.
+7. **`daemon.py` / `meter.py`** — publishes recording state, microphone level, and live waveform samples through named shared memory, without a second audio capture or disk polling.
+8. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
+9. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
+10. **`typer.py` / `ai_rewriter.py`** — optionally cleans completed transcript text before the clipboard is opened, with a strict deadline and raw-text fallback.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -169,6 +170,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/bench_one.py` — model load time, VRAM delta, decode time per utterance.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
+- `tests/test_decoding_options.py` — verifies temperature fallback and native repetition-loop protection on both English and Slovenian decoding passes.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
 
 Verified end-to-end results (simulated): **hotkey → record → GPU transcribe → paste ≈ 0.8 s** after key release, with text matching the spoken source.

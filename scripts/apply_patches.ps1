@@ -34,6 +34,9 @@ Write-Output "[SYNCED  ] ai_rewriter.py -- optional transcript cleanup"
 $slangRetrySource = Join-Path $PSScriptRoot "slang_retry.py"
 Copy-Item -LiteralPath $slangRetrySource -Destination "$site\slang_retry.py" -Force
 Write-Output "[SYNCED  ] slang_retry.py -- mixed English/Slovenian routing"
+$decodingOptionsSource = Join-Path $PSScriptRoot "decoding_options.py"
+Copy-Item -LiteralPath $decodingOptionsSource -Destination "$site\decoding_options.py" -Force
+Write-Output "[SYNCED  ] decoding_options.py -- repetition-safe Whisper decoding"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -170,6 +173,14 @@ from ..config import EngineConfig, ServerConfig, VADConfig
 from ..slang_retry import recognition_language, should_retry_as_slovenian
 '@ "engine/local.py -- hybrid language helpers" 'from ..slang_retry import recognition_language, should_retry_as_slovenian'
 Apply-Patch "$site\engine\local.py" @'
+from ..config import EngineConfig, ServerConfig, VADConfig
+from ..slang_retry import recognition_language, should_retry_as_slovenian
+'@ @'
+from ..config import EngineConfig, ServerConfig, VADConfig
+from ..decoding_options import decoding_options
+from ..slang_retry import recognition_language, should_retry_as_slovenian
+'@ "engine/local.py -- safe decoding options" 'from ..decoding_options import decoding_options'
+Apply-Patch "$site\engine\local.py" @'
     def __init__(self, server_config: ServerConfig, engine_config: EngineConfig):
 '@ @'
     def __init__(
@@ -209,7 +220,7 @@ Apply-Patch "$site\engine\local.py" @'
             vad_filter=True,
             vad_parameters=self._vad_parameters,
         )
-'@ "engine/local.py -- pass recognition settings"
+'@ "engine/local.py -- pass recognition settings" 'initial_prompt=self._prompt or None'
 Apply-Patch "$site\engine\__init__.py" @'
         return LocalEngine(config.server, config.engine)
 '@ @'
@@ -239,6 +250,36 @@ Apply-Patch "$site\engine\local.py" @'
 
         log.info(
 '@ "engine/local.py -- selective Slovenian retry" 'Language %s looks wrong for slang mode; retrying as Slovenian'
+Apply-Patch "$site\engine\local.py" @'
+            language=self._language,
+            temperature=self._temperature,
+            initial_prompt=self._prompt or None,
+            hotwords=self._hotwords or None,
+            vad_filter=True,
+            vad_parameters=self._vad_parameters,
+'@ @'
+            language=self._language,
+            initial_prompt=self._prompt or None,
+            hotwords=self._hotwords or None,
+            vad_filter=True,
+            vad_parameters=self._vad_parameters,
+            **decoding_options(self._temperature),
+'@ "engine/local.py -- safe primary decoding"
+Apply-Patch "$site\engine\local.py" @'
+                language="sl",
+                temperature=self._temperature,
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+'@ @'
+                language="sl",
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+'@ "engine/local.py -- safe Slovenian retry decoding"
 
 # 6. Daemon - publish recording state and live microphone level to the tray overlay
 Apply-Patch "$site\daemon.py" @'

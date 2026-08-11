@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1] - 2026-08-11
+
+### Fixed
+
+- Prevented long dictation from getting stuck repeating the same sentence.
+- Disabled previous-window transcript conditioning, which faster-whisper identifies as a cause of decoder failure loops.
+- Restored temperature fallback when the deterministic first pass fails quality thresholds.
+- Added native repetition penalty and 3-token no-repeat decoding used by production Whisper systems.
+- Made upgrades restart the patched dictation runtime immediately instead of leaving old code in memory.
+
 ## [1.1.0] - 2026-08-11
 
 ### Added

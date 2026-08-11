@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
     [string]$Wav,
-    [string]$Label = "MIX"
+    [string]$Label = "MIX",
+    [string]$ExpectedPattern = ""
 )
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -30,7 +31,9 @@ $box.AcceptsReturn = $true
 $box.AcceptsTab = $true
 $box.Font = New-Object System.Drawing.Font("Consolas", 14)
 $lastLogged = ""
+$ignoreChanges = $false
 $box.Add_TextChanged({
+    if ($ignoreChanges) { return }
     $t = $box.Text
     if ($t -and $t -ne $lastLogged) {
         $lastLogged = $t
@@ -85,6 +88,13 @@ Write-Output "Playing $Wav ($wavDuration s)"
 $end = Get-Date
 for ($i = 0; $i -lt [math]::Ceiling($wavDuration + 0.7); $i++) { Start-Sleep -Milliseconds 1000; [System.Windows.Forms.Application]::DoEvents() }
 
+[System.Windows.Forms.Application]::DoEvents()
+$ignoreChanges = $true
+$box.Clear()
+$lastLogged = ""
+if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
+$ignoreChanges = $false
+
 Write-Output "Hotkey UP (transcribe + paste)"
 [KeySim]::ReleaseF1()
 $t1 = Get-Date
@@ -93,7 +103,12 @@ $firstLine = $null
 for ($i = 0; $i -lt 40; $i++) {
     [System.Windows.Forms.Application]::DoEvents()
     if (Test-Path $resultFile) {
-        $firstLine = Get-Content $resultFile -First 1
+        $lines = @(Get-Content $resultFile)
+        $firstLine = if ($ExpectedPattern) {
+            $lines | Where-Object { $_ -match $ExpectedPattern } | Select-Object -First 1
+        } else {
+            $lines | Select-Object -First 1
+        }
         if ($firstLine) { break }
     }
     Start-Sleep -Milliseconds 250
@@ -104,7 +119,9 @@ if ($firstLine) {
     Write-Output "CONTENT: $firstLine"
     $exitCode = 0
 } else {
-    Write-Output "RESULT: NO TEXT ARRIVED within ~10s"
+    $unexpected = if (Test-Path $resultFile) { (Get-Content $resultFile -Raw).Trim() } else { "" }
+    Write-Output "RESULT: EXPECTED TEXT DID NOT ARRIVE within ~10s"
+    if ($unexpected) { Write-Output "UNEXPECTED: $unexpected" }
     $exitCode = 1
 }
 $form.Close()

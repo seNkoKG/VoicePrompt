@@ -33,8 +33,9 @@ $packagePatch = Join-Path $packageRoot "scripts\apply_patches.ps1"
 $packageMeter = Join-Path $packageRoot "scripts\runtime_meter.py"
 $packageAi = Join-Path $packageRoot "scripts\ai_rewriter.py"
 $packageSlangRetry = Join-Path $packageRoot "scripts\slang_retry.py"
+$packageDecodingOptions = Join-Path $packageRoot "scripts\decoding_options.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageSlangRetry, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageSlangRetry, $packageDecodingOptions, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -91,6 +92,7 @@ Copy-Item -LiteralPath $packagePatch -Destination (Join-Path $installScripts "ap
 Copy-Item -LiteralPath $packageMeter -Destination (Join-Path $installScripts "runtime_meter.py") -Force
 Copy-Item -LiteralPath $packageAi -Destination (Join-Path $installScripts "ai_rewriter.py") -Force
 Copy-Item -LiteralPath $packageSlangRetry -Destination (Join-Path $installScripts "slang_retry.py") -Force
+Copy-Item -LiteralPath $packageDecodingOptions -Destination (Join-Path $installScripts "decoding_options.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force
 if (Test-Path -LiteralPath (Join-Path $packageRoot "README.md")) {
@@ -125,6 +127,12 @@ Invoke-Checked $hostExe @(
     "-Site", (Join-Path $venvRoot "Lib\site-packages\whisper_dictation"),
     "-RunnerTarget", (Join-Path $runtimeRoot "run_daemon.pyw")
 )
+
+$daemonExe = Join-Path $venvRoot "Scripts\faster-whisper-dictation.exe"
+if (Test-Path -LiteralPath $daemonExe) {
+    Write-Step "Restarting the patched dictation runtime"
+    Invoke-Checked $daemonExe @("stop")
+}
 
 if (-not $NoShortcuts) {
     Write-Step "Creating shortcuts"

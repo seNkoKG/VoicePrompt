@@ -12,10 +12,10 @@
     <Product>VoicePrompt</Product>
     <Description>Private, local GPU voice-to-text for Windows</Description>
     <Authors>seNkoKG</Authors>
-    <Version>1.1.0</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>1.1.1</Version>
+    <AssemblyVersion>1.1.1.0</AssemblyVersion>
+    <FileVersion>1.1.1.0</FileVersion>
+    <InformationalVersion>1.1.1</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\..\assets\voiceprompt.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
