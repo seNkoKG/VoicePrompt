@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.0] - 2026-08-11
+
+### Added
+
+- Added a setup overview with live runtime readiness, essential configuration summaries, health checks, and quick support actions.
+- Added dedicated Dictation, Audio, Intelligence, and Advanced workspaces with guided descriptions and recommended presets.
+- Added microphone refresh, direct Windows Sound Settings access, copied privacy-safe diagnostics, log/config shortcuts, runtime recovery, and release access.
+- Added explicit unsaved-change and busy states, discard support, keyboard navigation, `Ctrl+S`, page shortcuts, and screen-reader names.
+- Added automated visual coverage for every settings page at standard and minimum supported window sizes.
+
+### Changed
+
+- Rebuilt the settings interface from scratch as a responsive charcoal workspace with compact navigation, clearer grouping, and consistent custom controls.
+- Reworked the hotkey recorder so keyboard focus alone never captures or changes a shortcut; Enter or Space starts keyboard capture.
+- Moved every settings value onto the UI thread before background persistence and runtime restart.
+
+### Fixed
+
+- Prevented microphone refresh from reverting a newly selected input device.
+- Preserved Windows startup errors instead of replacing them with a generic save-success message.
+- Removed responsive text overflow, clipped controls, and paint-time font/brush resource leaks from the settings interface.
+
 ## [1.1.4] - 2026-08-11
 
 ### Fixed

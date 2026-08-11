@@ -1,85 +1,154 @@
-using System.Text;
 using System.Reflection;
+using System.Text;
 using VoicePromptTray;
 
 Application.EnableVisualStyles();
 Application.SetCompatibleTextRenderingDefault(false);
 
 var paths = AppPaths.Default;
-var form = new MainForm(new DaemonManager(paths), paths)
+using var form = new MainForm(new DaemonManager(paths), paths)
 {
     StartPosition = FormStartPosition.Manual,
     Location = new Point(-30000, -30000),
 };
-form.Show();
+
 form.AllowClose = true;
+form.Show();
 Application.DoEvents();
-Thread.Sleep(700);
+Thread.Sleep(350);
 Application.DoEvents();
 
-int overlaps = 0;
-int overflows = 0;
+var failures = new StringBuilder();
+int layoutFailures = 0;
 int behaviorFailures = 0;
-var sb = new StringBuilder();
-
-string Describe(Control c)
+var pages = new[] { "overview", "dictation", "audio", "intelligence", "advanced" };
+var screenshotNames = new Dictionary<string, string>
 {
-    string t = c.Text ?? "";
-    if (t.Length > 28)
-        t = t[..28] + "…";
-    return $"{c.GetType().Name} \"{t}\" {c.Bounds}";
+    ["overview"] = "voiceprompt_ui.png",
+    ["dictation"] = "voiceprompt_ui_dictation.png",
+    ["audio"] = "voiceprompt_ui_audio.png",
+    ["intelligence"] = "voiceprompt_ai_settings.png",
+    ["advanced"] = "voiceprompt_ui_advanced.png",
+};
+
+static string Describe(Control control)
+{
+    string text = (control.Text ?? "").ReplaceLineEndings(" ").Trim();
+    if (text.Length > 32)
+        text = text[..32] + "...";
+    return $"{control.GetType().Name} \"{text}\" {control.Bounds}";
 }
 
-void Walk(Control parent)
+void CheckTree(Control parent, string context)
 {
-    var kids = parent.Controls.Cast<Control>().Where(c => c.Visible).ToList();
-    for (int i = 0; i < kids.Count; i++)
+    foreach (Control child in parent.Controls)
     {
-        for (int j = i + 1; j < kids.Count; j++)
+        if (!child.Visible)
+            continue;
+
+        if (child.Width <= 0 || child.Height <= 0)
         {
-            if (kids[i].Bounds.IntersectsWith(kids[j].Bounds))
+            layoutFailures++;
+            failures.AppendLine($"LAYOUT {context}: zero-sized {Describe(child)}");
+        }
+
+        bool namedInteractive = child is ActionButton or NavigationButton or ChoiceStrip or ToggleSwitch or
+            HotkeyRecorder or ComboBox or TextBox or NumericUpDown;
+        if (parent is NumericUpDown)
+            namedInteractive = false;
+        if (namedInteractive && child.TabStop && string.IsNullOrWhiteSpace(child.AccessibleName))
+        {
+            behaviorFailures++;
+            failures.AppendLine($"ACCESSIBILITY {context}: unnamed {Describe(child)}");
+        }
+
+        bool parentScrolls = parent is ScrollableControl scrollable && scrollable.AutoScroll;
+        bool positionedByLayout = parent is TableLayoutPanel or FlowLayoutPanel;
+        if (!parentScrolls && !positionedByLayout && child.Dock == DockStyle.None && parent is not Form)
+        {
+            var tolerance = new Rectangle(-2, -2, parent.ClientSize.Width + 4, parent.ClientSize.Height + 4);
+            if (!tolerance.Contains(child.Bounds))
             {
-                overlaps++;
-                sb.AppendLine($"OVERLAP in {parent.GetType().Name}: {Describe(kids[i])}  vs  {Describe(kids[j])}");
+                layoutFailures++;
+                failures.AppendLine($"LAYOUT {context}: outside {parent.GetType().Name} {parent.ClientSize}: {Describe(child)}");
             }
         }
-    }
 
-    bool scrollable = parent is Panel p && p.AutoScroll;
-    foreach (var k in kids)
-    {
-        if (!scrollable && parent is not Form &&
-            (k.Left < 0 || k.Top < 0 || k.Right > parent.ClientSize.Width || k.Bottom > parent.ClientSize.Height))
-        {
-            overflows++;
-            sb.AppendLine($"OVERFLOW in {parent.GetType().Name} size={parent.ClientSize}: {Describe(k)}");
-        }
-        Walk(k);
+        CheckTree(child, context);
     }
 }
 
-Walk(form);
-
-string png = Path.Combine(Path.GetTempPath(), "voiceprompt_ui.png");
-using (var bmp = new Bitmap(form.Width, form.Height))
+void RenderPage(string page, Size size, bool saveScreenshot)
 {
-    form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
-    bmp.Save(png);
-}
-
-string aiPng = Path.Combine(Path.GetTempPath(), "voiceprompt_ai_settings.png");
-var content = form.Controls.OfType<Panel>().First(p => p.AutoScroll);
-var cards = content.Controls.OfType<CardPanel>().OrderBy(c => c.Top).ToList();
-if (cards.Count >= 3)
-{
-    content.AutoScrollPosition = new Point(0, cards[2].Top - 12);
+    form.ClientSize = size;
+    form.ShowPageForDiagnostics(page);
     Application.DoEvents();
-    using var bmp = new Bitmap(form.Width, form.Height);
-    form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
-    bmp.Save(aiPng);
+    Thread.Sleep(80);
+    Application.DoEvents();
+
+    if (form.SelectedPage != page)
+    {
+        behaviorFailures++;
+        failures.AppendLine($"BEHAVIOR requested page '{page}', selected '{form.SelectedPage}'");
+    }
+
+    CheckTree(form, $"{page}@{size.Width}x{size.Height}");
+
+    if (!saveScreenshot)
+        return;
+
+    string path = Path.Combine(Path.GetTempPath(), screenshotNames[page]);
+    using var bitmap = new Bitmap(form.Width, form.Height);
+    form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
+    bitmap.Save(path);
 }
 
-string overlayPng = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
+foreach (string page in pages)
+    RenderPage(page, new Size(1080, 780), saveScreenshot: true);
+
+foreach (string page in pages)
+    RenderPage(page, new Size(900, 650), saveScreenshot: false);
+
+form.UpdateStatus(new DaemonInfo
+{
+    State = DaemonState.Running,
+    Pid = 4242,
+    Hotkey = "f1",
+    Mode = "hold",
+    Engine = "faster-whisper",
+});
+form.ShowPageForDiagnostics("overview");
+Application.DoEvents();
+CheckTree(form, "overview-running");
+
+if (form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR opening and navigating settings marked the form as modified");
+}
+
+var thresholdField = typeof(MainForm).GetField("_threshold", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var threshold = (NumericUpDown)thresholdField.GetValue(form)!;
+decimal originalThreshold = threshold.Value;
+threshold.Value = originalThreshold == threshold.Maximum
+    ? originalThreshold - threshold.Increment
+    : originalThreshold + threshold.Increment;
+Application.DoEvents();
+if (!form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR changing a setting did not enable the unsaved state");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || threshold.Value != originalThreshold)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore the saved settings state");
+}
+
+string overlayPath = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
 using (var overlay = new RecordingOverlay
 {
     StartPosition = FormStartPosition.Manual,
@@ -92,38 +161,46 @@ using (var overlay = new RecordingOverlay
         .GetValue(overlay)!;
     for (int i = 0; i < waveform.Length; i++)
     {
-        float edge = MathF.Sin(MathF.PI * i / (waveform.Length - 1));
-        waveform[i] = MathF.Sin(i * 1.18f) * (0.18f + 0.68f * edge);
+        float envelope = MathF.Sin(MathF.PI * i / (waveform.Length - 1));
+        waveform[i] = MathF.Sin(i * 1.18f) * (0.18f + 0.68f * envelope);
     }
+
     overlay.Show();
     Application.DoEvents();
-    using var bmp = new Bitmap(overlay.Width, overlay.Height);
-    overlay.DrawToBitmap(bmp, new Rectangle(0, 0, overlay.Width, overlay.Height));
-    bmp.Save(overlayPng);
+    using var bitmap = new Bitmap(overlay.Width, overlay.Height);
+    overlay.DrawToBitmap(bitmap, new Rectangle(Point.Empty, overlay.Size));
+    bitmap.Save(overlayPath);
 }
 
-var recorder = new HotkeyRecorder { Binding = "f1" };
-var gotFocus = typeof(HotkeyRecorder).GetMethod("OnGotFocus", BindingFlags.Instance | BindingFlags.NonPublic)!;
-var keyDown = typeof(HotkeyRecorder).GetMethod("OnKeyDown", BindingFlags.Instance | BindingFlags.NonPublic)!;
-gotFocus.Invoke(recorder, new object[] { EventArgs.Empty });
-keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
-keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Escape) });
-if (recorder.Binding != "f1")
+using (var recorder = new HotkeyRecorder { Binding = "f1" })
 {
-    behaviorFailures++;
-    sb.AppendLine("BEHAVIOR hotkey Escape did not restore committed binding");
-}
-gotFocus.Invoke(recorder, new object[] { EventArgs.Empty });
-keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
-keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Enter) });
-if (recorder.Binding != "f2")
-{
-    behaviorFailures++;
-    sb.AppendLine($"BEHAVIOR hotkey Enter did not commit pending binding: {recorder.Binding}");
-}
-recorder.Dispose();
+    var beginCapture = typeof(HotkeyRecorder).GetMethod("BeginCapture", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    var keyDown = typeof(HotkeyRecorder).GetMethod("OnKeyDown", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-Console.WriteLine(sb.ToString());
-Console.WriteLine($"RESULT overlaps={overlaps} overflow={overflows} behavior={behaviorFailures} png={png} ai={aiPng} overlay={overlayPng}");
+    beginCapture.Invoke(recorder, Array.Empty<object>());
+    keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
+    keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Escape) });
+    if (recorder.Binding != "f1")
+    {
+        behaviorFailures++;
+        failures.AppendLine("BEHAVIOR hotkey Escape did not restore the committed binding");
+    }
+
+    beginCapture.Invoke(recorder, Array.Empty<object>());
+    keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
+    keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Enter) });
+    if (recorder.Binding != "f2")
+    {
+        behaviorFailures++;
+        failures.AppendLine($"BEHAVIOR hotkey Enter did not commit F2: {recorder.Binding}");
+    }
+}
+
+Console.Write(failures.ToString());
+Console.WriteLine($"RESULT layout={layoutFailures} behavior={behaviorFailures}");
+foreach (string page in pages)
+    Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
+Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
+
 form.Close();
-return overlaps + overflows + behaviorFailures;
+return layoutFailures + behaviorFailures;

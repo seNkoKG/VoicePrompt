@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
@@ -10,8 +11,9 @@ internal sealed class HotkeyRecorder : Control
     private static extern short GetKeyState(int keyCode);
 
     private string _binding = "";
-    private string _committed = "";
-    private bool _armed;
+    private string _committedBinding = "";
+    private bool _capturing;
+    private bool _hovered;
 
     public event EventHandler<string>? BindingChanged;
 
@@ -21,126 +23,161 @@ internal sealed class HotkeyRecorder : Control
         get => _binding;
         set
         {
-            _binding = value ?? "";
-            _committed = _binding;
+            _binding = value?.Trim() ?? "";
+            _committedBinding = _binding;
             Invalidate();
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool IsCapturing => _capturing;
+
     public HotkeyRecorder()
     {
-        Height = 32;
-        BackColor = Theme.Card;
-        Font = Theme.Font(10f, FontStyle.Bold);
+        Height = 46;
+        MinimumSize = new Size(220, 46);
+        BackColor = Theme.Surface;
+        ForeColor = Theme.Text;
+        Font = Theme.Font(9.5f, FontStyle.Bold);
         Cursor = Cursors.Hand;
-        DoubleBuffered = true;
         TabStop = true;
-        SetStyle(ControlStyles.Selectable, true);
+        AccessibleRole = AccessibleRole.HotkeyField;
+        AccessibleName = "Global dictation hotkey";
+        AccessibleDescription = "Select this field and press a key or key combination.";
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.Selectable |
+            ControlStyles.UserPaint,
+            true);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        Focus();
-        Arm();
+        if (e.Button == MouseButtons.Left)
+        {
+            Focus();
+            BeginCapture();
+        }
         base.OnMouseDown(e);
+    }
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        _hovered = true;
+        Invalidate();
+        base.OnMouseEnter(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        _hovered = false;
+        Invalidate();
+        base.OnMouseLeave(e);
     }
 
     protected override void OnGotFocus(EventArgs e)
     {
-        Arm();
+        Invalidate();
         base.OnGotFocus(e);
     }
 
     protected override void OnLostFocus(EventArgs e)
     {
-        if (_armed)
-            Commit();
+        CommitCapture();
         base.OnLostFocus(e);
     }
 
-    private void Arm()
+    private void BeginCapture()
     {
-        if (!_armed)
-            _committed = _binding;
-        _armed = true;
+        if (!_capturing)
+            _committedBinding = _binding;
+        _capturing = true;
         Invalidate();
     }
 
-    private void Commit()
+    private void CommitCapture()
     {
-        bool changed = _binding != _committed;
-        _committed = _binding;
-        _armed = false;
+        if (!_capturing)
+            return;
+
+        bool changed = !string.Equals(_binding, _committedBinding, StringComparison.Ordinal);
+        _committedBinding = _binding;
+        _capturing = false;
         Invalidate();
         if (changed)
             BindingChanged?.Invoke(this, _binding);
     }
 
-    private void Cancel()
+    private void CancelCapture()
     {
-        _binding = _committed;
-        _armed = false;
+        _binding = _committedBinding;
+        _capturing = false;
         Invalidate();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        e.SuppressKeyPress = true;
-        if (!_armed)
-            return;
-
-        switch (e.KeyCode)
+        if (!_capturing && e.KeyCode is Keys.Enter or Keys.Space)
         {
-            case Keys.Enter:
-                Commit();
-                Parent?.SelectNextControl(this, true, true, true, true);
-                return;
-
-            case Keys.Escape:
-                Cancel();
-                return;
-
-            case Keys.Back:
-                _binding = "";
-                Invalidate();
-                return;
-
-            case Keys.ControlKey:
-            case Keys.ShiftKey:
-            case Keys.Menu:
-            case Keys.LWin:
-            case Keys.RWin:
-                return;
+            BeginCapture();
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
         }
 
-        string? keyName = KeyName(e.KeyCode);
-        if (keyName == null)
+        if (!_capturing)
+        {
+            base.OnKeyDown(e);
+            return;
+        }
+
+        e.SuppressKeyPress = true;
+        e.Handled = true;
+
+        if (e.KeyCode == Keys.Enter)
+        {
+            CommitCapture();
+            Parent?.SelectNextControl(this, true, true, true, true);
+            return;
+        }
+        if (e.KeyCode == Keys.Escape)
+        {
+            CancelCapture();
+            return;
+        }
+        if (e.KeyCode is Keys.Back or Keys.Delete)
+        {
+            _binding = "";
+            Invalidate();
+            return;
+        }
+        if (e.KeyCode is Keys.ControlKey or Keys.ShiftKey or Keys.Menu or Keys.LWin or Keys.RWin)
             return;
 
-        var mods = new List<string>();
+        string? key = ToBindingKey(e.KeyCode);
+        if (key == null)
+            return;
+
+        var parts = new List<string>(5);
         if ((e.Modifiers & Keys.Control) != 0)
-            mods.Add("ctrl");
+            parts.Add("ctrl");
         if ((e.Modifiers & Keys.Alt) != 0)
-            mods.Add("alt");
+            parts.Add("alt");
         if ((e.Modifiers & Keys.Shift) != 0)
-            mods.Add("shift");
-        if (IsKeyDown(Keys.LWin) || IsKeyDown(Keys.RWin))
-            mods.Add("cmd");
+            parts.Add("shift");
+        if (IsPressed(Keys.LWin) || IsPressed(Keys.RWin))
+            parts.Add("cmd");
+        parts.Add(key);
 
-        mods.Add(keyName);
-        string binding = string.Join("+", mods);
-        if (binding == _binding)
-            return;
-
-        _binding = binding;
+        _binding = string.Join('+', parts);
         Invalidate();
     }
 
-    private static bool IsKeyDown(Keys key) => (GetKeyState((int)key) & 0x8000) != 0;
-
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (_armed)
+        if (_capturing)
         {
             OnKeyDown(new KeyEventArgs(keyData));
             return true;
@@ -150,86 +187,100 @@ internal sealed class HotkeyRecorder : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var r = new Rectangle(0, 0, Width - 1, Height - 1);
-        using (var path = Theme.RoundedRect(r, 7))
-        using (var fill = new SolidBrush(Theme.Input))
-        using (var pen = new Pen(_armed ? Theme.Accent : Theme.Border, _armed ? 2f : 1f))
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+        using (var path = Theme.RoundedRect(bounds, 9))
+        using (var fill = new SolidBrush(_hovered || _capturing ? Theme.ControlHover : Theme.Control))
+        using (var border = new Pen(_capturing ? Theme.Accent : Focused ? Theme.BorderStrong : Theme.Border, _capturing ? 1.7f : 1f))
         {
-            g.FillPath(fill, path);
-            g.DrawPath(pen, path);
+            e.Graphics.FillPath(fill, path);
+            e.Graphics.DrawPath(border, path);
         }
 
-        string text;
-        Color color;
-        if (_binding != "")
+        if (_binding.Length == 0)
         {
-            text = DisplayBinding();
-            color = Theme.Text;
-        }
-        else if (_armed)
-        {
-            text = "Press keys…";
-            color = Theme.Muted;
+            string empty = _capturing ? "Press your shortcut" : "Click and press a shortcut";
+            using var emptyFont = Theme.Font(9.5f);
+            TextRenderer.DrawText(
+                e.Graphics,
+                empty,
+                emptyFont,
+                new Rectangle(14, 0, Width - 28, Height),
+                Theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
         else
         {
-            text = "Click to set hotkey";
-            color = Theme.Muted;
+            DrawKeyCaps(e.Graphics);
         }
 
-        var textRect = new Rectangle(12, 0, Width - 24, Height);
-        using var displayFont = Theme.Font(_binding != "" ? 10f : 9.5f, _binding != "" ? FontStyle.Bold : FontStyle.Regular);
-        TextRenderer.DrawText(g, text, displayFont, textRect, color,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-
-        if (_armed)
+        if (_capturing && Width >= 410)
         {
-            using var hintFont = Theme.Font(8f);
-            TextRenderer.DrawText(g, "Enter ✓   Esc ✗   Backspace clear", hintFont, textRect, Theme.Muted,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            using var helperFont = Theme.Font(8.25f);
+            TextRenderer.DrawText(
+                e.Graphics,
+                "Enter save  ·  Esc cancel  ·  Backspace clear",
+                helperFont,
+                new Rectangle(190, 0, Width - 204, Height),
+                Theme.TextSecondary,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
     }
 
-    private string DisplayBinding()
+    private void DrawKeyCaps(Graphics graphics)
     {
-        if (_binding == "")
-            return "";
-        var parts = _binding.Split('+').Select(part => part switch
+        string[] labels = _binding.Split('+').Select(DisplayPart).ToArray();
+        int x = 10;
+        using var keyFont = Theme.Font(8.75f, FontStyle.Bold);
+        foreach (string label in labels)
         {
-            "ctrl" => "Ctrl",
-            "alt" => "Alt",
-            "shift" => "Shift",
-            "cmd" => "Win",
-            _ => PrettyKey(part),
-        });
-        return string.Join(" + ", parts);
+            int width = Math.Max(34, TextRenderer.MeasureText(label, keyFont).Width + 18);
+            if (x + width > Width - 12)
+                break;
+
+            var keyBounds = new Rectangle(x, 9, width, 28);
+            using var path = Theme.RoundedRect(keyBounds, 6);
+            using var fill = new SolidBrush(Theme.SurfaceRaised);
+            using var border = new Pen(Theme.BorderStrong);
+            graphics.FillPath(fill, path);
+            graphics.DrawPath(border, path);
+            TextRenderer.DrawText(
+                graphics,
+                label,
+                keyFont,
+                keyBounds,
+                Theme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            x += width + 6;
+        }
     }
 
-    private static string PrettyKey(string name)
-    {
-        if (Regex.IsMatch(name, @"^f\d+$"))
-            return name.ToUpperInvariant();
-        if (name.Length == 1 && char.IsDigit(name[0]))
-            return name;
-        if (name.Length == 1)
-            return name.ToUpperInvariant();
-        return string.Join(" ", name.Split('_').Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
-    }
+    private static bool IsPressed(Keys key) => (GetKeyState((int)key) & 0x8000) != 0;
 
-    private static string? KeyName(Keys key)
+    private static string DisplayPart(string part) => part switch
     {
-        Keys k = key & Keys.KeyCode;
-        if (k >= Keys.A && k <= Keys.Z)
-            return k.ToString().ToLowerInvariant();
-        if (k >= Keys.D0 && k <= Keys.D9)
-            return ((char)('0' + (k - Keys.D0))).ToString();
-        if (k >= Keys.NumPad0 && k <= Keys.NumPad9)
-            return ((char)('0' + (k - Keys.NumPad0))).ToString();
-        if (k >= Keys.F1 && k <= Keys.F24)
-            return "f" + (k - Keys.F1 + 1);
-        return k switch
+        "ctrl" => "CTRL",
+        "alt" => "ALT",
+        "shift" => "SHIFT",
+        "cmd" => "WIN",
+        _ when Regex.IsMatch(part, @"^f\d+$") => part.ToUpperInvariant(),
+        _ when part.Length == 1 => part.ToUpperInvariant(),
+        _ => string.Join(' ', part.Split('_').Select(word => char.ToUpperInvariant(word[0]) + word[1..])),
+    };
+
+    private static string? ToBindingKey(Keys key)
+    {
+        Keys code = key & Keys.KeyCode;
+        if (code is >= Keys.A and <= Keys.Z)
+            return code.ToString().ToLowerInvariant();
+        if (code is >= Keys.D0 and <= Keys.D9)
+            return ((char)('0' + code - Keys.D0)).ToString();
+        if (code is >= Keys.NumPad0 and <= Keys.NumPad9)
+            return ((char)('0' + code - Keys.NumPad0)).ToString();
+        if (code is >= Keys.F1 and <= Keys.F24)
+            return "f" + (code - Keys.F1 + 1);
+
+        return code switch
         {
             Keys.Space => "space",
             Keys.Tab => "tab",

@@ -65,7 +65,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.1.4-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -100,13 +100,17 @@ First start downloads the model (~1.6 GB turbo / ~3.1 GB full) into `~/.cache/hu
 
 ## 🖥️ Tray UI (`ui/VoicePromptTray`)
 
-A dark-themed Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
+A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
 
+- **Setup overview** — confirms runtime, hotkey, microphone, and recognition readiness at a glance, with direct recovery and support actions.
+- **Focused workspaces** — Dictation, Audio, Intelligence, and Advanced pages keep everyday setup simple while leaving expert controls available.
 - **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **Voice Typing Settings** shortcut) to open settings. The tray menu starts/stops/restarts the daemon and quits the app.
 - **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **AI text cleanup** — optionally fixes grammar or restructures rough speech into a clean AI prompt, with a strict deadline and original-text fallback.
 - **All settings** — language (auto / Slovenian / Slovenian slang / English), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
+- **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe copied diagnostics, and one-click log/config access.
+- **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+5` for page navigation.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
 - **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.
 
