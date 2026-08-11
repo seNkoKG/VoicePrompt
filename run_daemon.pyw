@@ -29,6 +29,10 @@ except Exception:
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 os.environ.setdefault("DICTATION_HOLD_DEBOUNCE_MS", "60")
+# Keep the transcript on the clipboard long enough for a temporarily busy
+# target window to consume Ctrl+V before the user's clipboard is restored.
+# Responsive apps paste immediately; this wait happens after the key event.
+os.environ.setdefault("DICTATION_PASTE_DELAY", "0.35")
 
 logging.basicConfig(
     level=logging.INFO,

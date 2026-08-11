@@ -1,14 +1,19 @@
-"""Production decoding defaults that prevent Whisper repetition loops."""
+"""Production decoding defaults for low-latency dictation."""
 
 from __future__ import annotations
 
 
 def decoding_options(temperature: float) -> dict[str, object]:
-    """Return faster-whisper options tuned for short-form dictation."""
+    """Return accurate, latency-bounded options for every local decode.
+
+    A temperature tuple makes faster-whisper decode the same 30-second window
+    again whenever a quality threshold fires. That made release-to-paste time
+    unpredictable and could stack with the bilingual recovery pass. A scalar
+    keeps the configured beam-search result while the native repetition guards
+    still prevent failure loops.
+    """
     return {
-        "temperature": (
-            (0.0, 0.2, 0.4, 0.6, 0.8, 1.0) if temperature == 0.0 else temperature
-        ),
+        "temperature": temperature,
         "condition_on_previous_text": False,
         "repetition_penalty": 1.1,
         "no_repeat_ngram_size": 3,

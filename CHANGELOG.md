@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.1] - 2026-08-11
+
+### Changed
+
+- Kept accurate `large-v3` beam-5 decoding while replacing the six-step temperature fallback with one deterministic, latency-bounded pass.
+- Added per-utterance primary, bilingual retry, and total transcription timing to the daemon log.
+- Kept transcript text on the clipboard long enough for temporarily busy target apps to consume the paste before the original clipboard is restored.
+
+### Fixed
+
+- Removed intermittent multi-second release-to-paste spikes caused by stacking Whisper temperature fallbacks with a full bilingual recovery pass.
+- Canonicalized upgraded runtime methods so stale recognition settings can no longer override the English/Slovenian Auto vocabulary profile.
+- Removed duplicate Win32 clipboard declarations accumulated by earlier upgrades and configured the 64-bit signatures once per process.
+- Added clean-install and v1.1.2-upgrade regression gates for latency instrumentation, recognition settings, clipboard declarations, and patch idempotence.
+
 ## [1.2.0] - 2026-08-11
 
 ### Added

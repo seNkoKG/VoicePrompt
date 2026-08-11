@@ -11,10 +11,10 @@ from decoding_options import decoding_options
 
 
 class DecodingOptionsTests(unittest.TestCase):
-    def test_default_enables_native_failure_loop_protection(self) -> None:
+    def test_default_is_latency_bounded_and_repetition_safe(self) -> None:
         options = decoding_options(0.0)
 
-        self.assertEqual(options["temperature"], (0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
+        self.assertEqual(options["temperature"], 0.0)
         self.assertIs(options["condition_on_previous_text"], False)
         self.assertEqual(options["repetition_penalty"], 1.1)
         self.assertEqual(options["no_repeat_ngram_size"], 3)
@@ -25,6 +25,7 @@ class DecodingOptionsTests(unittest.TestCase):
     def test_runtime_patch_applies_options_to_both_language_passes(self) -> None:
         patch = (ROOT / "scripts" / "apply_patches.ps1").read_text(encoding="utf-8")
         installer = (ROOT / "install.ps1").read_text(encoding="utf-8")
+        runner = (ROOT / "run_daemon.pyw").read_text(encoding="utf-8")
 
         self.assertIn("from ..decoding_options import decoding_options", patch)
         self.assertIn("bilingual_retry_language", patch)
@@ -39,6 +40,7 @@ class DecodingOptionsTests(unittest.TestCase):
         self.assertIn('Invoke-Checked $daemonExe @("stop")', installer)
         self.assertIn("$normalizedContent", patch)
         self.assertIn("$normalizedFind", patch)
+        self.assertIn('DICTATION_PASTE_DELAY", "0.35"', runner)
 
 
 if __name__ == "__main__":

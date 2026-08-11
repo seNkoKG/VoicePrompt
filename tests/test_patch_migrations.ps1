@@ -30,7 +30,8 @@ function Invoke-RuntimePatch([string]$Patch, [string]$Module, [string]$Name) {
 
 function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $localEngine = Join-Path $Module "engine\local.py"
-    & $Python -m py_compile $localEngine (Join-Path $Module "slang_retry.py")
+    $typer = Join-Path $Module "typer.py"
+    & $Python -m py_compile $localEngine $typer (Join-Path $Module "slang_retry.py")
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -44,6 +45,20 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if ([regex]::Matches($source, "recognition_prompt\(server_config\.language").Count -ne 1) {
         throw "$Name does not apply Auto vocabulary to the primary pass."
+    }
+    if ($source.Contains("self._prompt = server_config.prompt")) {
+        throw "$Name retained recognition settings that override Auto vocabulary."
+    }
+    if ([regex]::Matches($source, "Transcription latency:").Count -ne 1) {
+        throw "$Name does not have exactly one latency instrumentation block."
+    }
+
+    $typerSource = [System.IO.File]::ReadAllText($typer)
+    if ([regex]::Matches($typerSource, "def _win_clipboard_api\(").Count -ne 1) {
+        throw "$Name does not have exactly one canonical clipboard API helper."
+    }
+    if ([regex]::Matches($typerSource, "user32\.OpenClipboard\.argtypes").Count -ne 1) {
+        throw "$Name retained duplicate Win32 clipboard declarations."
     }
     Write-Output "PASS $Name"
 }

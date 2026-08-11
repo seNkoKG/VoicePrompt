@@ -47,6 +47,32 @@ function Remove-Patch($path, $remove, $name) {
     }
 }
 
+function Replace-Block($path, $start, $end, $replacement, $name) {
+    $content = [System.IO.File]::ReadAllText($path)
+    $normalizedContent = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    $startIndex = $normalizedContent.IndexOf([string]$start, [System.StringComparison]::Ordinal)
+    if ($startIndex -lt 0) {
+        Write-Error "$name -- start anchor not found; installed package changed"
+    }
+    $endIndex = $normalizedContent.IndexOf(
+        [string]$end,
+        $startIndex + ([string]$start).Length,
+        [System.StringComparison]::Ordinal
+    )
+    if ($endIndex -lt 0) {
+        Write-Error "$name -- end anchor not found; installed package changed"
+    }
+
+    $canonical = ([string]$replacement).Replace("`r`n", "`n").Replace("`r", "`n").TrimEnd() + "`n`n"
+    $updated = $normalizedContent.Substring(0, $startIndex) + $canonical + $normalizedContent.Substring($endIndex)
+    if ($updated -ceq $normalizedContent) {
+        Write-Output "[SKIPPED ] $name (already canonical)"
+        return
+    }
+    [System.IO.File]::WriteAllText($path, $updated, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Output "[NORMALIZED] $name"
+}
+
 $meterSource = Join-Path $PSScriptRoot "runtime_meter.py"
 Copy-Item -LiteralPath $meterSource -Destination "$site\meter.py" -Force
 Write-Output "[SYNCED  ] meter.py -- recording state and audio levels"
@@ -58,7 +84,7 @@ Copy-Item -LiteralPath $slangRetrySource -Destination "$site\slang_retry.py" -Fo
 Write-Output "[SYNCED  ] slang_retry.py -- mixed English/Slovenian routing"
 $decodingOptionsSource = Join-Path $PSScriptRoot "decoding_options.py"
 Copy-Item -LiteralPath $decodingOptionsSource -Destination "$site\decoding_options.py" -Force
-Write-Output "[SYNCED  ] decoding_options.py -- repetition-safe Whisper decoding"
+Write-Output "[SYNCED  ] decoding_options.py -- latency-bounded Whisper decoding"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -132,7 +158,7 @@ Apply-Patch $typer "    user32 = ctypes.windll.user32`n    kernel32 = ctypes.win
     kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
     kernel32.GlobalFree.restype = ctypes.c_void_p
 
-'@ "typer.py -- clipboard HANDLE fixes"
+'@ "typer.py -- clipboard HANDLE fixes" 'def _win_clipboard_api():'
 
 # 3. engine/local.py - "" / "auto" maps to None (true auto-detect); faster-whisper rejects "auto"
 Apply-Patch "$site\engine\local.py" @'
@@ -234,6 +260,14 @@ from ..slang_retry import (
     transcript_score,
 )
 '@ "engine/local.py -- safe decoding options" 'from ..decoding_options import decoding_options'
+Apply-Patch "$site\engine\local.py" @'
+import logging
+import threading
+'@ @'
+import logging
+import threading
+import time
+'@ "engine/local.py -- latency clock" 'import time'
 Apply-Patch "$site\engine\local.py" @'
     def __init__(self, server_config: ServerConfig, engine_config: EngineConfig):
 '@ @'
@@ -677,5 +711,234 @@ Apply-Patch $typer @'
     text = rewrite_text(text)
     log.debug("Typing %d chars", len(text))
 '@ "typer.py -- AI cleanup before clipboard" 'text = rewrite_text(text)'
+
+# Canonicalize methods that accumulated duplicate statements across upgrades.
+# The dependency is pinned to 0.2.0, so replacing these small blocks is safer
+# than carrying forward a chain of historical, order-dependent substitutions.
+$canonicalLocalInit = @'
+    def __init__(
+        self,
+        server_config: ServerConfig,
+        engine_config: EngineConfig,
+        vad_config: VADConfig,
+    ):
+        self._model = None
+        self._model_lock = threading.Lock()
+        self._model_name = server_config.model
+        self._language_mode = server_config.language
+        self._language = recognition_language(server_config.language)
+        self._compute_type = engine_config.compute_type
+        self._device = engine_config.device
+        self._prompt = recognition_prompt(server_config.language, server_config.prompt)
+        self._temperature = server_config.temperature
+        self._hotwords = recognition_hotwords(server_config.language, server_config.hotwords)
+        self._vad_parameters = {
+            "threshold": vad_config.threshold,
+            "min_silence_duration_ms": vad_config.silence_ms,
+            "min_speech_duration_ms": vad_config.min_speech_ms,
+            "max_speech_duration_s": vad_config.max_speech_s,
+        }
+'@
+Replace-Block `
+    "$site\engine\local.py" `
+    '    def __init__(' `
+    '    def _ensure_model(' `
+    $canonicalLocalInit `
+    "engine/local.py -- canonical recognition initialization"
+
+$canonicalLocalTranscribe = @'
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
+        total_started = time.perf_counter()
+        self._ensure_model()
+
+        # faster-whisper expects float32
+        if audio.dtype != np.float32:
+            audio = audio.astype(np.float32) / 32768.0
+
+        primary_started = time.perf_counter()
+        segments, info = self._model.transcribe(
+            audio,
+            language=self._language,
+            initial_prompt=self._prompt or None,
+            hotwords=self._hotwords or None,
+            vad_filter=True,
+            vad_parameters=self._vad_parameters,
+            **decoding_options(self._temperature),
+        )
+        primary_segments = list(segments)
+        primary_seconds = time.perf_counter() - primary_started
+        retry_seconds = 0.0
+        segments = primary_segments
+        primary_score = transcript_score(primary_segments)
+        retry_language = bilingual_retry_language(
+            self._language_mode,
+            info.language,
+            info.language_probability,
+            primary_score,
+            getattr(info, "all_language_probs", None),
+        )
+        if retry_language:
+            log.info(
+                "Auto detected %s (conf %.2f, score %.3f); testing %s",
+                info.language,
+                info.language_probability,
+                primary_score,
+                retry_language,
+            )
+            retry_started = time.perf_counter()
+            retry_segments, retry_info = self._model.transcribe(
+                audio,
+                language=retry_language,
+                initial_prompt=bilingual_retry_prompt(retry_language, self._prompt) or None,
+                hotwords=bilingual_retry_hotwords(retry_language, self._hotwords) or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+            )
+            retry_segments = list(retry_segments)
+            retry_seconds = time.perf_counter() - retry_started
+            retry_score = transcript_score(retry_segments)
+            if prefer_bilingual_retry(
+                retry_language,
+                info.language,
+                primary_segments,
+                retry_segments,
+            ):
+                segments = retry_segments
+                info = retry_info
+                log.info(
+                    "Bilingual retry accepted: %s score %.3f > primary %.3f",
+                    retry_language,
+                    retry_score,
+                    primary_score,
+                )
+            else:
+                log.info(
+                    "Bilingual retry rejected: %s score %.3f; keeping %s %.3f",
+                    retry_language,
+                    retry_score,
+                    info.language,
+                    primary_score,
+                )
+
+        total_seconds = time.perf_counter() - total_started
+        log.info(
+            "Transcription latency: primary %.3fs, retry %.3fs, total %.3fs",
+            primary_seconds,
+            retry_seconds,
+            total_seconds,
+        )
+        log.info(
+            "Detected language: %s (conf %.2f) [%d segments]",
+            info.language,
+            info.language_probability,
+            len(segments),
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        if text:
+            log.debug("Transcribed: %d chars", len(text))
+        return text
+'@
+Replace-Block `
+    "$site\engine\local.py" `
+    '    def transcribe(' `
+    '    def is_available(' `
+    $canonicalLocalTranscribe `
+    "engine/local.py -- latency-bounded transcription"
+
+$canonicalClipboardGet = @'
+def _win_clipboard_api():
+    """Return configured 64-bit-safe Win32 clipboard functions."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    if not getattr(_win_clipboard_api, "configured", False):
+        user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+        user32.OpenClipboard.restype = ctypes.c_int
+        user32.GetClipboardData.argtypes = [ctypes.c_uint]
+        user32.GetClipboardData.restype = ctypes.c_void_p
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = ctypes.c_int
+        user32.EmptyClipboard.argtypes = []
+        user32.EmptyClipboard.restype = ctypes.c_int
+        user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+        user32.SetClipboardData.restype = ctypes.c_void_p
+        kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = ctypes.c_void_p
+        kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalUnlock.restype = ctypes.c_int
+        kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalFree.restype = ctypes.c_void_p
+        _win_clipboard_api.configured = True
+    return ctypes, user32, kernel32
+
+
+def _win_clipboard_get() -> str:
+    """Read clipboard text on Windows via Win32 API."""
+    ctypes, user32, kernel32 = _win_clipboard_api()
+
+    if not user32.OpenClipboard(0):
+        log.debug("Failed to open clipboard for reading")
+        return ""
+    try:
+        handle = user32.GetClipboardData(_CF_UNICODETEXT)
+        if not handle:
+            return ""
+        ptr = kernel32.GlobalLock(handle)
+        try:
+            return ctypes.wstring_at(ptr) if ptr else ""
+        finally:
+            kernel32.GlobalUnlock(handle)
+    finally:
+        user32.CloseClipboard()
+'@
+$clipboardReaderStart = if (
+    [System.IO.File]::ReadAllText($typer).Contains('def _win_clipboard_api():')
+) { 'def _win_clipboard_api():' } else { 'def _win_clipboard_get(' }
+Replace-Block `
+    $typer `
+    $clipboardReaderStart `
+    'def _win_clipboard_set(' `
+    $canonicalClipboardGet `
+    "typer.py -- canonical clipboard reader"
+
+$canonicalClipboardSet = @'
+def _win_clipboard_set(text: str) -> None:
+    """Write text to clipboard on Windows via Win32 API."""
+    ctypes, user32, kernel32 = _win_clipboard_api()
+
+    encoded = text.encode("utf-16-le") + b"\x00\x00"
+    handle = kernel32.GlobalAlloc(_GMEM_MOVEABLE, len(encoded))
+    if not handle:
+        raise RuntimeError("GlobalAlloc failed")
+    ptr = kernel32.GlobalLock(handle)
+    if not ptr:
+        kernel32.GlobalFree(handle)
+        raise RuntimeError("GlobalLock failed")
+    ctypes.memmove(ptr, encoded, len(encoded))
+    kernel32.GlobalUnlock(handle)
+
+    if not user32.OpenClipboard(0):
+        log.debug("Failed to open clipboard for writing")
+        kernel32.GlobalFree(handle)
+        return
+    try:
+        user32.EmptyClipboard()
+        result = user32.SetClipboardData(_CF_UNICODETEXT, handle)
+        if not result:
+            kernel32.GlobalFree(handle)
+            log.debug("SetClipboardData failed")
+    finally:
+        user32.CloseClipboard()
+'@
+Replace-Block `
+    $typer `
+    'def _win_clipboard_set(' `
+    'def _send_ctrl_v(' `
+    $canonicalClipboardSet `
+    "typer.py -- canonical clipboard writer"
 
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"

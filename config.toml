@@ -7,7 +7,7 @@ model = "Systran/faster-whisper-large-v3"
 language = ""                         # empty = auto-detect per utterance (Slovenian/English)
 timeout = 10                          # Request timeout in seconds
 prompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request."
-# temperature = 0.0                    # 0.0 = accurate with safe fallback on failed decoding
+# temperature = 0.0                    # 0.0 = deterministic, latency-bounded beam search
 # hotwords = ""                        # Comma-separated words to boost
 
 [voiceprompt]
