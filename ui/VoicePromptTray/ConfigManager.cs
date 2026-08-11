@@ -14,6 +14,9 @@ internal sealed class ConfigManager
         timeout = 10
         prompt = ""
 
+        [voiceprompt]
+        slovenian_slang = false
+
         [hotkey]
         binding = "f1"
         mode = "hold"

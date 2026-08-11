@@ -14,6 +14,8 @@ internal sealed class AppPaths
 
     public string Pythonw => Path.Combine(VenvScripts, "pythonw.exe");
 
+    public string Python => Path.Combine(VenvScripts, "python.exe");
+
     public string RunnerPy => Path.Combine(Home, "run_daemon.pyw");
 
     public string ConfigDir { get; } = Path.Combine(
@@ -32,6 +34,16 @@ internal sealed class AppPaths
     public string AppDataDir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "VoicePrompt");
+
+    public string AiConfigPath => Path.Combine(AppDataDir, "ai.json");
+
+    public string AiRewriterPath => Path.Combine(
+        Home,
+        "venv",
+        "Lib",
+        "site-packages",
+        "whisper_dictation",
+        "ai_rewriter.py");
 
     public bool Installed => File.Exists(DaemonExe) && File.Exists(RunnerPy);
 }

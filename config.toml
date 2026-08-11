@@ -10,6 +10,9 @@ prompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript inte
 # temperature = 0.0                    # 0.0 = accurate, higher = creative
 # hotwords = ""                        # Comma-separated words to boost
 
+[voiceprompt]
+slovenian_slang = false                # pin Slovenian + add colloquial speech context
+
 [hotkey]
 binding = "f1"                        # Hotkey: modifiers + key (e.g. "alt+v", "ctrl+shift+d", "f1")
 mode = "hold"                         # "toggle" (press to start/stop) or "hold" (hold to speak)

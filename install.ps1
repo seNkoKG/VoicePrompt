@@ -31,8 +31,9 @@ $packageRoot = $PSScriptRoot
 $packageExe = Join-Path $packageRoot "VoicePromptTray.exe"
 $packagePatch = Join-Path $packageRoot "scripts\apply_patches.ps1"
 $packageMeter = Join-Path $packageRoot "scripts\runtime_meter.py"
+$packageAi = Join-Path $packageRoot "scripts\ai_rewriter.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -87,6 +88,7 @@ Get-Process -Name "VoicePromptTray" -ErrorAction SilentlyContinue | ForEach-Obje
 Copy-Item -LiteralPath $packageExe -Destination $installedExe -Force
 Copy-Item -LiteralPath $packagePatch -Destination (Join-Path $installScripts "apply_patches.ps1") -Force
 Copy-Item -LiteralPath $packageMeter -Destination (Join-Path $installScripts "runtime_meter.py") -Force
+Copy-Item -LiteralPath $packageAi -Destination (Join-Path $installScripts "ai_rewriter.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force
 if (Test-Path -LiteralPath (Join-Path $packageRoot "README.md")) {

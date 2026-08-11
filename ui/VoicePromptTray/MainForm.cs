@@ -23,7 +23,17 @@ internal sealed class MainForm : Form
     private Label _modeHint = null!;
     private CheckBox _autoStart = null!;
     private SegmentedControl _langSeg = null!;
+    private Label _languageHint = null!;
     private TextBox _promptBox = null!;
+    private SegmentedControl _aiModeSeg = null!;
+    private TextBox _aiEndpointBox = null!;
+    private TextBox _aiModelBox = null!;
+    private NumericUpDown _aiTimeoutNum = null!;
+    private TextBox _aiKeyBox = null!;
+    private FlatButton _clearAiKeyBtn = null!;
+    private FlatButton _testAiBtn = null!;
+    private Label _aiStatus = null!;
+    private AiSettings _aiSettings = new();
     private NumericUpDown _thresholdNum = null!;
     private NumericUpDown _silenceNum = null!;
     private NumericUpDown _minSpeechNum = null!;
@@ -74,6 +84,7 @@ internal sealed class MainForm : Form
         BuildStatusBar();
 
         LoadConfig();
+        LoadAiSettings();
         LoadPrefs();
         LoadAutoStartState();
         _ = RefreshDevicesAsync();
@@ -311,7 +322,10 @@ internal sealed class MainForm : Form
         hotkey.Row("Windows startup", _autoStart);
         FinishCard(hotkey);
 
-        _langSeg = new SegmentedControl(new[] { "Auto-detect", "Slovenian", "English" }, new[] { "", "sl", "en" });
+        _langSeg = new SegmentedControl(
+            new[] { "Auto", "Slovenian", "Slovenian slang", "English" },
+            new[] { "", "sl", "sl-slang", "en" });
+        _langSeg.SelectedChanged += (_, _) => UpdateLanguageHint();
         _promptBox = new TextBox
         {
             Multiline = true,
@@ -321,9 +335,51 @@ internal sealed class MainForm : Form
         var promptFrame = new InputFrame(_promptBox, 88, multiline: true);
 
         var dictation = NewCard("Dictation");
-        dictation.Row("Language", _langSeg, hint: "Auto-detect per utterance, or pin one language");
+        _languageHint = dictation.Row("Language", _langSeg, hint: "");
         dictation.Row("Prompt", promptFrame, ctrlHeight: 88);
         FinishCard(dictation);
+
+        _aiModeSeg = new SegmentedControl(
+            new[] { "Off", "Grammar", "Prompt" },
+            new[] { "off", "grammar", "prompt" });
+        _aiModeSeg.SelectedChanged += (_, _) => UpdateAiControls();
+        _aiEndpointBox = new TextBox();
+        var aiEndpointFrame = new InputFrame(_aiEndpointBox);
+        _aiModelBox = new TextBox();
+        var aiModelFrame = new InputFrame(_aiModelBox);
+        _aiTimeoutNum = MakeNum(400, 3000, 100, 0);
+        _aiTimeoutNum.Increment = 100;
+        _aiKeyBox = new TextBox { UseSystemPasswordChar = true };
+        var aiKeyFrame = new InputFrame(_aiKeyBox);
+        _clearAiKeyBtn = new FlatButton("Clear", FlatButton.ButtonStyle.Subtle, surface: Theme.Card);
+        _testAiBtn = new FlatButton("Test", FlatButton.ButtonStyle.Subtle, surface: Theme.Card);
+        _testAiBtn.Click += async (_, _) => await TestAiAsync();
+        _clearAiKeyBtn.Click += (_, _) =>
+        {
+            _aiSettings.ApiKeyProtected = "";
+            _aiKeyBox.Clear();
+            _aiKeyBox.Modified = true;
+            _aiStatus.Text = "API key cleared. Save & Restart to apply.";
+            UpdateAiControls();
+        };
+        _aiKeyBox.TextChanged += (_, _) => UpdateAiControls();
+        var aiKeyRow = new Panel { BackColor = Theme.Card, Height = 34 };
+        aiKeyRow.Controls.Add(aiKeyFrame);
+        aiKeyRow.Controls.Add(_clearAiKeyBtn);
+        aiKeyRow.Controls.Add(_testAiBtn);
+        aiKeyRow.Layout += (_, _) =>
+        {
+            _testAiBtn.Bounds = new Rectangle(aiKeyRow.Width - _testAiBtn.Width, 0, _testAiBtn.Width, 34);
+            _clearAiKeyBtn.Bounds = new Rectangle(_testAiBtn.Left - _clearAiKeyBtn.Width - 8, 0, _clearAiKeyBtn.Width, 34);
+            aiKeyFrame.Bounds = new Rectangle(0, 1, Math.Max(40, _clearAiKeyBtn.Left - 10), 32);
+        };
+
+        var ai = NewCard("AI text cleanup");
+        ai.Row("Mode", _aiModeSeg, hint: "Off adds no delay. Grammar cleans speech; Prompt structures AI requests.");
+        ai.Row("Endpoint", aiEndpointFrame, hint: "OpenAI-compatible chat completions URL, local or cloud");
+        ai.RowPair("Model", aiModelFrame, "Max wait (ms)", _aiTimeoutNum, ctrlWidth1: 0, ctrlWidth2: 88);
+        _aiStatus = ai.Row("API key", aiKeyRow, hint: "Optional for local providers. Stored with Windows account encryption.", ctrlHeight: 34);
+        FinishCard(ai);
 
         _thresholdNum = MakeNum(0.0m, 1.0m, 0.05m, 2);
         _silenceNum = MakeNum(50, 5000, 50, 0);
@@ -411,17 +467,154 @@ internal sealed class MainForm : Form
             : "Press once to start recording, press again to stop";
     }
 
+    private void UpdateLanguageHint()
+    {
+        if (_languageHint == null)
+            return;
+        _languageHint.Text = _langSeg.SelectedValue switch
+        {
+            "sl-slang" => "Pins Slovenian and boosts colloquial words such as dej, kva, tko, and zdej",
+            "sl" => "Pins standard Slovenian so short phrases are not mistaken for another language",
+            "en" => "Pins English for consistent English-only dictation",
+            _ => "Detects the language per utterance; best when switching between Slovenian and English",
+        };
+    }
+
+    private void LoadAiSettings()
+    {
+        _aiSettings = AiSettingsStore.Load(_paths.AiConfigPath);
+        _aiModeSeg.SelectValue(_aiSettings.Mode);
+        _aiEndpointBox.Text = _aiSettings.Endpoint;
+        _aiModelBox.Text = _aiSettings.Model;
+        _aiTimeoutNum.Value = Clamp(_aiSettings.TimeoutMs, _aiTimeoutNum);
+        ResetAiKeyBox();
+        UpdateAiControls();
+    }
+
+    private void ResetAiKeyBox()
+    {
+        _aiKeyBox.Clear();
+        _aiKeyBox.PlaceholderText = string.IsNullOrEmpty(_aiSettings.ApiKeyProtected)
+            ? "Optional"
+            : "Saved securely (leave blank to keep)";
+        _aiKeyBox.Modified = false;
+    }
+
+    private void UpdateAiControls()
+    {
+        if (_aiModeSeg == null)
+            return;
+        bool enabled = _aiModeSeg.SelectedValue != "off";
+        _aiEndpointBox.Enabled = enabled;
+        _aiModelBox.Enabled = enabled;
+        _aiTimeoutNum.Enabled = enabled;
+        _aiKeyBox.Enabled = enabled;
+        _clearAiKeyBtn.Enabled = enabled && !_busy &&
+            (!string.IsNullOrEmpty(_aiSettings.ApiKeyProtected) || _aiKeyBox.TextLength > 0);
+        _testAiBtn.Enabled = enabled && !_busy;
+    }
+
+    private AiSettings BuildAiSettings()
+    {
+        string protectedKey = _aiSettings.ApiKeyProtected;
+        if (_aiKeyBox.Modified)
+        {
+            string apiKey = _aiKeyBox.Text.Trim();
+            protectedKey = apiKey == "" ? "" : AiSettingsStore.ProtectApiKey(apiKey);
+        }
+
+        return new AiSettings
+        {
+            Mode = _aiModeSeg.SelectedValue,
+            Endpoint = _aiEndpointBox.Text.Trim(),
+            Model = _aiModelBox.Text.Trim(),
+            TimeoutMs = (int)_aiTimeoutNum.Value,
+            ApiKeyProtected = protectedKey,
+        };
+    }
+
+    private async Task TestAiAsync()
+    {
+        if (_busy)
+            return;
+
+        AiSettings settings;
+        try
+        {
+            settings = BuildAiSettings();
+        }
+        catch (Exception ex)
+        {
+            _aiStatus.Text = "Could not protect API key: " + ex.Message;
+            return;
+        }
+        string? validation = AiSettingsStore.Validate(settings);
+        if (validation != null)
+        {
+            _aiStatus.Text = validation;
+            return;
+        }
+        if (settings.Mode == "off")
+        {
+            _aiStatus.Text = "Choose Grammar or Prompt before testing.";
+            return;
+        }
+
+        _busy = true;
+        SetBusy(true);
+        _aiStatus.Text = "Testing provider...";
+        string testConfigPath = _paths.AiConfigPath + ".test";
+        try
+        {
+            AiSettingsStore.Save(testConfigPath, settings);
+            AiTestResult result = await Task.Run(() => _daemon.TestAi(testConfigPath));
+            _aiStatus.Text = result.Ok
+                ? $"Ready in {result.LatencyMs} ms · Save & Restart to enable"
+                : "Original text fallback · " + ShortMessage(result.Error);
+        }
+        catch (Exception ex)
+        {
+            _aiStatus.Text = "Test failed · " + ShortMessage(ex.Message);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(testConfigPath);
+                File.Delete(testConfigPath + ".tmp");
+            }
+            catch
+            {
+            }
+            _busy = false;
+            SetBusy(false);
+        }
+    }
+
+    private static string ShortMessage(string value)
+    {
+        string oneLine = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return oneLine.Length <= 100 ? oneLine : oneLine[..97] + "...";
+    }
+
     private void LoadConfig()
     {
         _recorder.Binding = _cfg.GetString("hotkey", "binding") ?? "f1";
         _modeSeg.SelectValue(_cfg.GetString("hotkey", "mode") ?? "hold");
         UpdateModeHint();
 
-        _langSeg.SelectValue(_cfg.GetString("server", "language") ?? "");
-        _promptBox.Text = _cfg.GetString("server", "prompt") ?? "";
+        string savedLanguage = _cfg.GetString("server", "language") ?? "";
+        bool slangProfile = savedLanguage == "sl" && _cfg.GetBool("voiceprompt", "slovenian_slang") == true;
+        _langSeg.SelectValue(slangProfile ? "sl-slang" : savedLanguage);
+        UpdateLanguageHint();
+        _promptBox.Text = slangProfile
+            ? _cfg.GetString("voiceprompt", "base_prompt") ?? _cfg.GetString("server", "prompt") ?? ""
+            : _cfg.GetString("server", "prompt") ?? "";
         _modelCombo.Text = _cfg.GetString("server", "model") ?? "";
         _tempNum.Value = Clamp((decimal)(_cfg.GetDouble("server", "temperature") ?? 0.0), _tempNum);
-        _hotwordsBox.Text = _cfg.GetString("server", "hotwords") ?? "";
+        _hotwordsBox.Text = slangProfile
+            ? _cfg.GetString("voiceprompt", "base_hotwords") ?? _cfg.GetString("server", "hotwords") ?? ""
+            : _cfg.GetString("server", "hotwords") ?? "";
 
         _thresholdNum.Value = Clamp((decimal)(_cfg.GetDouble("vad", "threshold") ?? 0.6), _thresholdNum);
         _silenceNum.Value = Clamp((decimal)(_cfg.GetInt("vad", "silence_ms") ?? 250), _silenceNum);
@@ -485,6 +678,42 @@ internal sealed class MainForm : Form
             return;
         }
 
+        AiSettings aiSettings;
+        try
+        {
+            aiSettings = BuildAiSettings();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not protect the AI API key:\n" + ex.Message, "Voice Typing", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        string? aiValidation = AiSettingsStore.Validate(aiSettings);
+        if (aiValidation != null)
+        {
+            MessageBox.Show(this, aiValidation, "Voice Typing", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        string hotkeyMode = _modeSeg.SelectedValue;
+        string languageSelection = _langSeg.SelectedValue;
+        bool slovenianSlang = languageSelection == "sl-slang";
+        string language = slovenianSlang ? "sl" : languageSelection;
+        string basePrompt = _promptBox.Text.Trim();
+        string prompt = slovenianSlang ? SlovenianSlangProfile.ApplyPrompt(basePrompt) : basePrompt;
+        string model = _modelCombo.Text.Trim();
+        double temperature = (double)_tempNum.Value;
+        string baseHotwords = _hotwordsBox.Text.Trim();
+        string hotwords = slovenianSlang ? SlovenianSlangProfile.ApplyHotwords(baseHotwords) : baseHotwords;
+        double threshold = (double)_thresholdNum.Value;
+        int silenceMs = (int)_silenceNum.Value;
+        int minSpeechMs = (int)_minSpeechNum.Value;
+        double maxSpeechSeconds = (double)_maxSpeechNum.Value;
+        string audioDevice = (_deviceCombo.SelectedItem as ComboItem)?.Value ?? "";
+        int sampleRate = int.Parse(_rateSeg.SelectedValue, System.Globalization.CultureInfo.InvariantCulture);
+        string computeType = _computeSeg.SelectedValue;
+        string engineDevice = _gpuSeg.SelectedValue;
+
         _busy = true;
         SetBusy(true);
         try
@@ -492,30 +721,35 @@ internal sealed class MainForm : Form
             await Task.Run(() =>
             {
                 _cfg.Set("hotkey", "binding", binding);
-                _cfg.Set("hotkey", "mode", _modeSeg.SelectedValue);
+                _cfg.Set("hotkey", "mode", hotkeyMode);
 
-                _cfg.Set("server", "language", _langSeg.SelectedValue);
-                _cfg.Set("server", "prompt", _promptBox.Text);
-                _cfg.Set("server", "model", _modelCombo.Text.Trim());
-                _cfg.Set("server", "temperature", (double)_tempNum.Value);
-                _cfg.Set("server", "hotwords", _hotwordsBox.Text.Trim());
+                _cfg.Set("server", "language", language);
+                _cfg.Set("server", "prompt", prompt);
+                _cfg.Set("server", "model", model);
+                _cfg.Set("server", "temperature", temperature);
+                _cfg.Set("server", "hotwords", hotwords);
+                _cfg.Set("voiceprompt", "slovenian_slang", slovenianSlang);
+                _cfg.Set("voiceprompt", "base_prompt", basePrompt);
+                _cfg.Set("voiceprompt", "base_hotwords", baseHotwords);
 
-                _cfg.Set("vad", "threshold", (double)_thresholdNum.Value);
-                _cfg.Set("vad", "silence_ms", (int)_silenceNum.Value);
-                _cfg.Set("vad", "min_speech_ms", (int)_minSpeechNum.Value);
-                _cfg.Set("vad", "max_speech_s", (double)_maxSpeechNum.Value);
+                _cfg.Set("vad", "threshold", threshold);
+                _cfg.Set("vad", "silence_ms", silenceMs);
+                _cfg.Set("vad", "min_speech_ms", minSpeechMs);
+                _cfg.Set("vad", "max_speech_s", maxSpeechSeconds);
 
-                var device = _deviceCombo.SelectedItem as ComboItem;
-                _cfg.Set("audio", "device", device == null ? "" : device.Value);
-                _cfg.Set("audio", "sample_rate", int.Parse(_rateSeg.SelectedValue, System.Globalization.CultureInfo.InvariantCulture));
+                _cfg.Set("audio", "device", audioDevice);
+                _cfg.Set("audio", "sample_rate", sampleRate);
 
-                _cfg.Set("engine", "compute_type", _computeSeg.SelectedValue);
-                _cfg.Set("engine", "device", _gpuSeg.SelectedValue);
+                _cfg.Set("engine", "compute_type", computeType);
+                _cfg.Set("engine", "device", engineDevice);
 
                 _cfg.Save();
+                AiSettingsStore.Save(_paths.AiConfigPath, aiSettings);
                 _daemon.Restart();
             });
 
+            _aiSettings = aiSettings;
+            ResetAiKeyBox();
             ApplyAutoStart();
             SavePrefs();
             DaemonRestarted?.Invoke();
@@ -558,6 +792,7 @@ internal sealed class MainForm : Form
     {
         _startStopBtn.Enabled = !busy;
         _restartBtn.Enabled = !busy && _daemon.Info.State == DaemonState.Running;
+        UpdateAiControls();
         UseWaitCursor = busy;
     }
 

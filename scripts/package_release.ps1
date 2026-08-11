@@ -51,11 +51,13 @@ Copy-Item -LiteralPath $builtExe -Destination (Join-Path $packageRoot "VoiceProm
 Copy-Item -LiteralPath $builtExe -Destination $standaloneExe
 Copy-Item -LiteralPath (Join-Path $root "install.ps1") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination $packageRoot
+Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "run_daemon.pyw") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "config.toml") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "assets\logo.png") -Destination (Join-Path $packageRoot "assets")
 Copy-Item -LiteralPath (Join-Path $root "scripts\apply_patches.ps1") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\runtime_meter.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\ai_rewriter.py") -Destination (Join-Path $packageRoot "scripts")
 [System.IO.File]::WriteAllText((Join-Path $packageRoot "version.txt"), "$Version`r`n", [System.Text.UTF8Encoding]::new($false))
 
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zip -CompressionLevel Optimal

@@ -27,6 +27,9 @@ function Apply-Patch($path, $find, $replace, $name, $marker = $null) {
 $meterSource = Join-Path $PSScriptRoot "runtime_meter.py"
 Copy-Item -LiteralPath $meterSource -Destination "$site\meter.py" -Force
 Write-Output "[SYNCED  ] meter.py -- recording state and audio levels"
+$aiSource = Join-Path $PSScriptRoot "ai_rewriter.py"
+Copy-Item -LiteralPath $aiSource -Destination "$site\ai_rewriter.py" -Force
+Write-Output "[SYNCED  ] ai_rewriter.py -- optional transcript cleanup"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -422,5 +425,26 @@ Apply-Patch $typer @'
     user32.keybd_event(_VK_V, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
     user32.keybd_event(_VK_CONTROL, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
 '@ "typer.py -- mark injected paste events"
+
+# 9. Typer - optionally clean the transcript before touching the clipboard
+Apply-Patch $typer @'
+import time
+'@ @'
+import time
+
+from .ai_rewriter import rewrite_text
+'@ "typer.py -- AI cleanup import" 'from .ai_rewriter import rewrite_text'
+Apply-Patch $typer @'
+    if not text:
+        return
+
+    log.debug("Typing %d chars", len(text))
+'@ @'
+    if not text:
+        return
+
+    text = rewrite_text(text)
+    log.debug("Typing %d chars", len(text))
+'@ "typer.py -- AI cleanup before clipboard" 'text = rewrite_text(text)'
 
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"

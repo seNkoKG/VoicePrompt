@@ -67,6 +67,18 @@ using (var bmp = new Bitmap(form.Width, form.Height))
     bmp.Save(png);
 }
 
+string aiPng = Path.Combine(Path.GetTempPath(), "voiceprompt_ai_settings.png");
+var content = form.Controls.OfType<Panel>().First(p => p.AutoScroll);
+var cards = content.Controls.OfType<CardPanel>().OrderBy(c => c.Top).ToList();
+if (cards.Count >= 3)
+{
+    content.AutoScrollPosition = new Point(0, cards[2].Top - 12);
+    Application.DoEvents();
+    using var bmp = new Bitmap(form.Width, form.Height);
+    form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
+    bmp.Save(aiPng);
+}
+
 string overlayPng = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
 using (var overlay = new RecordingOverlay
 {
@@ -112,6 +124,6 @@ if (recorder.Binding != "f2")
 recorder.Dispose();
 
 Console.WriteLine(sb.ToString());
-Console.WriteLine($"RESULT overlaps={overlaps} overflow={overflows} behavior={behaviorFailures} png={png} overlay={overlayPng}");
+Console.WriteLine($"RESULT overlaps={overlaps} overflow={overflows} behavior={behaviorFailures} png={png} ai={aiPng} overlay={overlayPng}");
 form.Close();
 return overlaps + overflows + behaviorFailures;

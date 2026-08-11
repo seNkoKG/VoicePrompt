@@ -20,6 +20,8 @@ internal sealed record DaemonInfo
     public string? Engine { get; init; }
 }
 
+internal sealed record AiTestResult(bool Ok, string Text, string Error, int LatencyMs);
+
 internal sealed class DaemonManager
 {
     private readonly AppPaths _paths;
@@ -157,6 +159,60 @@ internal sealed class DaemonManager
         {
         }
         return result;
+    }
+
+    public AiTestResult TestAi(string? configPath = null)
+    {
+        if (!File.Exists(_paths.Python) || !File.Exists(_paths.AiRewriterPath))
+            return new AiTestResult(false, "", "AI cleanup runtime is not installed. Run the VoicePrompt installer again.", 0);
+
+        var psi = new ProcessStartInfo(_paths.Python)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        psi.ArgumentList.Add(_paths.AiRewriterPath);
+        psi.ArgumentList.Add("--test");
+        psi.ArgumentList.Add("--config");
+        psi.ArgumentList.Add(configPath ?? _paths.AiConfigPath);
+
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start the AI connection test.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(8000))
+        {
+            try
+            {
+                process.Kill(true);
+                process.WaitForExit(2000);
+            }
+            catch
+            {
+            }
+            return new AiTestResult(false, "", "AI connection test exceeded 8 seconds.", 8000);
+        }
+
+        string stdout = stdoutTask.GetAwaiter().GetResult().Trim();
+        string stderr = stderrTask.GetAwaiter().GetResult().Trim();
+        try
+        {
+            using var document = JsonDocument.Parse(stdout);
+            var root = document.RootElement;
+            bool ok = root.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
+            string text = root.TryGetProperty("text", out var textElement) ? textElement.GetString() ?? "" : "";
+            string error = root.TryGetProperty("error", out var errorElement) ? errorElement.GetString() ?? "" : "";
+            int latency = root.TryGetProperty("latency_ms", out var latencyElement) ? latencyElement.GetInt32() : 0;
+            return new AiTestResult(ok, text, error, latency);
+        }
+        catch (JsonException)
+        {
+            string error = !string.IsNullOrWhiteSpace(stderr) ? stderr : stdout;
+            return new AiTestResult(false, "", string.IsNullOrWhiteSpace(error) ? "AI provider returned no result." : error, 0);
+        }
     }
 
     private string RunCli(string args, int timeoutMs)
