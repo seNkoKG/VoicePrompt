@@ -122,16 +122,16 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[hotkey] binding` | Global hotkey (single key or combo) | `"f1"`, `"ctrl+shift+f1"`, `"alt+space"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
-| `[server] language` | `""` = auto-detect per utterance | `"sl"`, `"en"` to pin |
+| `[server] language` | `""` = auto; `"sl-slang"` = mixed English/Slovenian retry | `"sl"`, `"en"` to pin |
 | `[server] prompt` | Decoding context / vocabulary bias | mixed SI/EN code terms |
-| `[voiceprompt] slovenian_slang` | Pins `sl` and merges the colloquial recognition profile | `true` / `false` |
+| `[voiceprompt] slovenian_slang` | Enables the mixed English/Slovenian retry profile | `true` / `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
 | `[engine] compute_type` | `float16` GPU / `int8` CPU | `"float16"` |
 | `[audio] device` | `""` = Windows default input (HyperX Quadcast) | `""` |
 
 ### Slovenian slang mode
 
-Short colloquial Slovenian phrases can look like another language to automatic detection. **Slovenian slang** pins Whisper to `sl` and adds a compact vocabulary profile for common forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`. Your own decoding prompt and hotwords are preserved separately and restored when the profile is disabled. Switch back to **Auto** when alternating between Slovenian and English.
+Short colloquial Slovenian phrases can look like a third language to automatic detection. **Slovenian slang** keeps normal English and Slovenian detection, adds a compact vocabulary profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`, and retries as Slovenian only when Whisper reports some other language. English is never reinterpreted by the retry. Your own decoding prompt and hotwords are preserved separately and restored when the profile is disabled.
 
 ### Optional AI cleanup
 
@@ -151,7 +151,7 @@ Nine Windows integration fixes ship in this repo — apply them **after every re
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures.
-3. **`engine/local.py`** — `language = ""` / `"auto"` crashed with `ValueError: 'auto' is not a valid language code`; now maps to `None` = proper per-utterance auto-detect.
+3. **`engine/local.py` / `slang_retry.py`** — maps automatic modes correctly and lets `sl-slang` preserve English while retrying only third-language mistakes as Slovenian.
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
 6. **`daemon.py` / `meter.py`** — publishes recording state, microphone level, and live waveform samples through named shared memory, without a second audio capture or disk polling.
@@ -180,7 +180,7 @@ Verified end-to-end results (simulated): **hotkey → record → GPU transcribe 
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
 | Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run Voice Typing at the same privilege level, or choose a binding the app does not reserve |
-| Bad or slangy Slovenian accuracy | Select **Slovenian slang** to prevent language misclassification and boost colloquial words; keep `large-v3` for best accuracy |
+| Bad or slangy Slovenian accuracy | Select **Slovenian slang** to retry third-language mistakes and boost colloquial words while English remains automatic; keep `large-v3` for best accuracy |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 | AI test fails or times out | Confirm the endpoint and model, start the provider, then click **Test** again; live dictation will paste the original transcript whenever cleanup is unavailable |
 

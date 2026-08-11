@@ -47,6 +47,7 @@ Check("read prompt", cfg.GetString("server", "prompt") == "V kodi pišem");
 Check("commented temp is null", cfg.GetDouble("server", "temperature") == null);
 
 cfg.Set("hotkey", "binding", "ctrl+shift+f1");
+cfg.Set("server", "language", "sl-slang");
 cfg.Set("vad", "threshold", 0.55);
 cfg.Set("vad", "silence_ms", 300);
 cfg.Set("server", "temperature", 0.2);
@@ -64,6 +65,7 @@ Console.WriteLine(after);
 Console.WriteLine("---------------");
 
 Check("binding updated", Regex.IsMatch(after, @"binding = \""ctrl\+shift\+f1\"""));
+Check("hybrid slang language saved", Regex.IsMatch(after, @"language = \""sl-slang\"""));
 Check("threshold updated", Regex.IsMatch(after, @"threshold = 0\.55$", RegexOptions.Multiline));
 Check("silence updated", Regex.IsMatch(after, @"silence_ms = 300"));
 Check("commented key uncommented", Regex.IsMatch(after, @"^temperature = 0\.2$", RegexOptions.Multiline));

@@ -58,6 +58,7 @@ Copy-Item -LiteralPath (Join-Path $root "assets\logo.png") -Destination (Join-Pa
 Copy-Item -LiteralPath (Join-Path $root "scripts\apply_patches.ps1") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\runtime_meter.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\ai_rewriter.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\slang_retry.py") -Destination (Join-Path $packageRoot "scripts")
 [System.IO.File]::WriteAllText((Join-Path $packageRoot "version.txt"), "$Version`r`n", [System.Text.UTF8Encoding]::new($false))
 
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zip -CompressionLevel Optimal

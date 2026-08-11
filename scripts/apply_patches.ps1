@@ -12,8 +12,9 @@ if (-not (Test-Path $site)) { Write-Error "site-packages not found: $site"; exit
 
 function Apply-Patch($path, $find, $replace, $name, $marker = $null) {
     $content = [System.IO.File]::ReadAllText($path)
-    $patchedMarker = if ($marker) { $marker } else { $replace }
-    if ($content.Contains($patchedMarker)) {
+    $patchedMarkers = if ($marker) { @($marker) } else { @($replace) }
+    $alreadyPatched = @($patchedMarkers | Where-Object { $content.Contains([string]$_) }).Count -gt 0
+    if ($alreadyPatched) {
         Write-Output "[SKIPPED ] $name (already patched)"
     } elseif ($content.Contains($find)) {
         $content = $content.Replace($find, $replace)
@@ -30,6 +31,9 @@ Write-Output "[SYNCED  ] meter.py -- recording state and audio levels"
 $aiSource = Join-Path $PSScriptRoot "ai_rewriter.py"
 Copy-Item -LiteralPath $aiSource -Destination "$site\ai_rewriter.py" -Force
 Write-Output "[SYNCED  ] ai_rewriter.py -- optional transcript cleanup"
+$slangRetrySource = Join-Path $PSScriptRoot "slang_retry.py"
+Copy-Item -LiteralPath $slangRetrySource -Destination "$site\slang_retry.py" -Force
+Write-Output "[SYNCED  ] slang_retry.py -- mixed English/Slovenian routing"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -113,7 +117,19 @@ Apply-Patch "$site\engine\local.py" @'
             None if not server_config.language or server_config.language == "auto"
             else server_config.language
         )
-'@ "engine/local.py -- auto-detect mapping"
+'@ "engine/local.py -- auto-detect mapping" @(
+    'None if not server_config.language or server_config.language == "auto"',
+    'self._language_mode = server_config.language'
+)
+Apply-Patch "$site\engine\local.py" @'
+        self._language = (
+            None if not server_config.language or server_config.language == "auto"
+            else server_config.language
+        )
+'@ @'
+        self._language_mode = server_config.language
+        self._language = recognition_language(server_config.language)
+'@ "engine/local.py -- hybrid language mapping" 'self._language_mode = server_config.language'
 
 # 4. engine/local.py - log detected language + confidence per utterance (debugging auto-detect)
 Apply-Patch "$site\engine\local.py" @'
@@ -130,7 +146,7 @@ Apply-Patch "$site\engine\local.py" @'
             language=self._language,
             vad_filter=True,
         )
-        segments = list(segments)  # generator -> list (len() + reuse)
+        segments = list(segments)
 
         log.info(
             "Detected language: %s (conf %.2f) [%d segments]",
@@ -147,6 +163,12 @@ from ..config import EngineConfig, ServerConfig
 '@ @'
 from ..config import EngineConfig, ServerConfig, VADConfig
 '@ "engine/local.py -- VAD config import"
+Apply-Patch "$site\engine\local.py" @'
+from ..config import EngineConfig, ServerConfig, VADConfig
+'@ @'
+from ..config import EngineConfig, ServerConfig, VADConfig
+from ..slang_retry import recognition_language, should_retry_as_slovenian
+'@ "engine/local.py -- hybrid language helpers" 'from ..slang_retry import recognition_language, should_retry_as_slovenian'
 Apply-Patch "$site\engine\local.py" @'
     def __init__(self, server_config: ServerConfig, engine_config: EngineConfig):
 '@ @'
@@ -193,6 +215,30 @@ Apply-Patch "$site\engine\__init__.py" @'
 '@ @'
         return LocalEngine(config.server, config.engine, config.vad)
 '@ "engine/__init__.py -- pass VAD settings"
+Apply-Patch "$site\engine\local.py" @'
+        segments = list(segments)
+
+        log.info(
+'@ @'
+        segments = list(segments)
+        if should_retry_as_slovenian(self._language_mode, info.language):
+            log.info(
+                "Language %s looks wrong for slang mode; retrying as Slovenian",
+                info.language,
+            )
+            segments, info = self._model.transcribe(
+                audio,
+                language="sl",
+                temperature=self._temperature,
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+            )
+            segments = list(segments)
+
+        log.info(
+'@ "engine/local.py -- selective Slovenian retry" 'Language %s looks wrong for slang mode; retrying as Slovenian'
 
 # 6. Daemon - publish recording state and live microphone level to the tray overlay
 Apply-Patch "$site\daemon.py" @'
@@ -258,14 +304,8 @@ _HOTKEY_NAMED_KEYS = frozenset(
 )
 '@ "config.py -- named keys set"
 Apply-Patch "$site\config.py" @'
-    key = parts[-1]
-    modifiers = parts[:-1]
-    single_letter = key.isalpha() and len(key) == 1
-    function_key = re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key) is not None
-    return (single_letter or function_key) and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
+    return key.isalpha() and len(key) == 1 and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
 '@ @'
-    key = parts[-1]
-    modifiers = parts[:-1]
     if not all(mod in _HOTKEY_MODIFIERS for mod in modifiers):
         return False
     if len(key) == 1 and (key.isalpha() or key.isdigit()):
@@ -273,7 +313,7 @@ Apply-Patch "$site\config.py" @'
     if key in _HOTKEY_NAMED_KEYS or re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key):
         return True
     return False
-'@ "config.py -- single/multi-key validation"
+'@ "config.py -- single/multi-key validation" 'if key in _HOTKEY_NAMED_KEYS or re.fullmatch'
 
 # 8. Windows hotkey listener - consume only the configured hotkey so apps never receive it
 $listener = "$site\hotkey\listener.py"

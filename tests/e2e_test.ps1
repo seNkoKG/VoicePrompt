@@ -38,9 +38,9 @@ $box.Add_TextChanged({
     }
 })
 $form.Controls.Add($box)
-$form.Shown = {
+$form.Add_Shown({
     $box.Focus()
-}
+})
 $form.Show()
 $form.Activate()
 $box.Focus() | Out-Null

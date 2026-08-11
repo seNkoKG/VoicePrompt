@@ -473,7 +473,7 @@ internal sealed class MainForm : Form
             return;
         _languageHint.Text = _langSeg.SelectedValue switch
         {
-            "sl-slang" => "Pins Slovenian and boosts colloquial words such as dej, kva, tko, and zdej",
+            "sl-slang" => "Keeps English automatic; retries other-language mistakes as colloquial Slovenian",
             "sl" => "Pins standard Slovenian so short phrases are not mistaken for another language",
             "en" => "Pins English for consistent English-only dictation",
             _ => "Detects the language per utterance; best when switching between Slovenian and English",
@@ -604,7 +604,7 @@ internal sealed class MainForm : Form
         UpdateModeHint();
 
         string savedLanguage = _cfg.GetString("server", "language") ?? "";
-        bool slangProfile = savedLanguage == "sl" && _cfg.GetBool("voiceprompt", "slovenian_slang") == true;
+        bool slangProfile = savedLanguage == "sl-slang";
         _langSeg.SelectValue(slangProfile ? "sl-slang" : savedLanguage);
         UpdateLanguageHint();
         _promptBox.Text = slangProfile
@@ -698,7 +698,7 @@ internal sealed class MainForm : Form
         string hotkeyMode = _modeSeg.SelectedValue;
         string languageSelection = _langSeg.SelectedValue;
         bool slovenianSlang = languageSelection == "sl-slang";
-        string language = slovenianSlang ? "sl" : languageSelection;
+        string language = languageSelection;
         string basePrompt = _promptBox.Text.Trim();
         string prompt = slovenianSlang ? SlovenianSlangProfile.ApplyPrompt(basePrompt) : basePrompt;
         string model = _modelCombo.Text.Trim();

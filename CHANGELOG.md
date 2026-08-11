@@ -5,7 +5,7 @@
 ### Added
 
 - Optional AI cleanup with Off, Grammar, and Prompt modes.
-- Slovenian slang recognition profile that pins the language and boosts common colloquial words.
+- Mixed English/Slovenian slang profile that retries only third-language detection mistakes.
 - OpenAI-compatible local or cloud provider settings and a built-in connection test.
 - Windows account encryption for saved API keys.
 - Strict request deadlines with automatic original-transcript fallback.
@@ -19,6 +19,7 @@
 ### Fixed
 
 - AI waits never hold the clipboard or discard a successful local transcription.
+- Clean 0.2.0 installs patch the Windows hotkey validator reliably.
 
 ## [1.0.0] - 2026-08-11
 
