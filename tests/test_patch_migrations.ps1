@@ -31,7 +31,8 @@ function Invoke-RuntimePatch([string]$Patch, [string]$Module, [string]$Name) {
 function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $localEngine = Join-Path $Module "engine\local.py"
     $typer = Join-Path $Module "typer.py"
-    & $Python -m py_compile $localEngine $typer (Join-Path $Module "slang_retry.py")
+    $daemon = Join-Path $Module "daemon.py"
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py")
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -59,6 +60,29 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if ([regex]::Matches($typerSource, "user32\.OpenClipboard\.argtypes").Count -ne 1) {
         throw "$Name retained duplicate Win32 clipboard declarations."
+    }
+    if ($typerSource.Contains('log.debug("Failed to open clipboard for writing")')) {
+        throw "$Name can still silently ignore a failed clipboard write."
+    }
+    if ([regex]::Matches($typerSource, "def _win_clipboard_open\(").Count -ne 1) {
+        throw "$Name does not have exactly one clipboard contention helper."
+    }
+    if (-not $typerSource.Contains("Clipboard verification failed")) {
+        throw "$Name does not verify the complete transcript before paste."
+    }
+
+    $daemonSource = [System.IO.File]::ReadAllText($daemon)
+    if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
+        throw "$Name still truncates held recordings."
+    }
+    if ([regex]::Matches($daemonSource, "self\._recorded_chunks\.append\(audio\.copy\(\)\)").Count -ne 1) {
+        throw "$Name does not retain each captured batch audio chunk exactly once."
+    }
+    if (-not $daemonSource.Contains("Paste shortcut sent: %d chars")) {
+        throw "$Name does not expose a privacy-safe successful-paste signal."
+    }
+    if (-not $daemonSource.Contains('notify("Paste failed"')) {
+        throw "$Name does not report a failed paste to the user."
     }
     Write-Output "PASS $Name"
 }

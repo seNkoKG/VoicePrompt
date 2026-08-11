@@ -609,14 +609,14 @@ internal sealed class MainForm : Form
         _threshold.AccessibleName = "Speech sensitivity";
         _silenceMs.AccessibleName = "End-of-speech pause in milliseconds";
         _minimumSpeechMs.AccessibleName = "Minimum speech duration in milliseconds";
-        _maximumSpeechSeconds.AccessibleName = "Maximum utterance duration in seconds";
+        _maximumSpeechSeconds.AccessibleName = "Recognition segment duration in seconds";
         var resetVad = new ActionButton("Use recommended values", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
         resetVad.Click += (_, _) =>
         {
             _threshold.Value = 0.60m;
             _silenceMs.Value = 250;
             _minimumSpeechMs.Value = 250;
-            _maximumSpeechSeconds.Value = 90;
+            _maximumSpeechSeconds.Value = 180;
             ShowFooter("Recommended voice detection values applied. Save to activate them.", Theme.Accent);
         };
 
@@ -624,7 +624,7 @@ internal sealed class MainForm : Form
         detection.Add("Sensitivity", "Higher rejects more background noise; 0.60 is a balanced starting point.", LeftControl(_threshold), 62);
         detection.Add("End-of-speech pause", "Milliseconds of silence before transcription begins.", LeftControl(_silenceMs), 62);
         detection.Add("Minimum speech", "Very short sounds below this duration are ignored.", LeftControl(_minimumSpeechMs), 62);
-        detection.Add("Maximum utterance", "Safety limit in seconds for one held recording.", LeftControl(_maximumSpeechSeconds), 62);
+        detection.Add("Recognition segment", "Internal VAD segment size. Held recordings stay complete even when they run longer.", LeftControl(_maximumSpeechSeconds), 62);
         detection.Add("Recommended preset", "Restore the tested values without changing your microphone.", LeftControl(resetVad), 62);
         AddPageItem(body, detection.Build());
     }
@@ -1024,7 +1024,7 @@ internal sealed class MainForm : Form
         _threshold.Value = Clamp((decimal)(_config.GetDouble("vad", "threshold") ?? 0.60), _threshold);
         _silenceMs.Value = Clamp(_config.GetInt("vad", "silence_ms") ?? 250, _silenceMs);
         _minimumSpeechMs.Value = Clamp(_config.GetInt("vad", "min_speech_ms") ?? 250, _minimumSpeechMs);
-        _maximumSpeechSeconds.Value = Clamp((decimal)(_config.GetDouble("vad", "max_speech_s") ?? 90), _maximumSpeechSeconds);
+        _maximumSpeechSeconds.Value = Clamp((decimal)(_config.GetDouble("vad", "max_speech_s") ?? 180), _maximumSpeechSeconds);
 
         _microphoneCombo.Items.Clear();
         _microphoneCombo.Items.Add(new ComboItem("System default", ""));
@@ -1409,7 +1409,7 @@ internal sealed class MainForm : Form
         _threshold.Value = 0.60m;
         _silenceMs.Value = 250;
         _minimumSpeechMs.Value = 250;
-        _maximumSpeechSeconds.Value = 90;
+        _maximumSpeechSeconds.Value = 180;
         _recognitionModelCombo.Text = "Systran/faster-whisper-large-v3";
         _processorChoice.SelectValue("cuda");
         _computeChoice.SelectValue("float16");

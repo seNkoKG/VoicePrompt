@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.2] - 2026-08-12
+
+### Changed
+
+- Raised the recommended VAD segment size to 180 seconds while keeping recording duration independent from that internal segmentation setting.
+- Sized optional AI cleanup output for multi-minute dictation and reject provider truncation instead of pasting a partial rewrite.
+- Added privacy-safe successful-paste telemetry with character counts, without logging transcript content.
+
+### Fixed
+
+- Removed the batch recorder's silent 90-second buffer cap, which discarded every word after 90 seconds while the overlay kept recording.
+- Added bounded Windows clipboard contention retries, verified full Unicode clipboard writes, and explicit failures instead of silently reporting a failed paste as successful.
+- Preserve the completed transcript on the clipboard when automatic paste injection fails so it remains recoverable with `Ctrl+V`.
+
 ## [1.2.1] - 2026-08-11
 
 ### Changed

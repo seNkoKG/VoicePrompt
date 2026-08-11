@@ -25,7 +25,7 @@ internal sealed class ConfigManager
         threshold = 0.6
         silence_ms = 250
         min_speech_ms = 250
-        max_speech_s = 90.0
+        max_speech_s = 180.0
 
         [audio]
         sample_rate = 16000

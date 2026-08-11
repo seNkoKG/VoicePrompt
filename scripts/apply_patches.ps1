@@ -515,6 +515,71 @@ Apply-Patch "$site\daemon.py" @'
         if self._use_ws and ws_engine is not None:
 '@ "daemon.py -- publish recording stop"
 
+# Batch recording must never silently discard speech. max_speech_s is passed to
+# Silero VAD as an internal segmentation size; it is not a capture-duration cap.
+$canonicalBatchBuffer = @'
+        self._recording_start: float = 0.0
+        # Batch mode keeps every chunk until release. Three minutes of 16 kHz
+        # mono float32 audio is only about 11 MiB, and faster-whisper handles
+        # longer input by splitting it into internal VAD/model segments.
+        self._recorded_chunks: list[np.ndarray] = []
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '        self._recording_start: float = 0.0' `
+    '        self._lock = threading.Lock()' `
+    $canonicalBatchBuffer `
+    "daemon.py -- preserve complete batch recordings"
+Apply-Patch "$site\daemon.py" @'
+            with self._lock:
+                if len(self._recorded_chunks) >= self._max_batch_chunks:
+                    return  # buffer full, drop chunk silently
+                self._recorded_chunks.append(audio.copy())
+'@ @'
+            with self._lock:
+                # Do not discard the tail of long held recordings.
+                self._recorded_chunks.append(audio.copy())
+'@ "daemon.py -- remove silent 90-second truncation" 'Do not discard the tail of long held recordings.'
+
+Apply-Patch "$site\daemon.py" @'
+            if text:
+                type_text(text + " ")
+                log.debug("Typed: %d chars", len(text))
+'@ @'
+            if text:
+                type_text(text + " ")
+                log.info("Paste shortcut sent: %d chars", len(text))
+'@ "daemon.py -- observable successful paste" 'Paste shortcut sent: %d chars'
+
+$canonicalTranscribeAndType = @'
+    def _transcribe_and_type(self, audio: np.ndarray) -> None:
+        """Transcribe audio, then paste it with separate failure reporting."""
+        try:
+            text = self._engine.transcribe(audio, self.config.audio.sample_rate)
+        except Exception:
+            log.error("Transcription failed", exc_info=True)
+            notify("Transcription failed", "Open VoicePrompt diagnostics for details")
+            return
+
+        if not text:
+            if not self.streaming:
+                log.info("No speech detected")
+            return
+
+        try:
+            type_text(text + " ")
+            log.info("Paste shortcut sent: %d chars", len(text))
+        except Exception:
+            log.error("Paste failed after successful transcription", exc_info=True)
+            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _transcribe_and_type(' `
+    '    def _deactivate_ws(' `
+    $canonicalTranscribeAndType `
+    "daemon.py -- separate transcription and paste failures"
+
 # 7. config.py - allow single keys (letters, digits, f1-f24, named keys like space/enter)
 Apply-Patch "$site\config.py" @'
 _HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift", "cmd", "super", "meta"}
@@ -864,6 +929,8 @@ def _win_clipboard_api():
         user32.EmptyClipboard.restype = ctypes.c_int
         user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
         user32.SetClipboardData.restype = ctypes.c_void_p
+        user32.IsClipboardFormatAvailable.argtypes = [ctypes.c_uint]
+        user32.IsClipboardFormatAvailable.restype = ctypes.c_int
         kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
         kernel32.GlobalAlloc.restype = ctypes.c_void_p
         kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
@@ -876,20 +943,31 @@ def _win_clipboard_api():
     return ctypes, user32, kernel32
 
 
-def _win_clipboard_get() -> str:
-    """Read clipboard text on Windows via Win32 API."""
+def _win_clipboard_open(user32, operation: str) -> None:
+    """Open the shared clipboard with a short bounded contention retry."""
+    for _ in range(20):
+        if user32.OpenClipboard(0):
+            return
+        time.sleep(0.01)
+    raise RuntimeError(f"Could not open Windows clipboard for {operation}")
+
+
+def _win_clipboard_get() -> str | None:
+    """Read clipboard text, or None when the clipboard has no Unicode text."""
     ctypes, user32, kernel32 = _win_clipboard_api()
 
-    if not user32.OpenClipboard(0):
-        log.debug("Failed to open clipboard for reading")
-        return ""
+    _win_clipboard_open(user32, "reading")
     try:
+        if not user32.IsClipboardFormatAvailable(_CF_UNICODETEXT):
+            return None
         handle = user32.GetClipboardData(_CF_UNICODETEXT)
         if not handle:
-            return ""
+            raise RuntimeError("GetClipboardData returned no text handle")
         ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            raise RuntimeError("GlobalLock failed while reading clipboard")
         try:
-            return ctypes.wstring_at(ptr) if ptr else ""
+            return ctypes.wstring_at(ptr)
         finally:
             kernel32.GlobalUnlock(handle)
     finally:
@@ -907,7 +985,7 @@ Replace-Block `
 
 $canonicalClipboardSet = @'
 def _win_clipboard_set(text: str) -> None:
-    """Write text to clipboard on Windows via Win32 API."""
+    """Write all Unicode text or raise; clipboard failures are never silent."""
     ctypes, user32, kernel32 = _win_clipboard_api()
 
     encoded = text.encode("utf-16-le") + b"\x00\x00"
@@ -921,16 +999,19 @@ def _win_clipboard_set(text: str) -> None:
     ctypes.memmove(ptr, encoded, len(encoded))
     kernel32.GlobalUnlock(handle)
 
-    if not user32.OpenClipboard(0):
-        log.debug("Failed to open clipboard for writing")
-        kernel32.GlobalFree(handle)
-        return
     try:
-        user32.EmptyClipboard()
+        _win_clipboard_open(user32, "writing")
+    except Exception:
+        kernel32.GlobalFree(handle)
+        raise
+    try:
+        if not user32.EmptyClipboard():
+            kernel32.GlobalFree(handle)
+            raise RuntimeError("EmptyClipboard failed")
         result = user32.SetClipboardData(_CF_UNICODETEXT, handle)
         if not result:
             kernel32.GlobalFree(handle)
-            log.debug("SetClipboardData failed")
+            raise RuntimeError("SetClipboardData failed")
     finally:
         user32.CloseClipboard()
 '@
@@ -940,5 +1021,48 @@ Replace-Block `
     'def _send_ctrl_v(' `
     $canonicalClipboardSet `
     "typer.py -- canonical clipboard writer"
+
+$canonicalWindowsTyper = @'
+def _type_windows(text: str) -> None:
+    """Paste through a verified clipboard write and preserve prior text."""
+    previous: str | None = None
+    captured_previous = False
+    try:
+        previous = _win_clipboard_get()
+        captured_previous = True
+    except Exception:
+        # Reading the old clipboard must not discard a completed transcript.
+        log.warning("Could not preserve previous clipboard text", exc_info=True)
+
+    paste_sent = False
+    try:
+        _win_clipboard_set(text)
+        if _win_clipboard_get() != text:
+            raise RuntimeError("Clipboard verification failed")
+        _send_ctrl_v()
+        paste_sent = True
+        time.sleep(PASTE_DELAY)
+    except Exception:
+        # A successful fallback copy makes the completed transcript recoverable
+        # with a manual Ctrl+V even if automatic input injection failed.
+        try:
+            _win_clipboard_set(text)
+            log.error("Automatic paste failed; transcript left on clipboard", exc_info=True)
+        except Exception:
+            log.error("Windows typing and fallback clipboard copy failed", exc_info=True)
+        raise
+    finally:
+        if paste_sent and captured_previous and previous is not None:
+            try:
+                _win_clipboard_set(previous)
+            except Exception:
+                log.warning("Could not restore previous clipboard text", exc_info=True)
+'@
+Replace-Block `
+    $typer `
+    'def _type_windows(' `
+    '_CF_UNICODETEXT = 13' `
+    $canonicalWindowsTyper `
+    "typer.py -- reliable verified Windows paste"
 
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"

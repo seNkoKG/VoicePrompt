@@ -29,10 +29,18 @@ class _Provider(ThreadingHTTPServer):
         self.delay = 0.0
         self.status = 200
         self.invalid_json = False
+        self.finish_reason: str | None = None
 
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except ConnectionAbortedError:
+            # Expected when the timeout test closes its socket first on Windows.
+            pass
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         provider: _Provider = self.server  # type: ignore[assignment]
@@ -47,7 +55,10 @@ class _Handler(BaseHTTPRequestHandler):
             body = b"not-json"
         else:
             body = json.dumps({
-                "choices": [{"message": {"content": provider.reply}}],
+                "choices": [{
+                    "message": {"content": provider.reply},
+                    "finish_reason": provider.finish_reason,
+                }],
             }).encode("utf-8")
         try:
             self.send_response(provider.status)
@@ -55,7 +66,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
 
     def log_message(self, _format: str, *args: object) -> None:
@@ -168,6 +179,25 @@ class AiRewriterTests(unittest.TestCase):
         self.provider.reply = "x" * 500
         rewriter = AiRewriter(self.config())
         source = "short request"
+        self.assertEqual(rewriter.rewrite(source), source)
+        self.assertTrue(rewriter.used_fallback)
+        rewriter.close()
+
+    def test_truncated_long_edit_returns_complete_original(self) -> None:
+        source = "Keep every requirement in this long transcript. " * 80
+        self.provider.reply = "Partial edit"
+        self.provider.finish_reason = "length"
+        rewriter = AiRewriter(self.config())
+        self.assertEqual(rewriter.rewrite(source), source)
+        self.assertTrue(rewriter.used_fallback)
+        request = self.provider.requests[0]
+        self.assertGreater(request["max_tokens"], 512)
+        rewriter.close()
+
+    def test_incomplete_grammar_edit_returns_original(self) -> None:
+        source = "This grammar edit must preserve all of these words and requirements. " * 10
+        self.provider.reply = "Looks good."
+        rewriter = AiRewriter(self.config())
         self.assertEqual(rewriter.rewrite(source), source)
         self.assertTrue(rewriter.used_fallback)
         rewriter.close()

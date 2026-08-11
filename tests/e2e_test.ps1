@@ -100,7 +100,9 @@ Write-Output "Hotkey UP (transcribe + paste)"
 $t1 = Get-Date
 
 $firstLine = $null
-for ($i = 0; $i -lt 40; $i++) {
+$pasteTimeoutSeconds = [math]::Min(60, [math]::Max(10, 10 + ($wavDuration * 0.20)))
+$pollCount = [math]::Ceiling($pasteTimeoutSeconds / 0.25)
+for ($i = 0; $i -lt $pollCount; $i++) {
     [System.Windows.Forms.Application]::DoEvents()
     if (Test-Path $resultFile) {
         $lines = @(Get-Content $resultFile)
@@ -120,7 +122,7 @@ if ($firstLine) {
     $exitCode = 0
 } else {
     $unexpected = if (Test-Path $resultFile) { (Get-Content $resultFile -Raw).Trim() } else { "" }
-    Write-Output "RESULT: EXPECTED TEXT DID NOT ARRIVE within ~10s"
+    Write-Output "RESULT: EXPECTED TEXT DID NOT ARRIVE within ~$([math]::Round($pasteTimeoutSeconds, 1))s"
     if ($unexpected) { Write-Output "UNEXPECTED: $unexpected" }
     $exitCode = 1
 }

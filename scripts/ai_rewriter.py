@@ -113,7 +113,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.2.1"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.2.2"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0
@@ -145,6 +145,8 @@ class AiRewriter:
             output = output.strip()
             if len(output) > max(240, len(source) * 3):
                 raise ValueError("provider returned unexpectedly long text")
+            if self.settings["mode"] == "grammar" and len(output) < max(12, len(source) * 0.6):
+                raise ValueError("provider returned an incomplete grammar edit")
             return leading + output + trailing
         except (requests.RequestException, KeyError, IndexError, TypeError, ValueError, OSError) as exc:
             self.last_error = str(exc)
@@ -181,7 +183,10 @@ class AiRewriter:
             ],
             "stream": False,
             "temperature": 0.1,
-            "max_tokens": max(64, min(512, len(text) // 2 + 64)),
+            # Grammar mode promises not to remove details. A 512-token ceiling
+            # could truncate a two-to-three-minute dictation, so size the
+            # allowance to the input while retaining a defensive upper bound.
+            "max_tokens": max(128, min(4096, len(text) // 2 + 128)),
         }
         response = self.session.post(
             self.settings["endpoint"],
@@ -190,7 +195,10 @@ class AiRewriter:
             timeout=(connect_timeout, read_timeout),
         )
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
+        choice = response.json()["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise ValueError("provider truncated the rewritten transcript")
+        content = choice["message"]["content"]
         if isinstance(content, list):
             content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
         if not isinstance(content, str):

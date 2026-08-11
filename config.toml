@@ -21,7 +21,7 @@ mode = "hold"                         # "toggle" (press to start/stop) or "hold"
 threshold = 0.6                       # Speech detection sensitivity (0.0-1.0)
 silence_ms = 250                      # Wait after speech stops before transcribing (ms)
 min_speech_ms = 250                   # Ignore utterances shorter than this (ms)
-max_speech_s = 90.0                   # Maximum single utterance length (seconds)
+max_speech_s = 180.0                  # Internal VAD segment size; held recordings are not truncated
 
 [audio]
 sample_rate = 16000                   # Sample rate in Hz (16000 is optimal for Whisper)
