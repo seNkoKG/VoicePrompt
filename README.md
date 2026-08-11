@@ -65,7 +65,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.1.2-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.1.3-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -122,23 +122,25 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[hotkey] binding` | Global hotkey (single key or combo) | `"f1"`, `"ctrl+shift+f1"`, `"alt+space"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
-| `[server] language` | `""` = auto; `"sl-slang"` = mixed English/Slovenian retry | `"sl"`, `"en"` to pin |
+| `[server] language` | `""` = fast English/Slovenian Auto; `"sl-slang"` = visible slang profile | `"sl"`, `"en"` to pin |
 | `[server] prompt` | Decoding context / vocabulary bias | mixed SI/EN code terms |
-| `[voiceprompt] slovenian_slang` | Enables the mixed English/Slovenian retry profile | `true` / `false` |
+| `[voiceprompt] slovenian_slang` | Saves the visible colloquial vocabulary profile | `true` / `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
 | `[engine] compute_type` | `float16` GPU / `int8` CPU | `"float16"` |
 | `[audio] device` | `""` = Windows default input (HyperX Quadcast) | `""` |
 
-### Slovenian slang mode
+### English + Slovenian Auto
 
-Short colloquial Slovenian phrases can look like a third language to automatic detection. **Slovenian slang** keeps normal English and Slovenian detection, adds a compact vocabulary profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`, and retries as Slovenian only when Whisper reports some other language. English is never reinterpreted by the retry. Your own decoding prompt and hotwords are preserved separately and restored when the profile is disabled.
+**Auto** is intentionally optimized for the two languages this app targets. Whisper still detects English or Slovenian independently for every held utterance, while the primary decode receives a compact Slovenian vocabulary profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`. This is a single-pass path for confident English and Slovenian, so normal dictation stays fast.
+
+If Whisper reports low-confidence English or an unrelated language, VoicePrompt compares a forced English/Slovenian candidate using faster-whisper's token-weighted decoder probability. It switches only when the candidate is better, preventing real English from being translated into Slovenian. The **Slovenian slang** selection keeps the same automatic English detection while also saving the slang vocabulary into the editable prompt and hotword fields.
 
 ### Optional AI cleanup
 
 The **AI text cleanup** card supports three modes:
 
 - **Off**: the default. No request, no per-utterance network or file access, and no added delay.
-- **Grammar**: fixes grammar, punctuation, filler words, and false starts without answering the transcript.
+- **Grammar**: conservatively fixes punctuation, capitalization, and obvious grammar without translating, paraphrasing, or removing wording.
 - **Prompt**: turns rough speech into a concise, structured AI prompt while preserving requirements, names, code, numbers, and URLs.
 
 The endpoint can be any OpenAI-compatible `/v1/chat/completions` service. For a private local setup, install [Ollama for Windows](https://ollama.com/download/windows), run `ollama pull qwen2.5:3b`, and keep the default endpoint and model. Ollama documents its [OpenAI-compatible endpoint here](https://docs.ollama.com/api/openai-compatibility). A cloud provider also works by entering its endpoint, model, and API key.
@@ -151,7 +153,7 @@ Ten Windows integration fixes ship in this repo — apply them **after every rei
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures.
-3. **`engine/local.py` / `slang_retry.py`** — maps automatic modes correctly and lets `sl-slang` preserve English while retrying only third-language mistakes as Slovenian.
+3. **`engine/local.py` / `slang_retry.py`** — runs fast English/Slovenian Auto with colloquial vocabulary, then score-gates retries for low-confidence or unrelated-language mistakes.
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
 6. **`engine/local.py` / `decoding_options.py`** — prevents repeated-sentence failure loops with independent 30-second windows, temperature fallback, repetition penalty, and native no-repeat decoding.
@@ -170,6 +172,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/bench_one.py` — model load time, VRAM delta, decode time per utterance.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
+- `tests/test_slang_retry.py` — verifies bilingual routing, vocabulary injection, decoder scoring, and safeguards against translating real English.
 - `tests/test_decoding_options.py` — verifies temperature fallback and native repetition-loop protection on both English and Slovenian decoding passes.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
 
@@ -182,7 +185,7 @@ Verified end-to-end results (simulated): **hotkey → record → GPU transcribe 
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
 | Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run Voice Typing at the same privilege level, or choose a binding the app does not reserve |
-| Bad or slangy Slovenian accuracy | Select **Slovenian slang** to retry third-language mistakes and boost colloquial words while English remains automatic; keep `large-v3` for best accuracy |
+| Bad or slangy Slovenian accuracy | Leave language on **Auto** for automatic English/Slovenian routing and built-in colloquial vocabulary; keep `large-v3` for best accuracy |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 | AI test fails or times out | Confirm the endpoint and model, start the provider, then click **Test** again; live dictation will paste the original transcript whenever cleanup is unavailable |
 

@@ -473,10 +473,10 @@ internal sealed class MainForm : Form
             return;
         _languageHint.Text = _langSeg.SelectedValue switch
         {
-            "sl-slang" => "Keeps English automatic; retries other-language mistakes as colloquial Slovenian",
+            "sl-slang" => "Keeps English automatic and saves colloquial Slovenian prompt/hotword hints",
             "sl" => "Pins standard Slovenian so short phrases are not mistaken for another language",
             "en" => "Pins English for consistent English-only dictation",
-            _ => "Detects the language per utterance; best when switching between Slovenian and English",
+            _ => "Fast English/Slovenian detection with built-in colloquial Slovenian vocabulary",
         };
     }
 

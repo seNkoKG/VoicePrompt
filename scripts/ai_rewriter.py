@@ -21,14 +21,16 @@ log = logging.getLogger(__name__)
 _ENTROPY = b"VoicePrompt AI v1"
 _SYSTEM_PROMPTS = {
     "grammar": (
-        "Rewrite this speech transcript as clear, natural text in the same language. Fix grammar, punctuation, "
-        "filler words, and false starts. Preserve the exact meaning, requirements, names, code, "
-        "commands, numbers, and URLs. Do not answer the transcript. Return only the rewritten text."
+        "Polish this dictation conservatively. Fix punctuation, capitalization, and obvious grammar errors only. "
+        "Never translate. Preserve every language and code-switched phrase exactly where it appears, including "
+        "Slovenian slang. Do not paraphrase, summarize, remove details, or replace wording. Preserve names, code, "
+        "commands, numbers, and URLs. Do not answer the transcript. Return only the polished text."
     ),
     "prompt": (
         "Turn this speech transcript into a concise, well-structured AI prompt. Preserve every "
         "requirement, constraint, name, code fragment, command, number, and URL. Remove filler and "
-        "repetition. Do not solve the request or invent details. Return only the improved prompt."
+        "repetition. Never translate: preserve the transcript's language or language switches, including "
+        "Slovenian slang. Do not solve the request or invent details. Return only the improved prompt."
     ),
 }
 
@@ -111,7 +113,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.1.2"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.1.3"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0

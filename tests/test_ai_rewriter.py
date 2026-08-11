@@ -118,7 +118,10 @@ class AiRewriterTests(unittest.TestCase):
         request = self.provider.requests[0]
         self.assertEqual(request["model"], "test-model")
         self.assertFalse(request["stream"])
-        self.assertIn("Fix grammar", request["messages"][0]["content"])
+        system_prompt = request["messages"][0]["content"]
+        self.assertIn("Never translate", system_prompt)
+        self.assertIn("Slovenian slang", system_prompt)
+        self.assertIn("Do not paraphrase", system_prompt)
         self.assertEqual(request["messages"][1]["content"], "um fix my english")
         self.assertFalse(rewriter.used_fallback)
         rewriter.close()
@@ -126,7 +129,9 @@ class AiRewriterTests(unittest.TestCase):
     def test_prompt_mode_uses_prompt_restructuring_instruction(self) -> None:
         rewriter = AiRewriter(self.config(mode="prompt"))
         rewriter.rewrite("make this a useful prompt")
-        self.assertIn("well-structured AI prompt", self.provider.requests[0]["messages"][0]["content"])
+        system_prompt = self.provider.requests[0]["messages"][0]["content"]
+        self.assertIn("well-structured AI prompt", system_prompt)
+        self.assertIn("Never translate", system_prompt)
         rewriter.close()
 
     def test_environment_api_key_is_sent_without_disk_secret(self) -> None:

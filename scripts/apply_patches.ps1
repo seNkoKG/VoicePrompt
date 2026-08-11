@@ -180,14 +180,46 @@ from ..config import EngineConfig, ServerConfig, VADConfig
 '@ @'
 from ..config import EngineConfig, ServerConfig, VADConfig
 from ..slang_retry import recognition_language, should_retry_as_slovenian
-'@ "engine/local.py -- hybrid language helpers" 'from ..slang_retry import recognition_language, should_retry_as_slovenian'
+'@ "engine/local.py -- hybrid language helpers" 'recognition_language,'
+Apply-Patch "$site\engine\local.py" @'
+from ..slang_retry import recognition_language, should_retry_as_slovenian
+'@ @'
+from ..slang_retry import (
+    bilingual_retry_hotwords,
+    bilingual_retry_language,
+    bilingual_retry_prompt,
+    prefer_bilingual_retry,
+    recognition_hotwords,
+    recognition_language,
+    recognition_prompt,
+    transcript_score,
+)
+'@ "engine/local.py -- bilingual Auto helpers" 'prefer_bilingual_retry'
 Apply-Patch "$site\engine\local.py" @'
 from ..config import EngineConfig, ServerConfig, VADConfig
-from ..slang_retry import recognition_language, should_retry_as_slovenian
+from ..slang_retry import (
+    bilingual_retry_hotwords,
+    bilingual_retry_language,
+    bilingual_retry_prompt,
+    prefer_bilingual_retry,
+    recognition_hotwords,
+    recognition_language,
+    recognition_prompt,
+    transcript_score,
+)
 '@ @'
 from ..config import EngineConfig, ServerConfig, VADConfig
 from ..decoding_options import decoding_options
-from ..slang_retry import recognition_language, should_retry_as_slovenian
+from ..slang_retry import (
+    bilingual_retry_hotwords,
+    bilingual_retry_language,
+    bilingual_retry_prompt,
+    prefer_bilingual_retry,
+    recognition_hotwords,
+    recognition_language,
+    recognition_prompt,
+    transcript_score,
+)
 '@ "engine/local.py -- safe decoding options" 'from ..decoding_options import decoding_options'
 Apply-Patch "$site\engine\local.py" @'
     def __init__(self, server_config: ServerConfig, engine_config: EngineConfig):
@@ -203,16 +235,16 @@ Apply-Patch "$site\engine\local.py" @'
         self._device = engine_config.device
 '@ @'
         self._device = engine_config.device
-        self._prompt = server_config.prompt
+        self._prompt = recognition_prompt(server_config.language, server_config.prompt)
         self._temperature = server_config.temperature
-        self._hotwords = server_config.hotwords
+        self._hotwords = recognition_hotwords(server_config.language, server_config.hotwords)
         self._vad_parameters = {
             "threshold": vad_config.threshold,
             "min_silence_duration_ms": vad_config.silence_ms,
             "min_speech_duration_ms": vad_config.min_speech_ms,
             "max_speech_duration_s": vad_config.max_speech_s,
         }
-'@ "engine/local.py -- recognition settings"
+'@ "engine/local.py -- recognition settings" 'recognition_prompt(server_config.language'
 Apply-Patch "$site\engine\local.py" @'
         segments, info = self._model.transcribe(
             audio,
@@ -258,7 +290,7 @@ Apply-Patch "$site\engine\local.py" @'
             segments = list(segments)
 
         log.info(
-'@ "engine/local.py -- selective Slovenian retry" 'Language %s looks wrong for slang mode; retrying as Slovenian'
+'@ "engine/local.py -- selective Slovenian retry" 'retry_language = bilingual_retry_language'
 Apply-Patch "$site\engine\local.py" @'
             language=self._language,
             temperature=self._temperature,
@@ -288,7 +320,77 @@ Apply-Patch "$site\engine\local.py" @'
                 vad_filter=True,
                 vad_parameters=self._vad_parameters,
                 **decoding_options(self._temperature),
-'@ "engine/local.py -- safe Slovenian retry decoding"
+'@ "engine/local.py -- safe Slovenian retry decoding" 'Bilingual retry accepted:'
+Apply-Patch "$site\engine\local.py" @'
+        segments = list(segments)
+        if should_retry_as_slovenian(self._language_mode, info.language):
+            log.info(
+                "Language %s looks wrong for slang mode; retrying as Slovenian",
+                info.language,
+            )
+            segments, info = self._model.transcribe(
+                audio,
+                language="sl",
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+            )
+            segments = list(segments)
+'@ @'
+        primary_segments = list(segments)
+        segments = primary_segments
+        primary_score = transcript_score(primary_segments)
+        retry_language = bilingual_retry_language(
+            self._language_mode,
+            info.language,
+            info.language_probability,
+            primary_score,
+            getattr(info, "all_language_probs", None),
+        )
+        if retry_language:
+            log.info(
+                "Auto detected %s (conf %.2f, score %.3f); testing %s",
+                info.language,
+                info.language_probability,
+                primary_score,
+                retry_language,
+            )
+            retry_segments, retry_info = self._model.transcribe(
+                audio,
+                language=retry_language,
+                initial_prompt=bilingual_retry_prompt(retry_language, self._prompt) or None,
+                hotwords=bilingual_retry_hotwords(retry_language, self._hotwords) or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+            )
+            retry_segments = list(retry_segments)
+            retry_score = transcript_score(retry_segments)
+            if prefer_bilingual_retry(
+                retry_language,
+                info.language,
+                primary_segments,
+                retry_segments,
+            ):
+                segments = retry_segments
+                info = retry_info
+                log.info(
+                    "Bilingual retry accepted: %s score %.3f > primary %.3f",
+                    retry_language,
+                    retry_score,
+                    primary_score,
+                )
+            else:
+                log.info(
+                    "Bilingual retry rejected: %s score %.3f; keeping %s %.3f",
+                    retry_language,
+                    retry_score,
+                    info.language,
+                    primary_score,
+                )
+'@ "engine/local.py -- scored bilingual Auto retry" 'Bilingual retry accepted:'
 
 # 6. Daemon - publish recording state and live microphone level to the tray overlay
 Apply-Patch "$site\daemon.py" @'

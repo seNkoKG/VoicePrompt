@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.3] - 2026-08-11
+
+### Added
+
+- Added a fast bilingual Auto route tuned for English and Slovenian, including colloquial Slovenian forms such as `dej`, `lohk`, `kva`, `tko`, and `zdej`.
+- Added score-gated fallback decoding for low-confidence English and unrelated-language detection mistakes.
+
+### Changed
+
+- Applied the Slovenian vocabulary profile during Auto's primary decode, improving slang recognition without a second pass or affecting English language detection.
+- Made optional AI cleanup preserve the detected language, English/Slovenian code-switches, slang, requirements, and wording instead of translating or freely rewriting them.
+
+### Fixed
+
+- Prevented English speech in Auto from being translated into Slovenian by accepting a forced-language retry only when Whisper's decoder score supports it.
+- Preserved user-entered hotword capitalization while deduplicating the built-in vocabulary.
+
 ## [1.1.2] - 2026-08-11
 
 ### Fixed

@@ -27,7 +27,11 @@ class DecodingOptionsTests(unittest.TestCase):
         installer = (ROOT / "install.ps1").read_text(encoding="utf-8")
 
         self.assertIn("from ..decoding_options import decoding_options", patch)
-        self.assertEqual(patch.count("**decoding_options(self._temperature)"), 2)
+        self.assertIn("bilingual_retry_language", patch)
+        self.assertIn("prefer_bilingual_retry", patch)
+        self.assertIn("recognition_prompt(server_config.language", patch)
+        self.assertIn("recognition_hotwords(server_config.language", patch)
+        self.assertIn("info.language_probability", patch)
         self.assertIn("$packageDecodingOptions", installer)
         self.assertIn('"decoding_options.py") -Force', installer)
         self.assertIn('Invoke-Checked $daemonExe @("stop")', installer)
