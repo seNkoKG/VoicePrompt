@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4] - 2026-08-11
+
+### Fixed
+
+- Removed an obsolete Slovenian retry block that could survive a v1.1.2 upgrade and stop every transcription before paste.
+- Added release-gating tests for both clean upstream installs and real v1.1.2 runtime upgrades.
+
 ## [1.1.3] - 2026-08-11
 
 ### Added

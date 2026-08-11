@@ -31,6 +31,10 @@ jobs:
           python -m pip install requests
           python -m unittest discover -s tests -p "test_*.py" -v
 
+      - name: Verify clean and upgrade patch migrations
+        shell: pwsh
+        run: ./tests/test_patch_migrations.ps1 -Python (Get-Command python).Source
+
       - name: Verify configuration and layout
         shell: pwsh
         run: |

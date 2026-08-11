@@ -32,6 +32,8 @@ class DecodingOptionsTests(unittest.TestCase):
         self.assertIn("recognition_prompt(server_config.language", patch)
         self.assertIn("recognition_hotwords(server_config.language", patch)
         self.assertIn("info.language_probability", patch)
+        self.assertIn('Remove-Patch "$site\\engine\\local.py"', patch)
+        self.assertIn('"engine/local.py -- obsolete selective retry"', patch)
         self.assertIn("$packageDecodingOptions", installer)
         self.assertIn('"decoding_options.py") -Force', installer)
         self.assertIn('Invoke-Checked $daemonExe @("stop")', installer)

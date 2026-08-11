@@ -113,7 +113,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.1.3"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.1.4"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0

@@ -34,6 +34,19 @@ function Apply-Patch($path, $find, $replace, $name, $marker = $null) {
     }
 }
 
+function Remove-Patch($path, $remove, $name) {
+    $content = [System.IO.File]::ReadAllText($path)
+    $normalizedContent = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    $normalizedRemove = ([string]$remove).Replace("`r`n", "`n").Replace("`r", "`n")
+    if ($normalizedContent.Contains($normalizedRemove)) {
+        $normalizedContent = $normalizedContent.Replace($normalizedRemove, "")
+        [System.IO.File]::WriteAllText($path, $normalizedContent, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Output "[REMOVED ] $name"
+    } else {
+        Write-Output "[SKIPPED ] $name (not present)"
+    }
+}
+
 $meterSource = Join-Path $PSScriptRoot "runtime_meter.py"
 Copy-Item -LiteralPath $meterSource -Destination "$site\meter.py" -Force
 Write-Output "[SYNCED  ] meter.py -- recording state and audio levels"
@@ -290,7 +303,7 @@ Apply-Patch "$site\engine\local.py" @'
             segments = list(segments)
 
         log.info(
-'@ "engine/local.py -- selective Slovenian retry" 'retry_language = bilingual_retry_language'
+'@ "engine/local.py -- selective Slovenian retry" @('if should_retry_as_slovenian(', 'retry_language = bilingual_retry_language')
 Apply-Patch "$site\engine\local.py" @'
             language=self._language,
             temperature=self._temperature,
@@ -306,6 +319,14 @@ Apply-Patch "$site\engine\local.py" @'
             vad_parameters=self._vad_parameters,
             **decoding_options(self._temperature),
 '@ "engine/local.py -- safe primary decoding"
+$safeSlovenianRetryMarker = @'
+                language="sl",
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+'@
 Apply-Patch "$site\engine\local.py" @'
                 language="sl",
                 temperature=self._temperature,
@@ -320,7 +341,7 @@ Apply-Patch "$site\engine\local.py" @'
                 vad_filter=True,
                 vad_parameters=self._vad_parameters,
                 **decoding_options(self._temperature),
-'@ "engine/local.py -- safe Slovenian retry decoding" 'Bilingual retry accepted:'
+'@ "engine/local.py -- safe Slovenian retry decoding" @($safeSlovenianRetryMarker, 'Bilingual retry accepted:')
 Apply-Patch "$site\engine\local.py" @'
         segments = list(segments)
         if should_retry_as_slovenian(self._language_mode, info.language):
@@ -391,6 +412,24 @@ Apply-Patch "$site\engine\local.py" @'
                     primary_score,
                 )
 '@ "engine/local.py -- scored bilingual Auto retry" 'Bilingual retry accepted:'
+Remove-Patch "$site\engine\local.py" @'
+        if should_retry_as_slovenian(self._language_mode, info.language):
+            log.info(
+                "Language %s looks wrong for slang mode; retrying as Slovenian",
+                info.language,
+            )
+            segments, info = self._model.transcribe(
+                audio,
+                language="sl",
+                initial_prompt=self._prompt or None,
+                hotwords=self._hotwords or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(self._temperature),
+            )
+            segments = list(segments)
+
+'@ "engine/local.py -- obsolete selective retry"
 
 # 6. Daemon - publish recording state and live microphone level to the tray overlay
 Apply-Patch "$site\daemon.py" @'
