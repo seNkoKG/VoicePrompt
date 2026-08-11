@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify configuration and layout
+        shell: pwsh
+        run: |
+          dotnet run --project ui/ConfigManager.Tests -c Release
+          dotnet run --project ui/LayoutCheck -c Release
+
+      - name: Build release package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          ./scripts/package_release.ps1 -Version $version
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: VoicePrompt ${{ github.ref_name }}
+          generate_release_notes: true
+          make_latest: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/VoicePrompt-${{ github.ref_name }}-windows-x64.zip
+            dist/VoicePromptTray.exe
+            dist/VoicePrompt-${{ github.ref_name }}-SHA256SUMS.txt

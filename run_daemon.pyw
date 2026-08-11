@@ -1,4 +1,4 @@
-"""Silent launcher for the voice-typing daemon (run with pythonw.exe).
+r"""Silent launcher for the voice-typing daemon (run with pythonw.exe).
 
 - Adds file logging to ~/.voice-typing/daemon.log
 - Sets CUDA 12 DLL path (needed with newer NVIDIA drivers / CUDA 13+)
@@ -28,6 +28,7 @@ except Exception:
     pass
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("DICTATION_HOLD_DEBOUNCE_MS", "60")
 
 logging.basicConfig(
     level=logging.INFO,

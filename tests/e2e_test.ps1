@@ -1,12 +1,16 @@
 param(
-    [string]$Wav = "C:\Users\senke\AppData\Local\Temp\opencode\vtest\mix_loud.wav",
+    [Parameter(Mandatory = $true)]
+    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
+    [string]$Wav,
     [string]$Label = "MIX"
 )
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$resultFile = "C:\Users\senke\AppData\Local\Temp\opencode\vtest\paste_result.txt"
+$resultDir = Join-Path $env:TEMP "VoicePromptTests"
+New-Item -ItemType Directory -Path $resultDir -Force | Out-Null
+$resultFile = Join-Path $resultDir "paste_result.txt"
 if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
 
 $form = New-Object System.Windows.Forms.Form
@@ -98,8 +102,11 @@ if ($firstLine) {
     $stamp = ($firstLine -split '\]')[0] -replace '\[', ''
     Write-Output "TEXT-LANDED at $stamp (release was $($t1.ToString('HH:mm:ss.fff')))"
     Write-Output "CONTENT: $firstLine"
+    $exitCode = 0
 } else {
     Write-Output "RESULT: NO TEXT ARRIVED within ~10s"
+    $exitCode = 1
 }
 $form.Close()
 Start-Sleep -Milliseconds 300
+exit $exitCode

@@ -51,25 +51,35 @@ internal sealed class DaemonManager
         if (!Installed)
             return new DaemonInfo();
 
+        if (!File.Exists(_paths.PidPath))
+            return new DaemonInfo { State = DaemonState.Stopped };
+
         try
         {
-            string output = RunCli("status", 5000);
-            var info = new DaemonInfo { State = DaemonState.Stopped };
-            var m = System.Text.RegularExpressions.Regex.Match(output, @"running \(PID (\d+)\)");
-            if (m.Success)
+            if (!int.TryParse(File.ReadAllText(_paths.PidPath).Trim(), out int pid))
+                return new DaemonInfo { State = DaemonState.Stopped };
+
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited || process.StartTime.ToUniversalTime() > File.GetLastWriteTimeUtc(_paths.PidPath).AddSeconds(2))
+                return new DaemonInfo { State = DaemonState.Stopped };
+
+            var info = new DaemonInfo { State = DaemonState.Running, Pid = pid };
+            if (File.Exists(_paths.StatePath))
             {
-                info = info with { State = DaemonState.Running, Pid = int.Parse(m.Groups[1].Value) };
-                var hk = System.Text.RegularExpressions.Regex.Match(output, @"Hotkey:\s+(\S+)");
-                var mode = System.Text.RegularExpressions.Regex.Match(output, @"Mode:\s+(\S+)");
-                var eng = System.Text.RegularExpressions.Regex.Match(output, @"Engine:\s+(\S+)");
+                using var doc = JsonDocument.Parse(File.ReadAllText(_paths.StatePath));
+                var root = doc.RootElement;
                 info = info with
                 {
-                    Hotkey = hk.Success ? hk.Groups[1].Value : ReadStateHotkey(),
-                    Mode = mode.Success ? mode.Groups[1].Value : null,
-                    Engine = eng.Success ? eng.Groups[1].Value : null,
+                    Hotkey = root.TryGetProperty("hotkey", out var hotkey) ? hotkey.GetString() : null,
+                    Mode = root.TryGetProperty("mode", out var mode) ? mode.GetString() : null,
+                    Engine = root.TryGetProperty("engine", out var engine) ? engine.GetString() : null,
                 };
             }
             return info;
+        }
+        catch (ArgumentException)
+        {
+            return new DaemonInfo { State = DaemonState.Stopped };
         }
         catch
         {
@@ -77,28 +87,13 @@ internal sealed class DaemonManager
         }
     }
 
-    private string? ReadStateHotkey()
-    {
-        try
-        {
-            if (File.Exists(_paths.StatePath))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(_paths.StatePath));
-                if (doc.RootElement.TryGetProperty("hotkey", out var hk) && hk.ValueKind == JsonValueKind.String)
-                    return hk.GetString();
-            }
-        }
-        catch
-        {
-        }
-        return null;
-    }
-
     public void Start()
     {
         Refresh(true);
-        if (_last.State == DaemonState.Running || !File.Exists(_paths.Pythonw) || !File.Exists(_paths.RunnerPy))
+        if (_last.State == DaemonState.Running)
             return;
+        if (!File.Exists(_paths.Pythonw) || !File.Exists(_paths.RunnerPy))
+            throw new InvalidOperationException("Voice Typing runtime is not installed.");
 
         var psi = new ProcessStartInfo(_paths.Pythonw)
         {
@@ -106,9 +101,7 @@ internal sealed class DaemonManager
             UseShellExecute = true,
             CreateNoWindow = true,
         };
-        using (Process.Start(psi))
-        {
-        }
+        using var started = Process.Start(psi) ?? throw new InvalidOperationException("Could not start Voice Typing runtime.");
 
         for (int i = 0; i < 40; i++)
         {
@@ -117,6 +110,7 @@ internal sealed class DaemonManager
             if (_last.State == DaemonState.Running)
                 return;
         }
+        throw new InvalidOperationException($"Daemon did not start. Check {_paths.LogPath}");
     }
 
     public void Stop()
@@ -133,12 +127,12 @@ internal sealed class DaemonManager
             if (_last.State != DaemonState.Running)
                 return;
         }
+        throw new TimeoutException("Daemon did not stop within 8 seconds.");
     }
 
     public void Restart()
     {
         Stop();
-        Thread.Sleep(500);
         Start();
     }
 
@@ -177,20 +171,24 @@ internal sealed class DaemonManager
             StandardOutputEncoding = Encoding.UTF8,
         };
         using var p = Process.Start(psi)!;
-        var stdout = new StringBuilder();
-        p.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-        p.BeginOutputReadLine();
+        var stdout = p.StandardOutput.ReadToEndAsync();
+        var stderr = p.StandardError.ReadToEndAsync();
         if (!p.WaitForExit(timeoutMs))
         {
             try
             {
                 p.Kill(true);
+                p.WaitForExit(2000);
             }
             catch
             {
             }
-            return "";
+            throw new TimeoutException($"Daemon command '{args}' timed out.");
         }
-        return stdout.ToString();
+        string output = stdout.GetAwaiter().GetResult();
+        string error = stderr.GetAwaiter().GetResult();
+        if (p.ExitCode != 0)
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? output.Trim() : error.Trim());
+        return output;
     }
 }

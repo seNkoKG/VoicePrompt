@@ -25,6 +25,10 @@ internal sealed class AppPaths
 
     public string StatePath => Path.Combine(ConfigDir, "state.json");
 
+    public string PidPath => Path.Combine(ConfigDir, "daemon.pid");
+
+    public string LogPath => Path.Combine(Home, "daemon.log");
+
     public string AppDataDir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "VoicePrompt");

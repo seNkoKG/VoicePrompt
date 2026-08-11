@@ -69,6 +69,15 @@ Check("hotwords added + escaped", Regex.IsMatch(after, @"hotwords = \""python, n
 Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
 Check("file still parses after re-read", new VoicePromptTray.ConfigManager(path).GetInt("vad", "silence_ms") == 300);
 
+string savedOnce = File.ReadAllText(path);
+new VoicePromptTray.ConfigManager(path).Save();
+Check("repeated save is stable", File.ReadAllText(path) == savedOnce);
+
+string newPath = Path.Combine(dir, "new", "config.toml");
+var defaults = new VoicePromptTray.ConfigManager(newPath);
+Check("new config is written immediately", File.Exists(newPath) && File.ReadAllText(newPath).Contains("[hotkey]"));
+Check("new config has working defaults", defaults.GetString("hotkey", "binding") == "f1");
+
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures;

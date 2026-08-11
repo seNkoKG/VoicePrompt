@@ -1,4 +1,5 @@
 using System.Text;
+using System.Reflection;
 using VoicePromptTray;
 
 Application.EnableVisualStyles();
@@ -18,6 +19,7 @@ Application.DoEvents();
 
 int overlaps = 0;
 int overflows = 0;
+int behaviorFailures = 0;
 var sb = new StringBuilder();
 
 string Describe(Control c)
@@ -65,7 +67,51 @@ using (var bmp = new Bitmap(form.Width, form.Height))
     bmp.Save(png);
 }
 
+string overlayPng = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
+using (var overlay = new RecordingOverlay
+{
+    StartPosition = FormStartPosition.Manual,
+    Location = new Point(-30000, -30000),
+    Opacity = 0.96,
+})
+{
+    var waveform = (float[])typeof(RecordingOverlay)
+        .GetField("_waveform", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .GetValue(overlay)!;
+    for (int i = 0; i < waveform.Length; i++)
+    {
+        float edge = MathF.Sin(MathF.PI * i / (waveform.Length - 1));
+        waveform[i] = MathF.Sin(i * 1.18f) * (0.18f + 0.68f * edge);
+    }
+    overlay.Show();
+    Application.DoEvents();
+    using var bmp = new Bitmap(overlay.Width, overlay.Height);
+    overlay.DrawToBitmap(bmp, new Rectangle(0, 0, overlay.Width, overlay.Height));
+    bmp.Save(overlayPng);
+}
+
+var recorder = new HotkeyRecorder { Binding = "f1" };
+var gotFocus = typeof(HotkeyRecorder).GetMethod("OnGotFocus", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var keyDown = typeof(HotkeyRecorder).GetMethod("OnKeyDown", BindingFlags.Instance | BindingFlags.NonPublic)!;
+gotFocus.Invoke(recorder, new object[] { EventArgs.Empty });
+keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
+keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Escape) });
+if (recorder.Binding != "f1")
+{
+    behaviorFailures++;
+    sb.AppendLine("BEHAVIOR hotkey Escape did not restore committed binding");
+}
+gotFocus.Invoke(recorder, new object[] { EventArgs.Empty });
+keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F2) });
+keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.Enter) });
+if (recorder.Binding != "f2")
+{
+    behaviorFailures++;
+    sb.AppendLine($"BEHAVIOR hotkey Enter did not commit pending binding: {recorder.Binding}");
+}
+recorder.Dispose();
+
 Console.WriteLine(sb.ToString());
-Console.WriteLine($"RESULT overlaps={overlaps} overflow={overflows} png={png}");
+Console.WriteLine($"RESULT overlaps={overlaps} overflow={overflows} behavior={behaviorFailures} png={png} overlay={overlayPng}");
 form.Close();
-return overlaps + overflows;
+return overlaps + overflows + behaviorFailures;

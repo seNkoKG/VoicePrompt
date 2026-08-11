@@ -17,6 +17,7 @@
     <Compile Include="..\VoicePromptTray\DaemonManager.cs" />
     <Compile Include="..\VoicePromptTray\HotkeyRecorder.cs" />
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
+    <Compile Include="..\VoicePromptTray\RecordingOverlay.cs" />
     <Compile Include="..\VoicePromptTray\Theme.cs" />
     <Compile Include="..\VoicePromptTray\TrayApp.cs" />
   </ItemGroup>

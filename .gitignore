@@ -19,3 +19,4 @@ Desktop.ini
 ui/**/bin/
 ui/**/obj/
 ui/publish/
+dist/

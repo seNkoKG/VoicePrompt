@@ -31,6 +31,5 @@ internal static class Program
         waiter.Start();
 
         Application.Run();
-        app.Dispose();
     }
 }

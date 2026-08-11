@@ -1,9 +1,17 @@
-# Builds the Voice Prompt tray UI (requires .NET SDK 8+).
+# Builds the self-contained VoicePrompt tray UI for Windows x64 (requires .NET SDK 10+).
 # Usage:  powershell -ExecutionPolicy Bypass -File scripts\build_ui.ps1
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$root = Split-Path -Parent $PSScriptRoot
 $proj = Join-Path $root "ui\VoicePromptTray\VoicePromptTray.csproj"
 $out = Join-Path $root "ui\publish"
-dotnet publish $proj -c Release -o $out --nologo -v minimal
+if (Test-Path -LiteralPath $out) {
+    $resolvedRoot = [System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+    $resolvedOut = [System.IO.Path]::GetFullPath($out)
+    if (-not $resolvedOut.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean publish directory outside the repository: $resolvedOut"
+    }
+    Remove-Item -LiteralPath $resolvedOut -Recurse -Force
+}
+dotnet publish $proj -c Release -r win-x64 --self-contained true -o $out --nologo -v minimal
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Output "Built: $out\VoicePromptTray.exe"

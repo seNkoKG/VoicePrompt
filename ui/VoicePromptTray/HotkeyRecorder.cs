@@ -1,10 +1,14 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace VoicePromptTray;
 
 internal sealed class HotkeyRecorder : Control
 {
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int keyCode);
+
     private string _binding = "";
     private string _committed = "";
     private bool _armed;
@@ -37,23 +41,46 @@ internal sealed class HotkeyRecorder : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         Focus();
-        _armed = true;
-        Invalidate();
+        Arm();
         base.OnMouseDown(e);
     }
 
     protected override void OnGotFocus(EventArgs e)
     {
-        _armed = true;
-        Invalidate();
+        Arm();
         base.OnGotFocus(e);
     }
 
     protected override void OnLostFocus(EventArgs e)
     {
+        if (_armed)
+            Commit();
+        base.OnLostFocus(e);
+    }
+
+    private void Arm()
+    {
+        if (!_armed)
+            _committed = _binding;
+        _armed = true;
+        Invalidate();
+    }
+
+    private void Commit()
+    {
+        bool changed = _binding != _committed;
+        _committed = _binding;
         _armed = false;
         Invalidate();
-        base.OnLostFocus(e);
+        if (changed)
+            BindingChanged?.Invoke(this, _binding);
+    }
+
+    private void Cancel()
+    {
+        _binding = _committed;
+        _armed = false;
+        Invalidate();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -65,23 +92,17 @@ internal sealed class HotkeyRecorder : Control
         switch (e.KeyCode)
         {
             case Keys.Enter:
-                _armed = false;
-                _committed = _binding;
+                Commit();
                 Parent?.SelectNextControl(this, true, true, true, true);
-                Invalidate();
                 return;
 
             case Keys.Escape:
-                _armed = false;
-                _binding = _committed;
-                Invalidate();
+                Cancel();
                 return;
 
             case Keys.Back:
                 _binding = "";
-                _committed = "";
                 Invalidate();
-                BindingChanged?.Invoke(this, _binding);
                 return;
 
             case Keys.ControlKey:
@@ -103,7 +124,7 @@ internal sealed class HotkeyRecorder : Control
             mods.Add("alt");
         if ((e.Modifiers & Keys.Shift) != 0)
             mods.Add("shift");
-        if ((e.KeyData & Keys.LWin) != 0 || (e.KeyData & Keys.RWin) != 0)
+        if (IsKeyDown(Keys.LWin) || IsKeyDown(Keys.RWin))
             mods.Add("cmd");
 
         mods.Add(keyName);
@@ -112,10 +133,10 @@ internal sealed class HotkeyRecorder : Control
             return;
 
         _binding = binding;
-        _committed = binding;
         Invalidate();
-        BindingChanged?.Invoke(this, _binding);
     }
+
+    private static bool IsKeyDown(Keys key) => (GetKeyState((int)key) & 0x8000) != 0;
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -142,28 +163,25 @@ internal sealed class HotkeyRecorder : Control
 
         string text;
         Color color;
-        Font font;
         if (_binding != "")
         {
             text = DisplayBinding();
             color = Theme.Text;
-            font = Theme.Font(10f, FontStyle.Bold);
         }
         else if (_armed)
         {
             text = "Press keys…";
             color = Theme.Muted;
-            font = Theme.Font(9.5f);
         }
         else
         {
             text = "Click to set hotkey";
             color = Theme.Muted;
-            font = Theme.Font(9.5f);
         }
 
         var textRect = new Rectangle(12, 0, Width - 24, Height);
-        TextRenderer.DrawText(g, text, font, textRect, color,
+        using var displayFont = Theme.Font(_binding != "" ? 10f : 9.5f, _binding != "" ? FontStyle.Bold : FontStyle.Regular);
+        TextRenderer.DrawText(g, text, displayFont, textRect, color,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
         if (_armed)

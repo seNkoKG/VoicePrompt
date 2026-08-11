@@ -1,91 +1,75 @@
 Add-Type -AssemblyName System.Drawing
-$dir = "C:\Users\senke\Desktop\VoicePrompt\assets"
-New-Item -ItemType Directory -Path $dir -Force | Out-Null
 
-$size = 256
-$bmp = New-Object System.Drawing.Bitmap($size, $size)
-$bmp.SetResolution(96, 96)
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-$g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-$g.Clear([System.Drawing.Color]::Transparent)
-
-function RoundedPath([float]$x, [float]$y, [float]$w, [float]$h, [float]$r) {
-    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $d = 2 * $r
-    $p.AddArc($x, $y, $d, $d, 180, 90)
-    $p.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
-    $p.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
-    $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
-    $p.CloseFigure()
-    return $p
-}
-
-$rect = RoundedPath 8 8 240 240 56
-$grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-    (New-Object System.Drawing.Point(0, 8)), (New-Object System.Drawing.Point(0, 248)),
-    [System.Drawing.Color]::FromArgb(255, 99, 102, 241),
-    [System.Drawing.Color]::FromArgb(255, 139, 92, 246))
-$g.FillPath($grad, $rect)
-
-function ArcPen([int]$width) {
-    $p = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 255, 255), $width)
-    $p.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $p.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    return $p
-}
-
-$micPen = ArcPen 22
-$g.DrawArc($micPen, 93, 46, 70, 70, 180, 180)
-$g.DrawArc($micPen, 93, 130, 70, 70, 0, 180)
-
-$footPen = ArcPen 20
-$g.DrawEllipse($footPen, 56, 190, 144, 34)
-
-$body = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$g.FillEllipse($body, 88, 76, 80, 120)
-
-$inner = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 99, 102, 241))
-$g.FillEllipse($inner, 108, 96, 40, 60)
-
-$wavePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(200, 255, 255, 255), 12)
-$wavePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$wavePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.DrawArc($wavePen, 172, 96, 66, 66, -60, 120)
-$g.DrawArc($wavePen, 182, 110, 36, 36, 20, 100)
-
-$g.Dispose()
+$dir = Join-Path (Split-Path -Parent $PSScriptRoot) "assets"
 $png = Join-Path $dir "logo.png"
-$bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
-Write-Output "saved $png"
+$ico = Join-Path $dir "voiceprompt.ico"
+if (-not (Test-Path -LiteralPath $png)) { throw "Logo source not found: $png" }
 
-$ms = New-Object System.IO.MemoryStream
-$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-$pngBytes = $ms.ToArray()
-$ms.Dispose()
-$bmp.Dispose()
+$source = [System.Drawing.Image]::FromFile($png)
+$sizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
+$images = [System.Collections.Generic.List[byte[]]]::new()
+try {
+    foreach ($size in $sizes) {
+        $bitmap = [System.Drawing.Bitmap]::new($size, $size)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $graphics.DrawImage($source, 0, 0, $size, $size)
+        $stream = [System.IO.MemoryStream]::new()
+        $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+        $images.Add($stream.ToArray())
+        $stream.Dispose()
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+} finally {
+    $source.Dispose()
+}
 
-$ico = Join-Path $dir "icon.ico"
-$fs = New-Object System.IO.FileStream($ico, [System.IO.FileMode]::Create)
-$bw = New-Object System.IO.BinaryWriter($fs)
-$bw.Write([UInt16]0); $bw.Write([UInt16]1); $bw.Write([UInt16]1)
-$bw.Write([Byte]0); $bw.Write([Byte]0)
-$bw.Write([Byte]0); $bw.Write([Byte]0)
-$bw.Write([UInt16]1); $bw.Write([UInt16]32)
-$bw.Write([UInt32]$pngBytes.Length)
-$bw.Write([UInt32]22)
-$bw.Write($pngBytes)
-$bw.Flush(); $bw.Close(); $fs.Close()
-Write-Output "saved $ico ($($pngBytes.Length) bytes)"
+$file = [System.IO.FileStream]::new($ico, [System.IO.FileMode]::Create)
+$writer = [System.IO.BinaryWriter]::new($file)
+try {
+    $writer.Write([UInt16]0)
+    $writer.Write([UInt16]1)
+    $writer.Write([UInt16]$sizes.Count)
+    $offset = 6 + 16 * $sizes.Count
+    for ($i = 0; $i -lt $sizes.Count; $i++) {
+        $dimension = if ($sizes[$i] -eq 256) { 0 } else { $sizes[$i] }
+        $writer.Write([Byte]$dimension)
+        $writer.Write([Byte]$dimension)
+        $writer.Write([Byte]0)
+        $writer.Write([Byte]0)
+        $writer.Write([UInt16]1)
+        $writer.Write([UInt16]32)
+        $writer.Write([UInt32]$images[$i].Length)
+        $writer.Write([UInt32]$offset)
+        $offset += $images[$i].Length
+    }
+    foreach ($image in $images) { $writer.Write([byte[]]$image) }
+} finally {
+    $writer.Dispose()
+    $file.Dispose()
+}
+Write-Output "saved $ico ($($sizes.Count) sizes)"
 
-$sh = New-Object -ComObject WScript.Shell
+$shell = New-Object -ComObject WScript.Shell
 $startup = [Environment]::GetFolderPath("Startup")
 $desktop = [Environment]::GetFolderPath("Desktop")
-@("$startup\Voice Typing (faster-whisper-dictation).lnk",
-  "$desktop\Start Voice Typing.lnk",
-  "$desktop\Stop Voice Typing.lnk") | ForEach-Object {
-    $lnk = $sh.CreateShortcut($_)
-    $lnk.IconLocation = "$ico,0"
-    $lnk.Save()
-    Write-Output "icon set on $(Split-Path $_ -Leaf)"
+@($desktop, $startup) | Select-Object -Unique | ForEach-Object {
+    Get-ChildItem -LiteralPath $_ -Filter "*.lnk" | ForEach-Object {
+        $shortcut = $shell.CreateShortcut($_.FullName)
+        $isVoiceTyping = $_.BaseName -match "(?i)voice typing" -or
+            $shortcut.TargetPath -like "*VoicePromptTray.exe" -or
+            $shortcut.Arguments -like "*run_daemon.pyw*"
+        if ($isVoiceTyping) {
+            $shortcut.IconLocation = "$ico,0"
+            $shortcut.Save()
+            Write-Output "icon set on $($_.Name)"
+        }
+    }
 }
+
+$refresh = Join-Path $env:SystemRoot "System32\ie4uinit.exe"
+if (Test-Path -LiteralPath $refresh) { & $refresh -show }

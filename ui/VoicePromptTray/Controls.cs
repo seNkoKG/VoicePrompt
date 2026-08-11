@@ -31,7 +31,8 @@ internal sealed class CardPanel : Panel
         using var accent = new SolidBrush(Theme.Accent);
         g.FillRectangle(accent, 20, 16, 4, 16);
         using var brush = new SolidBrush(Theme.Text);
-        g.DrawString(_title, Theme.Font(10.5f, FontStyle.Bold), brush, 32, 13);
+        using var font = Theme.Font(10.5f, FontStyle.Bold);
+        g.DrawString(_title, font, brush, 32, 13);
         using var pen = new Pen(Theme.Border);
         g.DrawLine(pen, 20, 44, Width - 20, 44);
     }
@@ -71,7 +72,7 @@ internal sealed class FlatButton : Control
     private void UpdateForeColor() =>
         ForeColor = _style switch
         {
-            ButtonStyle.Accent => Color.White,
+            ButtonStyle.Accent => Theme.AccentText,
             ButtonStyle.Danger => Theme.Err,
             _ => Theme.Text,
         };
@@ -97,7 +98,8 @@ internal sealed class FlatButton : Control
         using var pen = new Pen(_style == ButtonStyle.Subtle ? Theme.Border : fill == Color.Transparent ? Theme.Border : fill);
         g.DrawPath(pen, path);
         TextRenderer.DrawText(g, Text, Font, r, Enabled ? ForeColor : Theme.Muted,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); }
@@ -242,8 +244,8 @@ internal sealed class SegmentedControl : Control
                 using var b = new SolidBrush(sel ? Theme.Accent : Theme.InputHover);
                 g.FillPath(b, path);
             }
-            Color color = sel ? Color.White : Theme.Muted;
-            Font font = sel ? Theme.Font(9f, FontStyle.Bold) : Theme.Font(9f);
+            Color color = sel ? Theme.AccentText : Theme.Muted;
+            using Font font = sel ? Theme.Font(9f, FontStyle.Bold) : Theme.Font(9f);
             TextRenderer.DrawText(g, _labels[i], font, r, color,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }

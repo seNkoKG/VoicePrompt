@@ -53,7 +53,6 @@ internal sealed class ConfigManager
     private List<string> _lines = new();
     private string _eol = "\n";
     private readonly List<Entry> _entries = new();
-    private readonly Dictionary<string, string> _sectionOrder = new();
 
     public ConfigManager(string path)
     {
@@ -76,13 +75,16 @@ internal sealed class ConfigManager
         }
         else
         {
+            Exists = true;
             raw = DefaultToml;
-            Save();
+            File.WriteAllText(_path, raw, new UTF8Encoding(false));
         }
 
         if (raw.Contains("\r\n"))
             _eol = "\r\n";
         _lines = raw.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+        while (_lines.Count > 0 && _lines[^1].Length == 0)
+            _lines.RemoveAt(_lines.Count - 1);
 
         Parse();
     }
@@ -90,7 +92,6 @@ internal sealed class ConfigManager
     private void Parse()
     {
         _entries.Clear();
-        _sectionOrder.Clear();
         string section = "";
         for (int i = 0; i < _lines.Count; i++)
         {
@@ -99,7 +100,6 @@ internal sealed class ConfigManager
             if (sm.Success)
             {
                 section = sm.Groups[1].Value.Trim();
-                _sectionOrder.TryAdd(section, string.Empty);
                 continue;
             }
 
@@ -137,7 +137,6 @@ internal sealed class ConfigManager
                 Commented = commented,
                 Indent = Regex.Match(line, @"^\s*").Value,
             });
-            _sectionOrder[section] = string.Empty;
         }
     }
 
@@ -244,7 +243,6 @@ internal sealed class ConfigManager
         string newLine = $"{key} = {formatted}";
         int insertAt = FindInsertPoint(section);
         _lines.Insert(insertAt, newLine);
-        _sectionOrder[section] = string.Empty;
         Parse();
     }
 

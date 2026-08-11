@@ -79,9 +79,6 @@ internal sealed class MainForm : Form
         _ = RefreshDevicesAsync();
 
         UpdateStatus(_daemon.Refresh(true));
-        var timer = new System.Windows.Forms.Timer { Interval = 2500 };
-        timer.Tick += (_, _) => UpdateStatus(_daemon.Refresh());
-        timer.Start();
     }
 
     private void BuildHeader()

@@ -2,7 +2,7 @@
   <img src="assets/logo.png" width="160" alt="Voice Typing logo" />
 </p>
 
-<h1 align="center">🎤 Voice Typing</h1>
+<h1 align="center">VoicePrompt</h1>
 
 <p align="center">
   <strong>Local, private, GPU-accelerated voice-to-text dictation for Windows</strong><br>
@@ -11,10 +11,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/engine-faster--whisper--large--v3-8b5cf6" alt="engine" />
+  <a href="https://github.com/seNkoKG/VoicePrompt/releases/latest"><img src="https://img.shields.io/github/v/release/seNkoKG/VoicePrompt?color=343a40" alt="release" /></a>
+  <img src="https://img.shields.io/badge/engine-faster--whisper--large--v3-343a40" alt="engine" />
   <img src="https://img.shields.io/badge/acceleration-CUDA%20float16-22c55e" alt="cuda" />
-  <img src="https://img.shields.io/badge/languages-sl%20%2F%20en-6366f1" alt="langs" />
-  <img src="https://img.shields.io/badge/platform-Windows%2011-0ea5e9" alt="platform" />
+  <img src="https://img.shields.io/badge/languages-sl%20%2F%20en-495057" alt="langs" />
+  <img src="https://img.shields.io/badge/platform-Windows%2011-212529" alt="platform" />
 </p>
 
 ---
@@ -53,7 +54,22 @@ Measured on an RTX 5080:
 - **Prompt injection**: a Slovenian + English programming vocabulary biases decoding toward code terms (`pull request`, `null`, `async`, …).
 - **Daemonized**: runs headless via `pythonw`, survives reboot via the Startup shortcut.
 
-## 🚀 Getting started
+## 🚀 Download and install
+
+Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
+
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.0.0-windows-x64.zip`.
+2. Extract the ZIP, open PowerShell in that folder, and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer creates the private Python environment, installs the tested speech engine, applies the Windows integration fixes, installs the self-contained tray app, and creates desktop and Start Menu shortcuts. Open **VoicePrompt**, then hold **F1** to talk. The first start downloads the selected model (~3.1 GB for `large-v3`) once.
+
+> The executable is not code-signed yet, so Windows may show an “unknown publisher” warning. Only run packages downloaded from this repository's official Releases page. The SHA-256 checksums are attached to every release.
+
+### Build from source
 
 ```powershell
 # 1. Create the venv and install the engine (requires Python 3.10+ and an NVIDIA GPU)
@@ -66,7 +82,7 @@ py -m venv "$env:USERPROFILE\.voice-typing\venv"
 # 3. Apply the Windows fixes (see "Patches")
 powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1
 
-# 4. Build the tray UI (requires .NET SDK 8+; only once)
+# 4. Build the self-contained Windows x64 tray UI (requires .NET SDK 10+)
 powershell -ExecutionPolicy Bypass -File scripts\build_ui.ps1
 
 # 5. Start Voice Typing — it runs in the system tray and auto-starts the daemon
@@ -80,6 +96,7 @@ First start downloads the model (~1.6 GB turbo / ~3.1 GB full) into `~/.cache/hu
 A dark-themed Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
 
 - **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **Voice Typing Settings** shortcut) to open settings. The tray menu starts/stops/restarts the daemon and quits the app.
+- **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **All settings** — language (auto / sl / en), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
@@ -105,13 +122,16 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 ## 🔧 Patches (required on Windows)
 
-Five small fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Eight Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures.
 3. **`engine/local.py`** — `language = ""` / `"auto"` crashed with `ValueError: 'auto' is not a valid language code`; now maps to `None` = proper per-utterance auto-detect.
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
-5. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
+5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
+6. **`daemon.py` / `meter.py`** — publishes recording state, microphone level, and live waveform samples through named shared memory, without a second audio capture or disk polling.
+7. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
+8. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -132,7 +152,7 @@ Verified end-to-end results (simulated): **hotkey → record → GPU transcribe 
 |---|---|
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
-| Hotkey does nothing in a game | Another app grabbed the binding → change it in the tray UI (Hotkey card) or `config.toml` |
+| Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run Voice Typing at the same privilege level, or choose a binding the app does not reserve |
 | Bad Slovenian accuracy | Switch to `large-v3` full model; prefer full sentences over 2–3 words; optionally pin `language = "sl"` |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 
@@ -149,4 +169,4 @@ Verified end-to-end results (simulated): **hotkey → record → GPU transcribe 
 - [faster-whisper-dictation](https://github.com/bhargavchippada/faster-whisper-dictation) — the dictation daemon (MIT)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — CTranslate2 whisper runtime (MIT)
 - [OpenAI Whisper large-v3](https://github.com/openai/whisper) — the model (MIT)
-- Logo/icon: generated with this repo's `scripts/make_icon.ps1`
+- Logo artwork: generated for Voice Typing; multi-resolution Windows icon packaged by `scripts/make_icon.ps1`
