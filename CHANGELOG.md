@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.3] - 2026-08-12
+
+### Changed
+
+- Restored the recording overlay's neutral graphite and gray palette, reduced its width, and refined the microphone and waveform proportions.
+- Added microphone activation timing to privacy-safe diagnostics so cold device starts can be distinguished from hotkey and overlay delays.
+
+### Fixed
+
+- Publish recording feedback as soon as F1 activates instead of waiting for Windows to open an idle microphone device.
+- Removed the overlay's slow hidden polling and multi-frame fade-in, reducing measured cold display activation to about 31 ms.
+- Keep activation feedback coherent when WebSocket or microphone initialization fails.
+
 ## [1.2.2] - 2026-08-12
 
 ### Changed

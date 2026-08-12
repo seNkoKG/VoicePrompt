@@ -493,16 +493,6 @@ Apply-Patch "$site\daemon.py" @'
         ws_engine = self._ws_engine  # snapshot to avoid race with deactivate
 '@ "daemon.py -- publish audio level"
 Apply-Patch "$site\daemon.py" @'
-        with self._lock:
-            self._audio = audio
-        notify("Recording", "Speak now...")
-'@ @'
-        with self._lock:
-            self._audio = audio
-        publish_state(True)
-        notify("Recording", "Speak now...")
-'@ "daemon.py -- publish recording start"
-Apply-Patch "$site\daemon.py" @'
         if audio is not None:
             audio.stop()
 
@@ -579,6 +569,80 @@ Replace-Block `
     '    def _deactivate_ws(' `
     $canonicalTranscribeAndType `
     "daemon.py -- separate transcription and paste failures"
+
+$canonicalActivate = @'
+    def _on_activate(self) -> None:
+        """Hotkey pressed — show feedback immediately, then start capture."""
+        activation_started = time.perf_counter()
+        with self._lock:
+            if self._recording:
+                return
+            self._recording = True
+            self._recorded_chunks.clear()
+            self._recording_start = time.monotonic()
+            self._last_ws_text = ""
+            self._ws_repeat_count = 0
+        publish_state(True)
+        log.info("Recording started (use_ws=%s, streaming=%s, engine=%s)",
+                 self._use_ws, self.streaming, self.config.engine.type)
+
+        ws_engine = None
+        if self._use_ws:
+            ws_cfg = self.config.websocket
+            ws_engine = self._create_ws_engine(
+                server_url=self.config.server.url,
+                language=self.config.server.language,
+                reconnect_attempts=ws_cfg.reconnect_attempts,
+                reconnect_delay=ws_cfg.reconnect_delay,
+                on_text=self._on_ws_text,
+            )
+            try:
+                ws_engine.connect()
+            except Exception:
+                log.error("WebSocket connection failed", exc_info=True)
+                ws_engine.close()
+                with self._lock:
+                    self._recording = False
+                publish_state(False)
+                notify("Error", "WebSocket connection failed")
+                return
+        elif self.streaming:
+            self._vad.reset()
+
+        with self._lock:
+            self._ws_engine = ws_engine
+
+        audio = AudioStream(self.config.audio, self._on_audio_chunk)
+        try:
+            audio.start()
+        except Exception:
+            log.error("Failed to start audio capture", exc_info=True)
+            audio.stop()
+            if ws_engine is not None:
+                ws_engine.close()
+            with self._lock:
+                self._ws_engine = None
+                self._recording = False
+                self._audio = None
+            publish_state(False)
+            notify("Error", "Could not access microphone")
+            return
+
+        with self._lock:
+            self._audio = audio
+        publish_state(True)
+        log.info(
+            "Audio capture ready in %.0f ms",
+            (time.perf_counter() - activation_started) * 1000,
+        )
+        notify("Recording", "Speak now...")
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _on_activate(' `
+    '    def _on_deactivate(' `
+    $canonicalActivate `
+    "daemon.py -- immediate activation feedback"
 
 # 7. config.py - allow single keys (letters, digits, f1-f24, named keys like space/enter)
 Apply-Patch "$site\config.py" @'

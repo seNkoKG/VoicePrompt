@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.IO.MemoryMappedFiles;
 using System.Text;
 using VoicePromptTray;
 
@@ -149,6 +150,7 @@ if (form.HasUnsavedChanges || threshold.Value != originalThreshold)
 }
 
 string overlayPath = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
+long overlayActivationMs;
 using (var overlay = new RecordingOverlay
 {
     StartPosition = FormStartPosition.Manual,
@@ -156,6 +158,32 @@ using (var overlay = new RecordingOverlay
     Opacity = 0.96,
 })
 {
+    using (var map = MemoryMappedFile.CreateOrOpen("VoicePrompt.AudioMeter.v2", 64))
+    using (var view = map.CreateViewAccessor())
+    {
+        int sequence = (view.ReadInt32(0) & 0x7FFFFFFE) + 2;
+        view.Write(0, sequence | 1);
+        view.Write(4, 1);
+        view.Write(8, 0.5f);
+        view.Write(12, Environment.ProcessId);
+        view.Write(0, sequence);
+    }
+    var activationTimer = System.Diagnostics.Stopwatch.StartNew();
+    var updateMeter = typeof(RecordingOverlay).GetMethod("UpdateMeter", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    updateMeter.Invoke(overlay, Array.Empty<object>());
+    Application.DoEvents();
+    overlayActivationMs = activationTimer.ElapsedMilliseconds;
+    if (!overlay.Visible || overlay.Opacity < 0.90 || overlayActivationMs > 100)
+    {
+        behaviorFailures++;
+        failures.AppendLine($"BEHAVIOR overlay cold activation took {overlayActivationMs}ms at opacity {overlay.Opacity:0.00}");
+    }
+    if (overlay.Width > 190)
+    {
+        layoutFailures++;
+        failures.AppendLine($"LAYOUT overlay is too wide at {overlay.Width}px");
+    }
+
     var waveform = (float[])typeof(RecordingOverlay)
         .GetField("_waveform", BindingFlags.Instance | BindingFlags.NonPublic)!
         .GetValue(overlay)!;
@@ -198,6 +226,7 @@ using (var recorder = new HotkeyRecorder { Binding = "f1" })
 
 Console.Write(failures.ToString());
 Console.WriteLine($"RESULT layout={layoutFailures} behavior={behaviorFailures}");
+Console.WriteLine($"OVERLAY_ACTIVATION_MS={overlayActivationMs}");
 foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");

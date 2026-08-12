@@ -84,6 +84,15 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not $daemonSource.Contains('notify("Paste failed"')) {
         throw "$Name does not report a failed paste to the user."
     }
+    $activateStart = $daemonSource.IndexOf("    def _on_activate(")
+    $audioStart = $daemonSource.IndexOf("        audio = AudioStream(", $activateStart)
+    $feedbackStart = $daemonSource.IndexOf("        publish_state(True)", $activateStart)
+    if ($activateStart -lt 0 -or $feedbackStart -lt 0 -or $feedbackStart -gt $audioStart) {
+        throw "$Name waits for the microphone before publishing activation feedback."
+    }
+    if (-not $daemonSource.Contains("Audio capture ready in %.0f ms")) {
+        throw "$Name does not measure microphone cold-start latency."
+    }
     Write-Output "PASS $Name"
 }
 

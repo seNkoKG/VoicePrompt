@@ -15,6 +15,9 @@ internal sealed class RecordingOverlay : Form
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_NOACTIVATE = 0x08000000;
     private const int CS_DROPSHADOW = 0x00020000;
+    private static readonly Color OverlayBackground = Color.FromArgb(18, 20, 24);
+    private static readonly Color OverlayBorder = Color.FromArgb(47, 53, 62);
+    private static readonly Color OverlaySignal = Color.FromArgb(198, 204, 212);
 
     private readonly MemoryMappedFile? _map;
     private readonly MemoryMappedViewAccessor? _view;
@@ -35,8 +38,8 @@ internal sealed class RecordingOverlay : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
-        ClientSize = new Size(220, 48);
-        BackColor = Theme.Bar;
+        ClientSize = new Size(184, 44);
+        BackColor = OverlayBackground;
         DoubleBuffered = true;
         Opacity = 0;
 
@@ -53,7 +56,7 @@ internal sealed class RecordingOverlay : Form
         }
 
         UpdateRegion();
-        _timer = new System.Windows.Forms.Timer { Interval = 33 };
+        _timer = new System.Windows.Forms.Timer { Interval = 25 };
         _timer.Tick += (_, _) => UpdateMeter();
         _timer.Start();
     }
@@ -88,7 +91,7 @@ internal sealed class RecordingOverlay : Form
     {
         if (Width <= 0 || Height <= 0)
             return;
-        using var path = Theme.RoundedRect(new Rectangle(0, 0, Width, Height), 15);
+        using var path = Theme.RoundedRect(new Rectangle(0, 0, Width, Height), 14);
         Region?.Dispose();
         Region = new Region(path);
     }
@@ -125,15 +128,14 @@ internal sealed class RecordingOverlay : Form
             _lastSignal = now;
         }
 
-        bool recording = state == RecordingState && _lastSignal != 0 && now - _lastSignal < 500;
-        _timer.Interval = recording || Visible ? 33 : 100;
+        bool recording = state == RecordingState && _lastSignal != 0 && now - _lastSignal < 3000;
         _level = float.IsFinite(level) ? Math.Clamp(level, 0f, 1f) : 0f;
 
         if (recording && !_recording)
         {
             Array.Clear(_waveform);
             PositionOnActiveScreen();
-            Opacity = 0;
+            Opacity = 0.97;
             Show();
         }
         _recording = recording;
@@ -149,7 +151,7 @@ internal sealed class RecordingOverlay : Form
         if (!Visible)
             return;
 
-        Opacity = recording ? Math.Min(0.98, Opacity + 0.24) : Math.Max(0, Opacity - 0.22);
+        Opacity = recording ? 0.97 : Math.Max(0, Opacity - 0.28);
         if (!recording && Opacity <= 0.01)
         {
             Hide();
@@ -164,7 +166,7 @@ internal sealed class RecordingOverlay : Form
         var area = foreground != IntPtr.Zero
             ? Screen.FromHandle(foreground).WorkingArea
             : Screen.FromPoint(Cursor.Position).WorkingArea;
-        Location = new Point(area.Left + (area.Width - Width) / 2, area.Bottom - Height - 34);
+        Location = new Point(area.Left + (area.Width - Width) / 2, area.Bottom - Height - 32);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -172,9 +174,9 @@ internal sealed class RecordingOverlay : Form
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        using (var background = Theme.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 15))
-        using (var fill = new SolidBrush(Theme.Bar))
-        using (var border = new Pen(Theme.Border))
+        using (var background = Theme.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 14))
+        using (var fill = new SolidBrush(OverlayBackground))
+        using (var border = new Pen(OverlayBorder))
         {
             g.FillPath(fill, background);
             g.DrawPath(border, background);
@@ -186,24 +188,24 @@ internal sealed class RecordingOverlay : Form
 
     private static void DrawMicrophone(Graphics g)
     {
-        using var pen = new Pen(Theme.Accent, 1.8f)
+        using var pen = new Pen(OverlaySignal, 1.65f)
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,
         };
-        using var body = Theme.RoundedRect(new Rectangle(20, 8, 8, 16), 4);
+        using var body = Theme.RoundedRect(new Rectangle(17, 7, 8, 15), 4);
         g.DrawPath(pen, body);
-        g.DrawArc(pen, 16, 14, 16, 15, 0, 180);
-        g.DrawLine(pen, 24, 29, 24, 35);
-        g.DrawLine(pen, 20.5f, 35, 27.5f, 35);
+        g.DrawArc(pen, 13, 13, 16, 14, 0, 180);
+        g.DrawLine(pen, 21, 27, 21, 33);
+        g.DrawLine(pen, 17.5f, 33, 24.5f, 33);
     }
 
     private void DrawWaveform(Graphics g)
     {
-        const float startX = 45f;
-        const float endX = 207f;
-        const float centerY = 24f;
-        const float amplitude = 15f;
+        const float startX = 39f;
+        const float endX = 171f;
+        const float centerY = 22f;
+        const float amplitude = 13f;
 
         var points = new PointF[_waveform.Length];
         for (int i = 0; i < points.Length; i++)
@@ -215,7 +217,7 @@ internal sealed class RecordingOverlay : Form
                 centerY - _waveform[i] * amplitude * edgeFade);
         }
 
-        using var line = new Pen(Theme.Accent, 1.7f)
+        using var line = new Pen(OverlaySignal, 1.55f)
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,

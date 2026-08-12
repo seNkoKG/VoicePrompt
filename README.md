@@ -65,7 +65,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.2-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.3-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -162,7 +162,7 @@ Eleven Windows integration fixes ship in this repo — apply them **after every 
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
 6. **`engine/local.py` / `decoding_options.py`** — keeps beam-5 accuracy while bounding every language pass to one decode, with independent 30-second windows, repetition penalty, and native no-repeat protection.
-7. **`daemon.py` / `meter.py`** — publishes recording state, microphone level, and live waveform samples through named shared memory, without a second audio capture or disk polling.
+7. **`daemon.py` / `meter.py`** — publishes recording state immediately on hotkey activation, then streams microphone levels and waveform samples through named shared memory without a second audio capture or disk polling.
 8. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
 9. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
 10. **`typer.py` / `ai_rewriter.py`** — optionally cleans completed transcript text before the clipboard is opened, with a strict deadline and raw-text fallback.
@@ -180,6 +180,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
 - `tests/test_slang_retry.py` — verifies bilingual routing, vocabulary injection, decoder scoring, and safeguards against translating real English.
 - `tests/test_decoding_options.py` — verifies latency-bounded temperature handling and native repetition-loop protection on both English and Slovenian decoding passes.
+- `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
 
 Verified end-to-end results (simulated): a clear English utterance landed **0.78 s** after key release; an ambiguous Slovenian utterance requiring the safety decode landed in **1.86 s**. A **129.9-second** recording retained its opening sentence, all 18 checkpoints, and its unique final sentence, then pasted 1,833 characters **12.27 s** after release.
