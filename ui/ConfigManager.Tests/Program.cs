@@ -119,6 +119,9 @@ Check("AI settings round trip", aiReloaded.Mode == "grammar" && aiReloaded.Timeo
 Check("AI key is not stored as plaintext", !aiJson.Contains(secret, StringComparison.Ordinal));
 Check("AI key decrypts for current Windows user", VoicePromptTray.AiSettingsStore.UnprotectApiKey(aiReloaded.ApiKeyProtected) == secret);
 Check("AI settings validation accepts compatible endpoint", VoicePromptTray.AiSettingsStore.Validate(aiReloaded) == null);
+aiReloaded.Mode = "clean";
+Check("AI settings accept conservative Clean mode", VoicePromptTray.AiSettingsStore.Validate(aiReloaded) == null);
+aiReloaded.Mode = "grammar";
 aiReloaded.TimeoutMs = 200;
 Check("AI settings reject unsafe wait", VoicePromptTray.AiSettingsStore.Validate(aiReloaded)?.Contains("400") == true);
 File.WriteAllText(aiPath, "{broken");

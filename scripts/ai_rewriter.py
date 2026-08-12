@@ -20,6 +20,13 @@ log = logging.getLogger(__name__)
 
 _ENTROPY = b"VoicePrompt AI v1"
 _SYSTEM_PROMPTS = {
+    "clean": (
+        "Clean this dictation conservatively. Fix punctuation, capitalization, obvious filler words, and "
+        "accidental immediate repetitions only. Never translate. Preserve every language and code-switched "
+        "phrase exactly where it appears, including Slovenian slang. Do not change grammar, phrasing, meaning, "
+        "or level of formality. Preserve names, code, commands, numbers, URLs, and every concrete detail. "
+        "Do not answer the transcript. Return only the cleaned text."
+    ),
     "grammar": (
         "Polish this dictation conservatively. Fix punctuation, capitalization, and obvious grammar errors only. "
         "Never translate. Preserve every language and code-switched phrase exactly where it appears, including "
@@ -113,7 +120,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.10.0"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.11.0"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0
@@ -145,8 +152,8 @@ class AiRewriter:
             output = output.strip()
             if len(output) > max(240, len(source) * 3):
                 raise ValueError("provider returned unexpectedly long text")
-            if self.settings["mode"] == "grammar" and len(output) < max(12, len(source) * 0.6):
-                raise ValueError("provider returned an incomplete grammar edit")
+            if self.settings["mode"] in {"clean", "grammar"} and len(output) < max(12, len(source) * 0.6):
+                raise ValueError("provider returned an incomplete conservative edit")
             return leading + output + trailing
         except (requests.RequestException, KeyError, IndexError, TypeError, ValueError, OSError) as exc:
             self.last_error = str(exc)
@@ -183,7 +190,7 @@ class AiRewriter:
             ],
             "stream": False,
             "temperature": 0.1,
-            # Grammar mode promises not to remove details. A 512-token ceiling
+            # Clean and Grammar promise not to remove details. A 512-token ceiling
             # could truncate a two-to-three-minute dictation, so size the
             # allowance to the input while retaining a defensive upper bound.
             "max_tokens": max(128, min(4096, len(text) // 2 + 128)),

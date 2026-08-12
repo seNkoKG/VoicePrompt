@@ -138,6 +138,16 @@ using (var advancedToolsBitmap = new Bitmap(form.Width, form.Height))
     advancedToolsBitmap.Save(advancedToolsPath);
 }
 
+form.ShowPageForDiagnostics("intelligence");
+pageMap["intelligence"].AutoScrollPosition = new Point(0, 430);
+Application.DoEvents();
+string writingModesPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_writing_modes.png");
+using (var writingModesBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(writingModesBitmap, new Rectangle(Point.Empty, form.Size));
+    writingModesBitmap.Save(writingModesPath);
+}
+
 foreach (string page in pages)
     RenderPage(page, new Size(900, 650), saveScreenshot: false);
 
@@ -202,6 +212,29 @@ if (form.HasUnsavedChanges || outputChoice.SelectedValue != originalOutput)
 {
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR Discard did not restore the transcript output mode");
+}
+
+var aiModeChoice = (ChoiceStrip)typeof(MainForm)
+    .GetField("_aiModeChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var aiEndpoint = (TextBox)typeof(MainForm)
+    .GetField("_aiEndpointText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalAiMode = aiModeChoice.SelectedValue;
+aiModeChoice.SelectValue("clean");
+Application.DoEvents();
+if (!form.HasUnsavedChanges || !aiEndpoint.Enabled)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Clean writing mode did not enable provider settings and unsaved state");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || aiModeChoice.SelectedValue != originalAiMode)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore the writing mode");
 }
 
 var languageChoice = (ChoiceStrip)typeof(MainForm)
@@ -385,6 +418,7 @@ foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
+Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");
 

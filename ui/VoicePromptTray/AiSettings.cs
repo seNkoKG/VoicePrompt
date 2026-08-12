@@ -74,7 +74,7 @@ internal static class AiSettingsStore
         var defaults = new AiSettings();
         settings ??= defaults;
         settings.Mode = settings.Mode?.Trim().ToLowerInvariant() ?? "off";
-        if (settings.Mode is not ("off" or "grammar" or "prompt"))
+        if (settings.Mode is not ("off" or "clean" or "grammar" or "prompt"))
             settings.Mode = "off";
         settings.Endpoint = string.IsNullOrWhiteSpace(settings.Endpoint) ? defaults.Endpoint : settings.Endpoint.Trim();
         settings.Model = string.IsNullOrWhiteSpace(settings.Model) ? defaults.Model : settings.Model.Trim();
@@ -93,8 +93,8 @@ internal static class AiSettingsStore
 
     public static string? Validate(AiSettings settings)
     {
-        if (settings.Mode is not ("off" or "grammar" or "prompt"))
-            return "Choose Off, Grammar, or Prompt mode.";
+        if (settings.Mode is not ("off" or "clean" or "grammar" or "prompt"))
+            return "Choose Verbatim, Clean, Grammar, or Prompt mode.";
         if (settings.Mode == "off")
             return null;
         if (!Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out var endpoint) ||

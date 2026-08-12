@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.0] - 2026-08-12
+
+### Added
+
+- Added a conservative **Clean** writing mode between Verbatim and Grammar for filler words, immediate repetitions, punctuation, and capitalization.
+- Added runtime prompt-contract, incomplete-response fallback, settings-validation, UI interaction, and scrolled writing-panel layout coverage.
+
+### Changed
+
+- Renamed the visible **Off** writing choice to **Verbatim** while preserving the existing `off` setting and zero-delay local behavior.
+- Present all four writing levels together: Verbatim, Clean, Grammar, and Prompt.
+
+### Fixed
+
+- Apply the same completeness guard to Clean and Grammar so an overly short provider response falls back to the full original transcript.
+
 ## [1.10.0] - 2026-08-12
 
 ### Added

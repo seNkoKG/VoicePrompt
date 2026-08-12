@@ -740,7 +740,9 @@ internal sealed class MainForm : Form
         engine.Add("Fast long recordings", "Decodes complete speech blocks in the background, pastes once on release, and keeps full audio for automatic fallback.", _bufferedTranscriptionToggle, 64);
         AddPageItem(body, engine.Build());
 
-        _aiModeChoice = new ChoiceStrip(new[] { "Off", "Grammar", "Prompt" }, new[] { "off", "grammar", "prompt" }) { Dock = DockStyle.Fill };
+        _aiModeChoice = new ChoiceStrip(
+            new[] { "Verbatim", "Clean", "Grammar", "Prompt" },
+            new[] { "off", "clean", "grammar", "prompt" }) { Dock = DockStyle.Fill };
         _aiModeChoice.AccessibleName = "AI cleanup mode";
         _aiModeChoice.SelectedChanged += (_, _) => UpdateAiAvailability();
         _aiEndpointText = new TextBox { PlaceholderText = "http://127.0.0.1:11434/v1/chat/completions" };
@@ -766,10 +768,10 @@ internal sealed class MainForm : Form
         _aiTestButton.Click += async (_, _) => await TestAiAsync();
         var keyRow = HorizontalControl(new TextFieldFrame(_aiKeyText) { Dock = DockStyle.Fill }, _aiClearKeyButton, _aiTestButton);
         _aiResult = BuildInlineHint(Theme.Surface);
-        _aiResult.Text = "Off adds zero delay and sends no transcript anywhere.";
+        _aiResult.Text = "Verbatim adds zero delay and sends no transcript anywhere.";
 
         var ai = new SectionBuilder("Optional AI cleanup", "Disabled by default. When enabled, only completed text is sent to the configured provider.");
-        ai.Add("Cleanup mode", "Grammar is conservative; Prompt restructures rough speech without translating it.", StackControl(_aiModeChoice, _aiResult, 64), 84);
+        ai.Add("Writing mode", "Clean removes speech clutter; Grammar repairs sentences; Prompt restructures without translating.", StackControl(_aiModeChoice, _aiResult, 64), 84);
         ai.Add("Endpoint", "Any OpenAI-compatible chat completions endpoint, local or cloud.", new TextFieldFrame(_aiEndpointText) { Dock = DockStyle.Fill }, 64);
         ai.Add("Model", "The model name expected by your provider.", new TextFieldFrame(_aiModelText) { Dock = DockStyle.Fill }, 64);
         ai.Add("Maximum wait", "Strict live deadline in milliseconds; raw local text is pasted after a timeout.", LeftControl(_aiTimeoutMs), 62);
@@ -1424,7 +1426,7 @@ internal sealed class MainForm : Form
             (!string.IsNullOrEmpty(_aiSettings.ApiKeyProtected) || _aiKeyText.TextLength > 0);
         if (!enabled)
         {
-            _aiResult.Text = "Off adds zero delay and sends no transcript anywhere.";
+            _aiResult.Text = "Verbatim adds zero delay and sends no transcript anywhere.";
             _aiResult.ForeColor = Theme.Muted;
         }
     }
@@ -1487,7 +1489,7 @@ internal sealed class MainForm : Form
         }
         if (settings.Mode == "off")
         {
-            SetAiResult("Choose Grammar or Prompt before testing.", false);
+            SetAiResult("Choose Clean, Grammar, or Prompt before testing.", false);
             return;
         }
 

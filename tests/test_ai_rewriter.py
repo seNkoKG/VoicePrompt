@@ -137,6 +137,17 @@ class AiRewriterTests(unittest.TestCase):
         self.assertFalse(rewriter.used_fallback)
         rewriter.close()
 
+    def test_clean_mode_removes_only_speech_clutter(self) -> None:
+        rewriter = AiRewriter(self.config(mode="clean"))
+        rewriter.rewrite("um um odpri Codex, please")
+        system_prompt = self.provider.requests[0]["messages"][0]["content"]
+        self.assertIn("obvious filler words", system_prompt)
+        self.assertIn("accidental immediate repetitions", system_prompt)
+        self.assertIn("Do not change grammar", system_prompt)
+        self.assertIn("Never translate", system_prompt)
+        self.assertIn("Slovenian slang", system_prompt)
+        rewriter.close()
+
     def test_prompt_mode_uses_prompt_restructuring_instruction(self) -> None:
         rewriter = AiRewriter(self.config(mode="prompt"))
         rewriter.rewrite("make this a useful prompt")
@@ -194,13 +205,18 @@ class AiRewriterTests(unittest.TestCase):
         self.assertGreater(request["max_tokens"], 512)
         rewriter.close()
 
-    def test_incomplete_grammar_edit_returns_original(self) -> None:
+    def test_incomplete_conservative_edit_returns_original(self) -> None:
         source = "This grammar edit must preserve all of these words and requirements. " * 10
         self.provider.reply = "Looks good."
         rewriter = AiRewriter(self.config())
         self.assertEqual(rewriter.rewrite(source), source)
         self.assertTrue(rewriter.used_fallback)
         rewriter.close()
+
+        clean = AiRewriter(self.config(mode="clean"))
+        self.assertEqual(clean.rewrite(source), source)
+        self.assertTrue(clean.used_fallback)
+        clean.close()
 
     def test_session_reuses_local_http_connection(self) -> None:
         rewriter = AiRewriter(self.config())

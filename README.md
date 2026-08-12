@@ -24,7 +24,7 @@
 
 Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Long recordings pre-transcribe complete speech blocks while you talk, retain the full microphone stream for automatic recovery, and still paste exactly once after release. The default is fast **English + Slovenian Auto**, with dedicated standard and slang Slovenian modes. Users can also search and pin any of Whisper large-v3's 100 languages without downloading another model. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
 
-Optionally, VoicePrompt can fix spoken grammar or turn a rough transcript into a cleaner AI prompt before pasting it. This is disabled by default and never changes the local audio pipeline.
+Optionally, VoicePrompt can remove speech clutter, fix spoken grammar, or turn a rough transcript into a cleaner AI prompt before delivery. This is disabled by default and never changes the local audio pipeline.
 
 Measured on an RTX 5080:
 
@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.10.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.11.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -110,7 +110,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Live input test** — the Audio page shows quiet, good-signal, and very-loud microphone levels while the hotkey is held by reusing the overlay stream, with no second capture or extra GPU work.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **Flexible output** — paste directly into the focused app by default, or use **Copy only** when a target blocks synthetic paste and place the completed transcript manually.
-- **AI text cleanup** — optionally fixes grammar or restructures rough speech into a clean AI prompt, with a strict deadline and original-text fallback.
+- **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
@@ -156,9 +156,10 @@ The Dictation page includes a searchable catalog of all 100 language codes suppo
 
 ### Optional AI cleanup
 
-The **AI text cleanup** card supports three modes:
+The **AI text cleanup** card supports four writing modes:
 
-- **Off**: the default. No request, no per-utterance network or file access, and no added delay.
+- **Verbatim**: the default. No request, no per-utterance network or file access, and no added delay.
+- **Clean**: removes obvious filler words and immediate repetitions, then repairs punctuation and capitalization without changing grammar, phrasing, tone, language, or concrete details.
 - **Grammar**: conservatively fixes punctuation, capitalization, and obvious grammar without translating, paraphrasing, or removing wording.
 - **Prompt**: turns rough speech into a concise, structured AI prompt while preserving requirements, names, code, numbers, and URLs.
 
