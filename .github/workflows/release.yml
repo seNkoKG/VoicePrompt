@@ -56,6 +56,7 @@ jobs:
           dotnet run --project ui/ConfigManager.Tests -c Release
           dotnet run --project ui/LayoutCheck -c Release
           ./tests/test_shortcut_manager.ps1
+          ./tests/test_installer_runtime_stop.ps1
 
       - name: Verify release package
         shell: pwsh

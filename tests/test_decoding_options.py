@@ -44,7 +44,7 @@ class DecodingOptionsTests(unittest.TestCase):
         self.assertIn('"engine/local.py -- obsolete selective retry"', patch)
         self.assertIn("$packageDecodingOptions", installer)
         self.assertIn('"decoding_options.py") -Force', installer)
-        self.assertIn('Invoke-Checked $daemonExe @("stop")', installer)
+        self.assertIn("Stop-VoicePromptRuntime -DaemonExe $daemonExe", installer)
         self.assertIn("$normalizedContent", patch)
         self.assertIn("$normalizedFind", patch)
         self.assertIn('DICTATION_PASTE_DELAY", "0.35"', runner)

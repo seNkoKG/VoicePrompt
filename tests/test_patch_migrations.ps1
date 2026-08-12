@@ -29,6 +29,7 @@ function Invoke-RuntimePatch([string]$Patch, [string]$Module, [string]$Name) {
 }
 
 function Assert-CurrentRuntime([string]$Module, [string]$Name) {
+    $cli = Join-Path $Module "cli.py"
     $audio = Join-Path $Module "audio.py"
     $localEngine = Join-Path $Module "engine\local.py"
     $serverEngine = Join-Path $Module "engine\server.py"
@@ -41,9 +42,16 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $audio $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
+    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
+    }
+
+    $cliSource = [System.IO.File]::ReadAllText($cli)
+    if (-not $cliSource.Contains("GetExitCodeProcess") -or
+        -not $cliSource.Contains('force_signal = signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL') -or
+        $cliSource.Contains("os.kill(pid, signal.SIGKILL)")) {
+        throw "$Name does not stop and classify Windows runtime processes safely."
     }
 
     $source = [System.IO.File]::ReadAllText($localEngine)

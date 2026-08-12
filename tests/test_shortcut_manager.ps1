@@ -9,6 +9,11 @@ if (-not $installerSource.Contains('$packageShortcutManager') -or
     -not $packagerSource.Contains('scripts\shortcut_manager.ps1')) {
     throw "The release package or installer does not include shortcut migration."
 }
+if (-not $installerSource.Contains('function Stop-VoicePromptRuntime') -or
+    -not $installerSource.Contains("run_daemon\.pyw") -or
+    -not $installerSource.Contains("refusing to stop process")) {
+    throw "The installer does not have a verified fallback for an unpatched Windows runtime."
+}
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("voiceprompt-shortcuts-" + [guid]::NewGuid().ToString("N"))
 $resolvedTemp = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'

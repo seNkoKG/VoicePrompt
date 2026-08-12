@@ -155,7 +155,7 @@ Apply-Patch $audio @'
 # 1. cli.py - Windows-safe _pid_alive() (os.kill(pid, 0) raises WinError 87 on Win32)
 $cli = "$site\cli.py"
 $cliContent = [System.IO.File]::ReadAllText($cli)
-if ($cliContent -match "def _pid_alive" -and $cliContent -match "OpenProcess") {
+if ($cliContent -match "def _pid_alive" -and $cliContent -match "GetExitCodeProcess") {
     Write-Output "[SKIPPED ] cli.py -- pid_alive already patched"
 } else {
     $fn = @'
@@ -164,12 +164,25 @@ def _pid_alive(pid: int) -> bool:
     if sys.platform == "win32":
         import ctypes
 
+        kernel32 = ctypes.windll.kernel32
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        kernel32.GetExitCodeProcess.restype = ctypes.c_int
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        STILL_ACTIVE = 259
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not h:
             return False
-        ctypes.windll.kernel32.CloseHandle(h)
-        return True
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(h, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(h)
     try:
         os.kill(pid, 0)
         return True
@@ -196,6 +209,11 @@ def _pid_alive(pid: int) -> bool:
         }
     }
 }
+
+Apply-Patch $cli "            os.kill(pid, signal.SIGKILL)" @'
+            force_signal = signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL
+            os.kill(pid, force_signal)
+'@ "cli.py -- Windows-safe forced stop" "force_signal = signal.SIGTERM"
 
 # 2. typer.py - 64-bit clipboard HANDLE argtypes/restype (truncated 32-bit handles -> access violations)
 $typer = "$site\typer.py"

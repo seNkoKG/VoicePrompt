@@ -23,6 +23,60 @@ function Invoke-Checked([string]$FilePath, [string[]]$ArgumentList) {
     }
 }
 
+function Stop-VoicePromptRuntime([string]$DaemonExe, [string]$VenvRoot, [string]$LocalAppData) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $stopOutput = @(& $DaemonExe stop 2>&1)
+        $stopExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($stopExitCode -eq 0) {
+        $stopOutput | ForEach-Object { Write-Output $_ }
+        return
+    }
+
+    Write-Warning "The existing runtime could not stop itself; checking its verified VoicePrompt process."
+    $configRoot = Join-Path $LocalAppData "faster-whisper-dictation\faster-whisper-dictation"
+    $pidFile = Join-Path $configRoot "daemon.pid"
+    $stateFile = Join-Path $configRoot "state.json"
+    if (-not (Test-Path -LiteralPath $pidFile)) {
+        Write-Warning "No live VoicePrompt runtime PID remained; continuing the upgrade."
+        return
+    }
+
+    $daemonPid = 0
+    $pidText = (Get-Content -LiteralPath $pidFile -Raw).Trim()
+    if (-not [int]::TryParse($pidText, [ref]$daemonPid) -or $daemonPid -le 0) {
+        throw "The VoicePrompt runtime PID file is invalid; refusing to stop an unknown process."
+    }
+
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $daemonPid" -ErrorAction SilentlyContinue
+    if ($process) {
+        $resolvedVenv = [System.IO.Path]::GetFullPath($VenvRoot).TrimEnd('\') + '\'
+        $resolvedProcess = if ($process.ExecutablePath) { [System.IO.Path]::GetFullPath($process.ExecutablePath) } else { "" }
+        $isManagedPython = $resolvedProcess.StartsWith($resolvedVenv, [System.StringComparison]::OrdinalIgnoreCase) -and
+            [System.IO.Path]::GetFileName($resolvedProcess) -in @("python.exe", "pythonw.exe")
+        $isVoicePromptCommand = [string]$process.CommandLine -match '(?i)run_daemon\.pyw'
+        if (-not $isManagedPython -or -not $isVoicePromptCommand) {
+            throw "The saved runtime PID does not belong to VoicePrompt; refusing to stop process $daemonPid."
+        }
+        Stop-Process -Id $daemonPid -Force -ErrorAction Stop
+        Wait-Process -Id $daemonPid -Timeout 10 -ErrorAction SilentlyContinue
+        if (Get-Process -Id $daemonPid -ErrorAction SilentlyContinue) {
+            throw "VoicePrompt runtime process $daemonPid did not stop."
+        }
+        Write-Output "Stopped verified VoicePrompt runtime (PID $daemonPid)"
+    }
+
+    foreach ($statePath in @($pidFile, $stateFile)) {
+        if (Test-Path -LiteralPath $statePath) {
+            Remove-Item -LiteralPath $statePath -Force
+        }
+    }
+}
+
 if ($env:OS -ne "Windows_NT" -or -not [Environment]::Is64BitOperatingSystem) {
     throw "VoicePrompt requires 64-bit Windows."
 }
@@ -146,7 +200,7 @@ New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 $daemonExe = Join-Path $venvRoot "Scripts\faster-whisper-dictation.exe"
 if (Test-Path -LiteralPath $daemonExe) {
     Write-Step "Stopping the dictation runtime for a clean upgrade"
-    Invoke-Checked $daemonExe @("stop")
+    Stop-VoicePromptRuntime -DaemonExe $daemonExe -VenvRoot $venvRoot -LocalAppData $localAppData
 }
 
 $venvIsCompatible = $false

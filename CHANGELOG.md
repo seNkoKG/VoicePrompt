@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.20.1] - 2026-08-12
+
+### Fixed
+
+- Make Windows process-liveness checks distinguish a running process from an exited process whose handle is still queryable.
+- Fall back to stopping only the verified managed VoicePrompt Python process when an older runtime's upstream `stop` command fails during upgrade.
+- Avoid upstream's unavailable `SIGKILL` constant on Windows while retaining the normal forced-stop path on other platforms.
+
 ## [1.20.0] - 2026-08-12
 
 ### Added
