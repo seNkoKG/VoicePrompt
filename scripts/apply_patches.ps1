@@ -97,6 +97,9 @@ Write-Output "[SYNCED  ] buffered_transcription.py -- lossless long-recording pr
 $outputModeSource = Join-Path $PSScriptRoot "output_mode.py"
 Copy-Item -LiteralPath $outputModeSource -Destination "$site\output_mode.py" -Force
 Write-Output "[SYNCED  ] output_mode.py -- safe transcript delivery routing"
+$appProfilesSource = Join-Path $PSScriptRoot "app_profiles.py"
+Copy-Item -LiteralPath $appProfilesSource -Destination "$site\app_profiles.py" -Force
+Write-Output "[SYNCED  ] app_profiles.py -- exact application-aware overrides"
 $textSnippetsSource = Join-Path $PSScriptRoot "text_snippets.py"
 Copy-Item -LiteralPath $textSnippetsSource -Destination "$site\text_snippets.py" -Force
 Write-Output "[SYNCED  ] text_snippets.py -- bounded reusable text"
@@ -881,6 +884,12 @@ Apply-Patch $typer @'
 from .output_mode import deliver_text
 '@ @'
 from .output_mode import deliver_text
+from .app_profiles import resolve_app_profile
+'@ "typer.py -- application profile routing" 'from .app_profiles import resolve_app_profile'
+Apply-Patch $typer @'
+from .app_profiles import resolve_app_profile
+'@ @'
+from .app_profiles import resolve_app_profile
 from .voice_commands import execute_voice_command, resolve_voice_command
 '@ "typer.py -- exact voice-command routing" 'from .voice_commands import execute_voice_command, resolve_voice_command'
 
@@ -892,20 +901,32 @@ def type_text(text: str) -> str:
 
     original_text = text
     text = apply_corrections(text)
+    profile = resolve_app_profile()
+    output_override = profile.output_override if profile is not None else None
+    writing_override = profile.writing_override if profile is not None else None
+    if profile is not None:
+        log.info(
+            "Application profile matched: %s (writing=%s, output=%s)",
+            profile.executable,
+            profile.writing_mode,
+            profile.output_mode,
+        )
     command = resolve_voice_command(text)
     if command is not None:
         log.info("Voice command recognized: %s", command.name)
         def deliver_command(command_text: str) -> str:
             with _clipboard_lock:
-                return deliver_text(command_text, _copy_text_impl, _type_text_impl)
+                return deliver_text(
+                    command_text, _copy_text_impl, _type_text_impl, mode=output_override,
+                )
         return execute_voice_command(command, deliver_command, _send_ctrl_z)
 
-    text = rewrite_text(text)
+    text = rewrite_text(text, mode_override=writing_override)
     remember_transcript(original_text, text)
     log.debug("Typing %d chars", len(text))
 
     with _clipboard_lock:
-        return deliver_text(text, _copy_text_impl, _type_text_impl)
+        return deliver_text(text, _copy_text_impl, _type_text_impl, mode=output_override)
 '@
 Replace-Block `
     $typer `

@@ -156,6 +156,19 @@ class AiRewriterTests(unittest.TestCase):
         self.assertIn("Never translate", system_prompt)
         rewriter.close()
 
+    def test_application_profile_can_enable_or_disable_writing_mode(self) -> None:
+        verbatim = AiRewriter(self.config(mode="off"))
+        verbatim.rewrite("make this useful", mode_override="prompt")
+        self.assertIn("well-structured AI prompt", self.provider.requests[0]["messages"][0]["content"])
+        verbatim.close()
+
+        self.provider.requests.clear()
+        grammar = AiRewriter(self.config(mode="grammar"))
+        source = "keep this verbatim"
+        self.assertIs(grammar.rewrite(source, mode_override="off"), source)
+        self.assertEqual(self.provider.requests, [])
+        grammar.close()
+
     def test_environment_api_key_is_sent_without_disk_secret(self) -> None:
         rewriter = AiRewriter(self.config())
         with patch.dict(os.environ, {"VOICEPROMPT_AI_API_KEY": "test-token"}):

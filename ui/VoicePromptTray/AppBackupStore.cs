@@ -91,6 +91,8 @@ internal sealed record VoicePromptBackupDocument
     public List<CorrectionEntry> Corrections { get; init; } = [];
     [JsonPropertyName("snippets")]
     public List<TextSnippetEntry> Snippets { get; init; } = [];
+    [JsonPropertyName("app_profiles")]
+    public List<AppProfileEntry> AppProfiles { get; init; } = [];
 }
 
 internal static class AppBackupStore
@@ -178,6 +180,8 @@ internal static class AppBackupStore
             correctionsText);
         IReadOnlyList<TextSnippetEntry> snippets = TextSnippetStore.Parse(
             TextSnippetStore.Format(document.Snippets ?? []));
+        IReadOnlyList<AppProfileEntry> appProfiles = AppProfileStore.Parse(
+            AppProfileStore.Format(document.AppProfiles ?? []));
 
         string recognitionModel = recognition.Model?.Trim() ?? "";
         if (recognitionModel.Length is 0 or > 200)
@@ -238,6 +242,7 @@ internal static class AppBackupStore
             },
             Corrections = profile.Corrections,
             Snippets = snippets.ToList(),
+            AppProfiles = appProfiles.ToList(),
         };
     }
 

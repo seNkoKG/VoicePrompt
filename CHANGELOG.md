@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.17.0] - 2026-08-12
+
+### Added
+
+- Added optional application-aware writing and output profiles using exact executable-name matches.
+- Added a running-application picker that inserts safe filename-only rules without saving process paths.
+- Added local parser, foreground-process, AI override, delivery, backup, UI, packaging, and migration coverage.
+
+### Changed
+
+- Load profile rules once when the runtime starts; an empty profile set performs no foreground-process lookup.
+- Allow a matched profile to enable or disable Clean, Grammar, or Prompt while retaining the configured provider deadline and raw-text fallback.
+
+### Fixed
+
+- Keep unmatched, inaccessible, malformed, duplicate, and path-like application rules from changing global behavior.
+
 ## [1.16.0] - 2026-08-12
 
 ### Added

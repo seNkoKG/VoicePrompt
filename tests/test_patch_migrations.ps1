@@ -36,9 +36,10 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $corrections = Join-Path $Module "text_corrections.py"
     $buffered = Join-Path $Module "buffered_transcription.py"
     $outputMode = Join-Path $Module "output_mode.py"
+    $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $textSnippets $voiceCommands
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -94,9 +95,15 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         throw "$Name is missing a local text pipeline module."
     }
     if (-not (Test-Path -LiteralPath $outputMode) -or
-        [regex]::Matches($typerSource, "deliver_text\(text, _copy_text_impl, _type_text_impl\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "deliver_text\(text, _copy_text_impl, _type_text_impl, mode=output_override\)").Count -ne 1 -or
         [regex]::Matches($typerSource, "def _copy_text_impl\(").Count -ne 1) {
         throw "$Name is missing the exactly-once transcript output router."
+    }
+    if (-not (Test-Path -LiteralPath $appProfiles) -or
+        [regex]::Matches($typerSource, "from \.app_profiles import resolve_app_profile").Count -ne 1 -or
+        [regex]::Matches($typerSource, "profile = resolve_app_profile\(\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "rewrite_text\(text, mode_override=writing_override\)").Count -ne 1) {
+        throw "$Name is missing the exact application-aware override router."
     }
     if (-not (Test-Path -LiteralPath $textSnippets) -or
         -not (Test-Path -LiteralPath $voiceCommands) -or

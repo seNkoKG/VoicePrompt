@@ -204,6 +204,14 @@ using (var writingModesBitmap = new Bitmap(form.Width, form.Height))
     form.DrawToBitmap(writingModesBitmap, new Rectangle(Point.Empty, form.Size));
     writingModesBitmap.Save(writingModesPath);
 }
+pageMap["intelligence"].AutoScrollPosition = new Point(0, 800);
+Application.DoEvents();
+string applicationProfilesPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_application_profiles.png");
+using (var applicationProfilesBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(applicationProfilesBitmap, new Rectangle(Point.Empty, form.Size));
+    applicationProfilesBitmap.Save(applicationProfilesPath);
+}
 
 foreach (string page in pages)
     RenderPage(page, new Size(900, 650), saveScreenshot: false);
@@ -335,6 +343,35 @@ if (form.HasUnsavedChanges || aiModeChoice.SelectedValue != originalAiMode)
     failures.AppendLine("BEHAVIOR Discard did not restore the writing mode");
 }
 
+var appProfilesText = (TextBox)typeof(MainForm)
+    .GetField("_appProfilesText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var runningAppCombo = (ComboBox)typeof(MainForm)
+    .GetField("_runningAppCombo", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+if (runningAppCombo.Items.Count == 0 || string.IsNullOrWhiteSpace(runningAppCombo.AccessibleName))
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR running-application profile picker is empty or inaccessible");
+}
+string originalAppProfiles = appProfilesText.Text;
+aiModeChoice.SelectValue("off");
+appProfilesText.Text = "Code.exe => prompt, inherit";
+Application.DoEvents();
+if (!form.HasUnsavedChanges || !aiEndpoint.Enabled)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR AI application profile did not enable provider settings and unsaved state");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || appProfilesText.Text != originalAppProfiles || aiModeChoice.SelectedValue != originalAiMode)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore application profiles");
+}
+
 var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
     VoicePromptTray.AppBackupStore.Serialize(new VoicePromptBackupDocument
     {
@@ -354,6 +391,7 @@ var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
         Recovery = new BackupRecoverySettings { Limit = 30 },
         Corrections = [new CorrectionEntry("codecs", "Codex")],
         Snippets = [new TextSnippetEntry("reply", "Thank you")],
+        AppProfiles = [new AppProfileEntry("Code.exe", "prompt", "inherit")],
     }));
 typeof(MainForm).GetMethod("ApplyAppBackup", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, new object[] { importedBackup });
@@ -362,7 +400,8 @@ string backupLanguage = (string)typeof(MainForm)
     .GetMethod("SelectedLanguageCode", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>())!;
 if (!form.HasUnsavedChanges || backupLanguage != "en" || outputChoice.SelectedValue != "clipboard" ||
-    !voiceCommands.Checked || aiModeChoice.SelectedValue != "clean" || !snippetsText.Text.Contains("reply => Thank you"))
+    !voiceCommands.Checked || aiModeChoice.SelectedValue != "clean" || !snippetsText.Text.Contains("reply => Thank you") ||
+    !appProfilesText.Text.Contains("Code.exe => prompt, inherit"))
 {
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR imported settings backup did not populate reviewable portable fields");
@@ -562,6 +601,7 @@ Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
+Console.WriteLine($"SCREENSHOT application-profiles={applicationProfilesPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 Console.WriteLine($"SCREENSHOT history-comparison={historyComparisonPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");

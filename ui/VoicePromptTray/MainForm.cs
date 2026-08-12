@@ -21,6 +21,7 @@ internal sealed class MainForm : Form
     private readonly TranscriptHistoryStore _historyStore;
     private readonly PersonalDictionaryStore _dictionaryStore;
     private readonly TextSnippetStore _snippetStore;
+    private readonly AppProfileStore _appProfileStore;
     private readonly UpdateChecker _updateChecker = new();
     private readonly Dictionary<string, Panel> _pages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FlowLayoutPanel> _pageBodies = new(StringComparer.Ordinal);
@@ -84,6 +85,8 @@ internal sealed class MainForm : Form
     private TextBox _aiModelText = null!;
     private NumericUpDown _aiTimeoutMs = null!;
     private TextBox _aiKeyText = null!;
+    private TextBox _appProfilesText = null!;
+    private ComboBox _runningAppCombo = null!;
     private ActionButton _aiClearKeyButton = null!;
     private ActionButton _aiTestButton = null!;
     private Label _aiResult = null!;
@@ -142,6 +145,7 @@ internal sealed class MainForm : Form
         _historyStore = new TranscriptHistoryStore(paths.HistoryPath, paths.HistorySettingsPath);
         _dictionaryStore = new PersonalDictionaryStore(paths.CorrectionsPath);
         _snippetStore = new TextSnippetStore(paths.SnippetsPath);
+        _appProfileStore = new AppProfileStore(paths.AppProfilesPath);
 
         Text = "VoicePrompt Settings";
         BackColor = Theme.Canvas;
@@ -801,6 +805,100 @@ internal sealed class MainForm : Form
         ai.Add("Maximum wait", "Strict live deadline in milliseconds; raw local text is pasted after a timeout.", LeftControl(_aiTimeoutMs), 62);
         ai.Add("API key", "Encrypted for your Windows account. Leave blank to keep an existing saved key.", keyRow, 68);
         AddPageItem(body, ai.Build());
+
+        _runningAppCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
+        _runningAppCombo.AccessibleName = "Running application for new profile";
+        Theme.StyleCombo(_runningAppCombo);
+        _runningAppCombo.DropDown += (_, _) => RefreshRunningApplications();
+        var addAppProfile = new ActionButton("Add rule", ActionButtonStyle.Secondary) { Width = 92, BackColor = Theme.Surface };
+        addAppProfile.Click += (_, _) => AddSelectedAppProfile();
+        _appProfilesText = new TextBox
+        {
+            AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical,
+            PlaceholderText = "Code.exe => prompt, paste\nDiscord.exe => clean, inherit",
+        };
+        _appProfilesText.AccessibleName = "Application-aware writing and output profiles";
+        var appProfilesFrame = new TextFieldFrame(_appProfilesText, 136, multiline: true) { Dock = DockStyle.Fill };
+        var appProfiles = new SectionBuilder(
+            "Application profiles",
+            "Optional exact executable matches. Unmatched applications always inherit your global settings.");
+        appProfiles.Add(
+            "Running application",
+            "Choose an open app to insert its exact executable name; no full path is saved.",
+            HorizontalControl(_runningAppCombo, addAppProfile),
+            64);
+        appProfiles.Add(
+            "Per-app behavior",
+            "One per line: app.exe => writing, output. Writing: inherit/verbatim/clean/grammar/prompt. Output: inherit/paste/clipboard.",
+            appProfilesFrame,
+            156);
+        AddPageItem(body, appProfiles.Build());
+        RefreshRunningApplications();
+    }
+
+    private void RefreshRunningApplications()
+    {
+        if (_runningAppCombo is null)
+            return;
+        string selected = _runningAppCombo.SelectedItem?.ToString() ?? "";
+        string[] executables = Process.GetProcesses()
+            .Select(process =>
+            {
+                try
+                {
+                    return process.Id == Environment.ProcessId ? "" : process.ProcessName + ".exe";
+                }
+                catch
+                {
+                    return "";
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            })
+            .Where(name => name.Length > 4)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        _runningAppCombo.BeginUpdate();
+        _runningAppCombo.Items.Clear();
+        _runningAppCombo.Items.AddRange(executables);
+        _runningAppCombo.EndUpdate();
+        int index = Array.FindIndex(executables, name => name.Equals(selected, StringComparison.OrdinalIgnoreCase));
+        _runningAppCombo.SelectedIndex = index >= 0 ? index : executables.Length > 0 ? 0 : -1;
+    }
+
+    private void AddSelectedAppProfile()
+    {
+        string executable = _runningAppCombo.SelectedItem?.ToString() ?? "";
+        if (executable.Length == 0)
+        {
+            ShowFooter("No running application is available to add.", Theme.Warn);
+            return;
+        }
+        try
+        {
+            IReadOnlyList<AppProfileEntry> current = AppProfileStore.Parse(_appProfilesText.Text);
+            if (current.Any(profile => profile.Executable.Equals(executable, StringComparison.OrdinalIgnoreCase)))
+            {
+                ShowFooter($"{executable} already has an application profile.", Theme.Warn);
+                return;
+            }
+            string separator = _appProfilesText.TextLength == 0 || _appProfilesText.Text.EndsWith(Environment.NewLine, StringComparison.Ordinal)
+                ? ""
+                : Environment.NewLine;
+            _appProfilesText.AppendText($"{separator}{executable} => inherit, inherit");
+            _appProfilesText.Focus();
+            _appProfilesText.SelectionStart = _appProfilesText.TextLength;
+            ShowFooter($"Added {executable} · choose its writing and output modes", Theme.Accent);
+        }
+        catch (InvalidDataException ex)
+        {
+            _appProfilesText.Focus();
+            ShowFooter(ShortMessage(ex.Message), Theme.Err);
+        }
     }
 
     private void BuildHistoryPage()
@@ -1170,6 +1268,11 @@ internal sealed class MainForm : Form
             _hotwordsText,
         })
             text.TextChanged += (_, _) => MarkDirty();
+        _appProfilesText.TextChanged += (_, _) =>
+        {
+            MarkDirty();
+            UpdateAiAvailability();
+        };
 
         _recognitionModelCombo.TextChanged += (_, _) => MarkDirty();
         _additionalLanguageCombo.SelectedIndexChanged += (_, _) =>
@@ -1485,6 +1588,7 @@ internal sealed class MainForm : Form
             },
             Corrections = profile.Corrections,
             Snippets = TextSnippetStore.Parse(_snippetsText.Text).ToList(),
+            AppProfiles = AppProfileStore.Parse(_appProfilesText.Text).ToList(),
         };
     }
 
@@ -1505,6 +1609,7 @@ internal sealed class MainForm : Form
                 Corrections = backup.Corrections,
             });
             _snippetsText.Text = TextSnippetStore.Format(backup.Snippets);
+            _appProfilesText.Text = AppProfileStore.Format(backup.AppProfiles);
 
             _recognitionModelCombo.Text = backup.Recognition.Model;
             _processorChoice.SelectValue(backup.Recognition.Processor);
@@ -1658,6 +1763,7 @@ internal sealed class MainForm : Form
         _historyLimit.Value = Clamp(settings.Limit, _historyLimit);
         _correctionsText.Text = _dictionaryStore.LoadText();
         _snippetsText.Text = _snippetStore.LoadText();
+        _appProfilesText.Text = _appProfileStore.LoadText();
         _loading = false;
         LoadHistory();
     }
@@ -1694,7 +1800,8 @@ internal sealed class MainForm : Form
     {
         if (_aiModeChoice == null)
             return;
-        bool enabled = _aiModeChoice.SelectedValue != "off";
+        bool profileUsesAi = _appProfilesText is not null && AppProfileStore.UsesAi(_appProfilesText.Text);
+        bool enabled = _aiModeChoice.SelectedValue != "off" || profileUsesAi;
         _aiEndpointText.Enabled = enabled;
         _aiModelText.Enabled = enabled;
         _aiTimeoutMs.Enabled = enabled;
@@ -1702,9 +1809,11 @@ internal sealed class MainForm : Form
         _aiTestButton.Enabled = enabled && !_busy;
         _aiClearKeyButton.Enabled = enabled && !_busy &&
             (!string.IsNullOrEmpty(_aiSettings.ApiKeyProtected) || _aiKeyText.TextLength > 0);
-        if (!enabled)
+        if (_aiModeChoice.SelectedValue == "off")
         {
-            _aiResult.Text = "Verbatim adds zero delay and sends no transcript anywhere.";
+            _aiResult.Text = profileUsesAi
+                ? "Verbatim globally · matching application profiles use this provider."
+                : "Verbatim adds zero delay and sends no transcript anywhere.";
             _aiResult.ForeColor = Theme.Muted;
         }
     }
@@ -1767,8 +1876,30 @@ internal sealed class MainForm : Form
         }
         if (settings.Mode == "off")
         {
-            SetAiResult("Choose Clean, Grammar, or Prompt before testing.", false);
-            return;
+            AppProfileEntry? profile;
+            try
+            {
+                profile = AppProfileStore.Parse(_appProfilesText.Text)
+                    .FirstOrDefault(value => value.WritingMode is "clean" or "grammar" or "prompt");
+            }
+            catch (InvalidDataException ex)
+            {
+                SetAiResult(ShortMessage(ex.Message), false);
+                return;
+            }
+            if (profile is null)
+            {
+                SetAiResult("Choose Clean, Grammar, Prompt, or an AI application profile before testing.", false);
+                return;
+            }
+            settings = new AiSettings
+            {
+                Mode = profile.WritingMode,
+                Endpoint = settings.Endpoint,
+                Model = settings.Model,
+                TimeoutMs = settings.TimeoutMs,
+                ApiKeyProtected = settings.ApiKeyProtected,
+            };
         }
 
         SetBusy(true);
@@ -1838,6 +1969,19 @@ internal sealed class MainForm : Form
         {
             ShowPage(DictationPage);
             _snippetsText.Focus();
+            ShowFooter(ShortMessage(ex.Message), Theme.Err);
+            return;
+        }
+
+        string appProfiles = _appProfilesText.Text;
+        try
+        {
+            AppProfileStore.Parse(appProfiles);
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowPage(IntelligencePage);
+            _appProfilesText.Focus();
             ShowFooter(ShortMessage(ex.Message), Theme.Err);
             return;
         }
@@ -1923,6 +2067,7 @@ internal sealed class MainForm : Form
                 AiSettingsStore.Save(_paths.AiConfigPath, aiSettings);
                 _dictionaryStore.SaveText(corrections);
                 _snippetStore.SaveText(snippets);
+                _appProfileStore.SaveText(appProfiles);
                 _historyStore.SaveSettings(historyEnabled, historyLimit);
                 _daemon.Restart();
             });

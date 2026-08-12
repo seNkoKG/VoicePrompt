@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.16.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.17.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -113,11 +113,12 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Exact voice commands** — optionally speak a complete English or Slovenian command for a new line, new paragraph, bullet, undo, or cancel; normal sentences never trigger commands by substring.
 - **Reusable snippets** — save up to 50 local text templates and insert one by its exact English or Slovenian spoken name, including multi-line content without AI or network delay.
 - **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
+- **Application profiles** — optionally override writing and output mode for an exact running-app executable; unmatched apps inherit global settings with no process lookup or added delay.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, compares the delivered result with the untouched original, and lets you copy either version. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
 - **Portable language profiles** — exports or imports language, recognition context, hotwords, and personal corrections in a small JSON file. Profiles never contain API keys, transcript history, hotkeys, microphone names, or hardware settings.
-- **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, and snippet settings without API keys, transcripts, microphone identity, startup state, or machine paths.
+- **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, snippet, and application-profile settings without API keys, transcripts, microphone identity, startup state, or machine paths.
 - **All settings** — language (English + Slovenian Auto, dedicated defaults, or any pinned Whisper language), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe performance statistics and copied diagnostics, and one-click log/config access.
 - **Private update check** — manually checks GitHub with a three-second timeout. Stable is the default; Preview is explicit opt-in and also considers prereleases. It never checks in the background or installs silently.
@@ -192,9 +193,13 @@ Use **Advanced → Data portability** to export or import one validated JSON bac
 
 The encrypted API key, transcript history, microphone identity, Windows startup state, window preferences, logs, and machine-specific paths are never exported. Endpoint URLs containing embedded credentials, query strings, or fragments are rejected to prevent accidental token leakage.
 
+### Application profiles
+
+Use **Intelligence → Application profiles** to select a running app and add an exact executable rule. Each line uses `app.exe => writing, output`. Writing can be `inherit`, `verbatim`, `clean`, `grammar`, or `prompt`; output can be `inherit`, `paste`, or `clipboard`. Matching is case-insensitive but otherwise exact—no paths, wildcards, background monitoring, or hidden changes. Profiles are empty by default and unmatched applications keep the global behavior.
+
 ## 🔧 Patches (required on Windows)
 
-Fourteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Fifteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures, retry bounded clipboard contention, verify the full Unicode payload, and fail visibly instead of dropping text.
@@ -210,6 +215,7 @@ Fourteen Windows integration fixes ship in this repo — apply them **after ever
 12. **`daemon.py` / `buffered_transcription.py`** — serially pre-transcribes complete long-recording speech blocks without typing partial text, preserves block order, and retries the retained full audio after any empty, failed, or incomplete background result.
 13. **`typer.py` / `output_mode.py`** — routes the final transcript exactly once to automatic paste or verified clipboard-only delivery, without emitting paste keystrokes in Copy-only mode.
 14. **`typer.py` / `voice_commands.py` / `text_snippets.py`** — recognizes only enabled whole-utterance English/Slovenian commands and saved snippets, skips AI and history for them, and marks Undo input so the global hotkey listener ignores VoicePrompt's own shortcut.
+15. **`typer.py` / `app_profiles.py` / `ai_rewriter.py`** — resolves an optional exact focused-app rule once after transcription, overrides only writing/output behavior, and inherits global settings after any missing, inaccessible, unmatched, or invalid rule.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 

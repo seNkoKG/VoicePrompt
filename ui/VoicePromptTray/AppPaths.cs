@@ -45,6 +45,8 @@ internal sealed class AppPaths
 
     public string SnippetsPath => Path.Combine(AppDataDir, "snippets.json");
 
+    public string AppProfilesPath => Path.Combine(AppDataDir, "app-profiles.json");
+
     public string AiRewriterPath => Path.Combine(
         Home,
         "venv",

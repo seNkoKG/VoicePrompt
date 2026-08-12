@@ -120,7 +120,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.16.0"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.17.0"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0
@@ -131,8 +131,12 @@ class AiRewriter:
     def enabled(self) -> bool:
         return self.settings["mode"] in _SYSTEM_PROMPTS
 
-    def rewrite(self, text: str) -> str:
-        if not text or not self.enabled:
+    def rewrite(self, text: str, mode_override: str | None = None) -> str:
+        mode = self.settings["mode"]
+        if mode_override is not None:
+            candidate = str(mode_override).strip().lower()
+            mode = candidate if candidate in {*_SYSTEM_PROMPTS, "off"} else mode
+        if not text or mode not in _SYSTEM_PROMPTS:
             return text
 
         leading = text[: len(text) - len(text.lstrip())]
@@ -146,13 +150,13 @@ class AiRewriter:
         self.used_fallback = False
         try:
             with self._lock:
-                output = self._request(source)
+                output = self._request(source, mode)
             if not output:
                 raise ValueError("provider returned empty text")
             output = output.strip()
             if len(output) > max(240, len(source) * 3):
                 raise ValueError("provider returned unexpectedly long text")
-            if self.settings["mode"] in {"clean", "grammar"} and len(output) < max(12, len(source) * 0.6):
+            if mode in {"clean", "grammar"} and len(output) < max(12, len(source) * 0.6):
                 raise ValueError("provider returned an incomplete conservative edit")
             return leading + output + trailing
         except (requests.RequestException, KeyError, IndexError, TypeError, ValueError, OSError) as exc:
@@ -168,9 +172,9 @@ class AiRewriter:
         finally:
             self.last_latency_ms = round((time.perf_counter() - started) * 1000)
             if not self.used_fallback:
-                log.info("AI %s cleanup completed in %d ms", self.settings["mode"], self.last_latency_ms)
+                log.info("AI %s cleanup completed in %d ms", mode, self.last_latency_ms)
 
-    def _request(self, text: str) -> str:
+    def _request(self, text: str, mode: str) -> str:
         timeout_s = self.settings["timeout_ms"] / 1000.0
         connect_timeout = min(0.2, timeout_s / 2)
         read_timeout = max(0.2, timeout_s - connect_timeout)
@@ -185,7 +189,7 @@ class AiRewriter:
         payload = {
             "model": self.settings["model"],
             "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPTS[self.settings["mode"]]},
+                {"role": "system", "content": _SYSTEM_PROMPTS[mode]},
                 {"role": "user", "content": text},
             ],
             "stream": False,
@@ -219,8 +223,8 @@ class AiRewriter:
 _rewriter = AiRewriter()
 
 
-def rewrite_text(text: str) -> str:
-    return _rewriter.rewrite(text)
+def rewrite_text(text: str, mode_override: str | None = None) -> str:
+    return _rewriter.rewrite(text, mode_override)
 
 
 def _main() -> int:

@@ -171,6 +171,39 @@ catch (InvalidDataException)
     Check("duplicate snippets rejected", true);
 }
 
+string appProfilesPath = Path.Combine(dir, "local", "app-profiles.json");
+var appProfiles = new VoicePromptTray.AppProfileStore(appProfilesPath);
+var parsedAppProfiles = VoicePromptTray.AppProfileStore.Parse(
+    "Code.exe => prompt, paste\nDiscord.exe => verbatim, inherit");
+Check("application profiles parse exact writing and output modes",
+    parsedAppProfiles.Count == 2 &&
+    parsedAppProfiles[0].WritingMode == "prompt" &&
+    parsedAppProfiles[1].WritingMode == "off");
+appProfiles.SaveText("Code.exe => prompt, paste\nBeležke.exe => off, clipboard");
+Check("application profiles round trip Unicode executable names",
+    appProfiles.LoadText().Contains("Beležke.exe => off, clipboard"));
+Check("application profiles identify provider requirement",
+    VoicePromptTray.AppProfileStore.UsesAi("Code.exe => grammar, inherit") &&
+    !VoicePromptTray.AppProfileStore.UsesAi("Notepad.exe => verbatim, paste"));
+try
+{
+    VoicePromptTray.AppProfileStore.Parse("C:\\Windows\\app.exe => prompt, paste");
+    Check("application profile paths rejected", false);
+}
+catch (InvalidDataException)
+{
+    Check("application profile paths rejected", true);
+}
+try
+{
+    VoicePromptTray.AppProfileStore.Parse("Code.exe => prompt, paste\ncode.EXE => clean, paste");
+    Check("duplicate application profiles rejected", false);
+}
+catch (InvalidDataException)
+{
+    Check("duplicate application profiles rejected", true);
+}
+
 var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
 {
     Dictation = new VoicePromptTray.BackupDictationSettings
@@ -201,12 +234,14 @@ var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
     Recovery = new VoicePromptTray.BackupRecoverySettings { Enabled = true, Limit = 25 },
     Corrections = corrections.ToList(),
     Snippets = parsedSnippets.ToList(),
+    AppProfiles = parsedAppProfiles.ToList(),
 };
 string backupJson = VoicePromptTray.AppBackupStore.Serialize(portableBackup);
 var restoredBackup = VoicePromptTray.AppBackupStore.Deserialize(backupJson);
 Check("settings backup preserves portable Unicode values",
     restoredBackup.Dictation.Prompt.Contains("Žan") &&
     restoredBackup.Snippets[0].Content.Contains("Žan") &&
+    restoredBackup.AppProfiles[0].Executable == "Code.exe" &&
     restoredBackup.Dictation.OutputMode == "clipboard");
 Check("settings backup excludes API keys", !backupJson.Contains("api_key", StringComparison.OrdinalIgnoreCase));
 Check("settings backup excludes transcript history", !backupJson.Contains("\"history\"", StringComparison.OrdinalIgnoreCase));
