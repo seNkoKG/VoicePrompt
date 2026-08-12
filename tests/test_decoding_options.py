@@ -16,8 +16,8 @@ class DecodingOptionsTests(unittest.TestCase):
 
         self.assertEqual(options["temperature"], 0.0)
         self.assertIs(options["condition_on_previous_text"], False)
-        self.assertEqual(options["repetition_penalty"], 1.1)
-        self.assertEqual(options["no_repeat_ngram_size"], 3)
+        self.assertNotIn("repetition_penalty", options)
+        self.assertNotIn("no_repeat_ngram_size", options)
 
     def test_nonzero_temperature_remains_user_controlled(self) -> None:
         self.assertEqual(decoding_options(0.3)["temperature"], 0.3)

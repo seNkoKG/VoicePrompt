@@ -9,12 +9,10 @@ def decoding_options(temperature: float) -> dict[str, object]:
     A temperature tuple makes faster-whisper decode the same 30-second window
     again whenever a quality threshold fires. That made release-to-paste time
     unpredictable and could stack with the bilingual recovery pass. A scalar
-    keeps the configured beam-search result while the native repetition guards
-    still prevent failure loops.
+    keeps the configured beam-search result. Disabling previous-text context
+    prevents failure loops without penalizing legitimate repeated words.
     """
     return {
         "temperature": temperature,
         "condition_on_previous_text": False,
-        "repetition_penalty": 1.1,
-        "no_repeat_ngram_size": 3,
     }

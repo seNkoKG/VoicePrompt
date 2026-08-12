@@ -39,11 +39,16 @@ class SlangRetryTests(unittest.TestCase):
         self.assertFalse(should_retry_as_slovenian("", "en", 0.75))
         self.assertFalse(should_retry_as_slovenian("auto", "en", 0.95))
         self.assertFalse(should_retry_as_slovenian("", "sl", 0.20, -0.90))
+        self.assertIsNone(bilingual_retry_language("", "sl", 0.75, -0.90))
 
     def test_low_confidence_english_retries_for_slang(self) -> None:
         self.assertTrue(should_retry_as_slovenian("", "en", 0.74))
         self.assertTrue(should_retry_as_slovenian("auto", "en", 0.20))
         self.assertFalse(should_retry_as_slovenian("en", "en", 0.20))
+
+    def test_low_confidence_slovenian_retries_as_english(self) -> None:
+        self.assertEqual(bilingual_retry_language("", "sl", 0.29, -0.60), "en")
+        self.assertIsNone(bilingual_retry_language("sl", "sl", 0.29, -0.60))
 
     def test_strong_english_transcript_skips_an_unnecessary_retry(self) -> None:
         self.assertIsNone(bilingual_retry_language("", "en", 0.60, -0.20))
@@ -103,6 +108,16 @@ class SlangRetryTests(unittest.TestCase):
         english = [Segment("Please open the file.", -0.25, [1, 2, 3, 4])]
         forced_slovenian = [Segment("Prosim odpri datoteko.", -0.64, [1, 2, 3, 4])]
         self.assertFalse(prefer_slovenian_retry("en", english, forced_slovenian))
+
+    def test_better_english_retry_replaces_a_weak_slovenian_translation(self) -> None:
+        translated = [Segment("Prosim, popravite to.", -0.66, [1, 2, 3, 4])]
+        english = [Segment("Please fix this.", -0.40, [1, 2, 3, 4])]
+        self.assertTrue(prefer_bilingual_retry("en", "sl", translated, english))
+
+    def test_marginal_english_retry_cannot_replace_real_slovenian(self) -> None:
+        slovenian = [Segment("Prosim, popravi to.", -0.40, [1, 2, 3, 4])]
+        english = [Segment("Please fix this.", -0.38, [1, 2, 3, 4])]
+        self.assertFalse(prefer_bilingual_retry("en", "sl", slovenian, english))
 
     def test_supported_english_retry_replaces_unrelated_language(self) -> None:
         unrelated = [Segment("Guten Tag", -0.50, [1, 2])]

@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import Any
 
 
-_LOW_CONFIDENCE_ENGLISH = 0.75
+_LOW_LANGUAGE_CONFIDENCE = 0.75
 _STRONG_TRANSCRIPT_SCORE = -0.35
 _AUTO_MODES = {"", "auto", "sl-slang"}
 
@@ -46,14 +46,10 @@ def bilingual_retry_language(
     """Choose an English/Slovenian retry for ambiguous Auto-mode speech."""
     if configured not in _AUTO_MODES:
         return None
-    if detected == "sl":
-        # Auto's primary pass already uses the Slovenian vocabulary profile.
-        # Repeating the same deterministic decode would only add latency.
-        return None
-    if detected == "en":
-        if confidence >= _LOW_CONFIDENCE_ENGLISH or primary_score >= _STRONG_TRANSCRIPT_SCORE:
+    if detected in {"en", "sl"}:
+        if confidence >= _LOW_LANGUAGE_CONFIDENCE or primary_score >= _STRONG_TRANSCRIPT_SCORE:
             return None
-        return "sl"
+        return "sl" if detected == "en" else "en"
 
     # VoicePrompt Auto is intentionally bilingual. This mirrors established
     # dictation apps that constrain automatic detection to the languages the
@@ -147,10 +143,9 @@ def prefer_bilingual_retry(
     if detected not in {"en", "sl"}:
         return True
 
-    # Requiring a real gain when switching away from English prevents a short
-    # genuine English phrase from being translated. Same-language Slovenian
-    # retries need a small improvement.
-    if detected == "en" and retry_language == "sl":
+    # A forced decode must show a real gain before changing either supported
+    # language. Decoder scores are useful evidence, but are not language IDs.
+    if detected in {"en", "sl"} and retry_language != detected:
         required_gain = 0.03
     elif detected == retry_language:
         required_gain = 0.01
