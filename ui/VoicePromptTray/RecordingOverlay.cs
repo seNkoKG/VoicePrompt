@@ -1,15 +1,10 @@
 using System.Drawing.Drawing2D;
-using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 
 namespace VoicePromptTray;
 
 internal sealed class RecordingOverlay : Form
 {
-    private const string MapName = "VoicePrompt.AudioMeter.v2";
-    private const int WaveSamples = 48;
-    private const int MapSize = 16 + WaveSamples;
-    private const int RecordingState = 1;
     private const int WM_NCHITTEST = 0x0084;
     private const int HTTRANSPARENT = -1;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
@@ -19,11 +14,10 @@ internal sealed class RecordingOverlay : Form
     private static readonly Color OverlayBorder = Color.FromArgb(47, 53, 62);
     private static readonly Color OverlaySignal = Color.FromArgb(198, 204, 212);
 
-    private readonly MemoryMappedFile? _map;
-    private readonly MemoryMappedViewAccessor? _view;
+    private readonly AudioMeterReader _reader = new();
     private readonly System.Windows.Forms.Timer _timer;
-    private readonly byte[] _waveBytes = new byte[WaveSamples];
-    private readonly float[] _waveform = new float[WaveSamples];
+    private readonly byte[] _waveBytes = new byte[AudioMeterReader.WaveSamples];
+    private readonly float[] _waveform = new float[AudioMeterReader.WaveSamples];
     private int _lastSequence;
     private long _lastSignal;
     private float _level;
@@ -42,18 +36,6 @@ internal sealed class RecordingOverlay : Form
         BackColor = OverlayBackground;
         DoubleBuffered = true;
         Opacity = 0;
-
-        try
-        {
-            _map = MemoryMappedFile.CreateOrOpen(MapName, MapSize, MemoryMappedFileAccess.ReadWrite);
-            _view = _map.CreateViewAccessor(0, MapSize, MemoryMappedFileAccess.ReadWrite);
-            _lastSequence = _view.ReadInt32(0);
-        }
-        catch
-        {
-            _view?.Dispose();
-            _map?.Dispose();
-        }
 
         UpdateRegion();
         _timer = new System.Windows.Forms.Timer { Interval = 25 };
@@ -98,38 +80,21 @@ internal sealed class RecordingOverlay : Form
 
     private void UpdateMeter()
     {
-        if (_view == null)
-            return;
-
-        int sequence;
-        int state;
-        float level;
-        try
-        {
-            sequence = _view.ReadInt32(0);
-            if ((sequence & 1) != 0)
-                return;
-            state = _view.ReadInt32(4);
-            level = _view.ReadSingle(8);
-            _view.ReadArray(16, _waveBytes, 0, WaveSamples);
-            if (sequence != _view.ReadInt32(0))
-                return;
-        }
-        catch
+        if (!_reader.TryRead(_waveBytes, out AudioMeterSample meterSample))
         {
             Hide();
             return;
         }
 
         long now = Environment.TickCount64;
-        if (sequence != _lastSequence)
+        if (meterSample.Sequence != _lastSequence)
         {
-            _lastSequence = sequence;
+            _lastSequence = meterSample.Sequence;
             _lastSignal = now;
         }
 
-        bool recording = state == RecordingState && _lastSignal != 0 && now - _lastSignal < 3000;
-        _level = float.IsFinite(level) ? Math.Clamp(level, 0f, 1f) : 0f;
+        bool recording = meterSample.Recording && _lastSignal != 0 && now - _lastSignal < 3000;
+        _level = meterSample.Level;
 
         if (recording && !_recording)
         {
@@ -232,8 +197,7 @@ internal sealed class RecordingOverlay : Form
         {
             _timer.Stop();
             _timer.Dispose();
-            _view?.Dispose();
-            _map?.Dispose();
+            _reader.Dispose();
         }
         base.Dispose(disposing);
     }

@@ -67,6 +67,7 @@ internal sealed class MainForm : Form
     private TextBox _correctionsText = null!;
 
     private ComboBox _microphoneCombo = null!;
+    private InputLevelMeter _inputLevelMeter = null!;
     private ChoiceStrip _sampleRateChoice = null!;
     private NumericUpDown _threshold = null!;
     private NumericUpDown _silenceMs = null!;
@@ -652,6 +653,8 @@ internal sealed class MainForm : Form
         var input = new SectionBuilder("Input device", "VoicePrompt records mono audio and keeps it on this computer.");
         input.Add("Microphone", "System default follows the current Windows input device.", microphoneRow, 68);
         input.Add("Sample rate", "16 kHz is Whisper's native rate and the recommended setting.", _sampleRateChoice, 64);
+        _inputLevelMeter = new InputLevelMeter { Dock = DockStyle.Fill };
+        input.Add("Input test", "Hold your configured hotkey and speak. This reuses the live recording stream and never opens a second microphone capture.", _inputLevelMeter, 66);
         AddPageItem(body, input.Build());
 
         _threshold = MakeNumber(0m, 1m, 0.05m, 2, 148);
@@ -1098,6 +1101,7 @@ internal sealed class MainForm : Form
             LoadHistory();
         if (key == AdvancedPage)
             RefreshPerformanceSnapshot();
+        _inputLevelMeter.SetActive(key == AudioPage);
         if (persist)
             SavePreferences();
     }
@@ -1909,6 +1913,13 @@ internal sealed class MainForm : Form
             return;
         }
         base.OnFormClosing(e);
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (_inputLevelMeter is not null)
+            _inputLevelMeter.SetActive(Visible && _selectedPage == AudioPage);
     }
 
     private string PreferencesPath => Path.Combine(_paths.AppDataDir, "prefs.json");

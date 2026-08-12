@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0] - 2026-08-12
+
+### Added
+
+- Added a live microphone input test to the Audio workspace with clear quiet, good-signal, and very-loud feedback while the configured hotkey is held.
+- Added an automated shared-memory signal test and a dedicated rendered Audio-page screenshot for the active input meter.
+
+### Changed
+
+- Share one bounds-checked audio-meter reader between the overlay and settings UI instead of opening another microphone capture, polling disk, or running additional model work.
+- Start the 33 Hz settings meter only while the Audio page is visible and stop it immediately when the page or window is hidden.
+
 ## [1.6.0] - 2026-08-12
 
 ### Added

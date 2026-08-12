@@ -210,7 +210,7 @@ using (var overlay = new RecordingOverlay
     Opacity = 0.96,
 })
 {
-    using (var map = MemoryMappedFile.CreateOrOpen("VoicePrompt.AudioMeter.v2", 64))
+    using (var map = MemoryMappedFile.CreateOrOpen(AudioMeterReader.MapName, AudioMeterReader.MapSize))
     using (var view = map.CreateViewAccessor())
     {
         int sequence = (view.ReadInt32(0) & 0x7FFFFFFE) + 2;
@@ -252,6 +252,42 @@ using (var overlay = new RecordingOverlay
     bitmap.Save(overlayPath);
 }
 
+form.ShowPageForDiagnostics("audio");
+Application.DoEvents();
+var inputMeter = (InputLevelMeter)typeof(MainForm)
+    .GetField("_inputLevelMeter", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var updateInputLevel = typeof(InputLevelMeter)
+    .GetMethod("UpdateLevel", BindingFlags.Instance | BindingFlags.NonPublic)!;
+if (!inputMeter.Active)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR navigating to Audio did not start the input test reader");
+}
+using (var map = MemoryMappedFile.CreateOrOpen(AudioMeterReader.MapName, AudioMeterReader.MapSize))
+using (var view = map.CreateViewAccessor())
+{
+    int sequence = (view.ReadInt32(0) & 0x7FFFFFFE) + 2;
+    view.Write(0, sequence | 1);
+    view.Write(4, 1);
+    view.Write(8, 0.62f);
+    view.Write(12, Environment.ProcessId);
+    view.Write(0, sequence);
+}
+updateInputLevel.Invoke(inputMeter, Array.Empty<object>());
+Application.DoEvents();
+if (!inputMeter.Listening || inputMeter.DisplayLevel < 0.20f)
+{
+    behaviorFailures++;
+    failures.AppendLine($"BEHAVIOR input test did not read the shared microphone level: {inputMeter.DisplayLevel:0.00}");
+}
+string inputTestPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_input_test.png");
+using (var inputTestBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(inputTestBitmap, new Rectangle(Point.Empty, form.Size));
+    inputTestBitmap.Save(inputTestPath);
+}
+
 using (var recorder = new HotkeyRecorder { Binding = "f1" })
 {
     var beginCapture = typeof(HotkeyRecorder).GetMethod("BeginCapture", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -283,6 +319,7 @@ foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
+Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 
 form.Close();
 return layoutFailures + behaviorFailures;

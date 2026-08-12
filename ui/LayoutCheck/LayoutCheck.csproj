@@ -13,10 +13,12 @@
   <ItemGroup>
     <Compile Include="..\VoicePromptTray\AppPaths.cs" />
     <Compile Include="..\VoicePromptTray\AiSettings.cs" />
+    <Compile Include="..\VoicePromptTray\AudioMeterReader.cs" />
     <Compile Include="..\VoicePromptTray\ConfigManager.cs" />
     <Compile Include="..\VoicePromptTray\Controls.cs" />
     <Compile Include="..\VoicePromptTray\DaemonManager.cs" />
     <Compile Include="..\VoicePromptTray\HotkeyRecorder.cs" />
+    <Compile Include="..\VoicePromptTray\InputLevelMeter.cs" />
     <Compile Include="..\VoicePromptTray\LocalTextStore.cs" />
     <Compile Include="..\VoicePromptTray\LanguageCatalog.cs" />
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
