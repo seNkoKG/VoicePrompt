@@ -92,12 +92,22 @@ void SaveClientScreenshot(string path)
     using var window = new Bitmap(form.Width, form.Height);
     form.DrawToBitmap(window, new Rectangle(Point.Empty, form.Size));
     Rectangle clientOnScreen = form.RectangleToScreen(form.ClientRectangle);
+    int left = Math.Clamp(clientOnScreen.Left - form.Left, 0, Math.Max(0, window.Width - 1));
+    int top = Math.Clamp(clientOnScreen.Top - form.Top, 0, Math.Max(0, window.Height - 1));
     var clientInWindow = new Rectangle(
-        Math.Max(0, clientOnScreen.Left - form.Left),
-        Math.Max(0, clientOnScreen.Top - form.Top),
-        Math.Min(form.ClientSize.Width, window.Width),
-        Math.Min(form.ClientSize.Height, window.Height));
-    using Bitmap client = window.Clone(clientInWindow, window.PixelFormat);
+        left,
+        top,
+        Math.Max(1, Math.Min(form.ClientSize.Width, window.Width - left)),
+        Math.Max(1, Math.Min(form.ClientSize.Height, window.Height - top)));
+    using var client = new Bitmap(clientInWindow.Width, clientInWindow.Height);
+    using (Graphics graphics = Graphics.FromImage(client))
+    {
+        graphics.DrawImage(
+            window,
+            new Rectangle(Point.Empty, client.Size),
+            clientInWindow,
+            GraphicsUnit.Pixel);
+    }
     client.Save(path);
 }
 
