@@ -113,6 +113,31 @@ void RenderPage(string page, Size size, bool saveScreenshot)
 foreach (string page in pages)
     RenderPage(page, new Size(1080, 780), saveScreenshot: true);
 
+form.ClientSize = new Size(1080, 780);
+form.ShowPageForDiagnostics("advanced");
+Application.DoEvents();
+var updateButton = (ActionButton)typeof(MainForm)
+    .GetField("_updateButton", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+if (!updateButton.Visible || updateButton.Parent is null ||
+    !updateButton.Parent.ClientRectangle.Contains(updateButton.Bounds) ||
+    updateButton.Parent.Controls.GetChildIndex(updateButton) != 0)
+{
+    layoutFailures++;
+    failures.AppendLine("LAYOUT update action is hidden or covered in its shared row");
+}
+var pageMap = (Dictionary<string, Panel>)typeof(MainForm)
+    .GetField("_pages", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+pageMap["advanced"].AutoScrollPosition = new Point(0, 460);
+Application.DoEvents();
+string advancedToolsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_advanced_tools.png");
+using (var advancedToolsBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(advancedToolsBitmap, new Rectangle(Point.Empty, form.Size));
+    advancedToolsBitmap.Save(advancedToolsPath);
+}
+
 foreach (string page in pages)
     RenderPage(page, new Size(900, 650), saveScreenshot: false);
 
@@ -257,6 +282,7 @@ Console.WriteLine($"OVERLAY_ACTIVATION_MS={overlayActivationMs}");
 foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
+Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 
 form.Close();
 return layoutFailures + behaviorFailures;

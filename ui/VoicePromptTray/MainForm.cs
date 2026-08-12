@@ -20,6 +20,7 @@ internal sealed class MainForm : Form
     private readonly AppPaths _paths;
     private readonly TranscriptHistoryStore _historyStore;
     private readonly PersonalDictionaryStore _dictionaryStore;
+    private readonly UpdateChecker _updateChecker = new();
     private readonly Dictionary<string, Panel> _pages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FlowLayoutPanel> _pageBodies = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NavigationButton> _navigation = new(StringComparer.Ordinal);
@@ -103,6 +104,9 @@ internal sealed class MainForm : Form
     private Label _performanceTypical = null!;
     private Label _performanceMicrophone = null!;
     private Label _performanceRecovery = null!;
+    private Label _updateStatus = null!;
+    private ActionButton _updateButton = null!;
+    private string _updateReleaseUrl = "";
 
     private bool _loading = true;
     private bool _dirty;
@@ -835,7 +839,20 @@ internal sealed class MainForm : Form
         config.Click += (_, _) => OpenConfigFolder();
         var release = new ActionButton("Latest release", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
         release.Click += (_, _) => OpenExternal("https://github.com/seNkoKG/VoicePrompt/releases/latest");
+        _updateStatus = BuildValueLabel();
+        _updateStatus.Text = "Not checked · contacts GitHub only when you click";
+        _updateButton = new ActionButton("Check now", ActionButtonStyle.Secondary) { Width = 100, BackColor = Theme.Surface };
+        _updateButton.Click += async (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_updateReleaseUrl))
+            {
+                OpenExternal(_updateReleaseUrl);
+                return;
+            }
+            await CheckForUpdatesAsync();
+        };
         tools.Add("Support bundle", "No audio or transcript text is included in copied diagnostics.", HorizontalControl(copy, log), 62);
+        tools.Add("Application updates", "Makes one short request to GitHub's public latest-release endpoint; no identifier or usage data is sent.", HorizontalControl(_updateStatus, _updateButton), 62);
         tools.Add("Files & updates", "Open the live config directory or the public download page.", HorizontalControl(config, release), 62);
         AddPageItem(body, tools.Build());
 
@@ -911,6 +928,8 @@ internal sealed class MainForm : Form
     private static Control HorizontalControl(params Control[] controls)
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
+        foreach (Control control in controls)
+            control.Dock = DockStyle.None;
         panel.Layout += (_, _) =>
         {
             int right = panel.ClientSize.Width;
@@ -926,6 +945,8 @@ internal sealed class MainForm : Form
         };
         foreach (Control control in controls)
             panel.Controls.Add(control);
+        for (int i = 1; i < controls.Length; i++)
+            controls[i].BringToFront();
         return panel;
     }
 
@@ -1772,6 +1793,45 @@ internal sealed class MainForm : Form
             : "Not available in recent samples";
         string speed = snapshot.MedianRealtimeSpeed is { } realtimeSpeed ? $" · {realtimeSpeed:0.0}× real-time" : "";
         _performanceRecovery.Text = $"{snapshot.RetryCount} bilingual · {snapshot.FullFallbackCount} full-audio{speed}";
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        _updateReleaseUrl = "";
+        _updateButton.Enabled = false;
+        _updateButton.Text = "Checking…";
+        _updateStatus.Text = "Checking the latest stable release…";
+        try
+        {
+            Version current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
+            UpdateResult result = await _updateChecker.CheckAsync(current);
+            if (result.State == UpdateState.Available && result.LatestVersion is not null)
+            {
+                _updateReleaseUrl = result.ReleaseUrl;
+                _updateStatus.Text = $"Update available · {result.CurrentVersion.ToString(3)} → {result.LatestVersion.ToString(3)}";
+                _updateStatus.ForeColor = Theme.Accent;
+                _updateButton.Text = "Open release";
+                ShowFooter($"VoicePrompt {result.LatestVersion.ToString(3)} is available", Theme.Accent);
+            }
+            else if (result.State == UpdateState.UpToDate)
+            {
+                _updateStatus.Text = $"Up to date · VoicePrompt {result.CurrentVersion.ToString(3)}";
+                _updateStatus.ForeColor = Theme.Ok;
+                _updateButton.Text = "Check again";
+                ShowFooter("VoicePrompt is up to date", Theme.Ok);
+            }
+            else
+            {
+                _updateStatus.Text = result.Error;
+                _updateStatus.ForeColor = Theme.Warn;
+                _updateButton.Text = "Try again";
+                ShowFooter(result.Error, Theme.Warn);
+            }
+        }
+        finally
+        {
+            _updateButton.Enabled = true;
+        }
     }
 
     private void OpenLog()

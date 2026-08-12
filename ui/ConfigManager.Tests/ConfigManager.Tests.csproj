@@ -15,6 +15,7 @@
     <Compile Include="..\VoicePromptTray\LanguageCatalog.cs" Link="LanguageCatalog.cs" />
     <Compile Include="..\VoicePromptTray\PerformanceSnapshot.cs" Link="PerformanceSnapshot.cs" />
     <Compile Include="..\VoicePromptTray\SlovenianSlangProfile.cs" Link="SlovenianSlangProfile.cs" />
+    <Compile Include="..\VoicePromptTray\UpdateChecker.cs" Link="UpdateChecker.cs" />
   </ItemGroup>
 
 </Project>

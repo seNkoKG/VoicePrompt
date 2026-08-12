@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.0] - 2026-08-12
+
+### Added
+
+- Added an in-app manual update check with clear current/latest version status and a direct link to the official stable GitHub release.
+- Added deterministic tests for stable-version parsing, request privacy headers, newer/current releases, HTTP failures, and oversized responses.
+- Added a scrolled Advanced-tools screenshot to the Windows layout gate so controls below the fold are visually reviewable.
+
+### Changed
+
+- Keep update checks explicitly user-triggered: VoicePrompt makes no hidden startup request and never downloads or installs an update silently.
+- Bound the public GitHub response to 512 KB and the complete request to three seconds so unavailable networking cannot slow the settings app.
+
+### Fixed
+
+- Prevent fill-docked status labels from covering adjacent action buttons after normal window layout, including performance Refresh and update Check now.
+
 ## [1.5.1] - 2026-08-12
 
 ### Fixed

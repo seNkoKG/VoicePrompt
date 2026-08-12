@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.RegularExpressions;
 
 var dir = Path.Combine(Path.GetTempPath(), "vptest_cfg_" + Guid.NewGuid().ToString("N"));
@@ -232,6 +233,68 @@ Check("buffered diagnostics preserve aggregate safety signals",
     bufferedSafety.Segments == 5 &&
     !bufferedSafety.UsedFullFallback);
 
+Check("update tags parse stable semantic versions",
+    VoicePromptTray.UpdateChecker.ParseVersionTag("v1.6.0") == new Version(1, 6, 0) &&
+    VoicePromptTray.UpdateChecker.ParseVersionTag(" V2.0.3 ") == new Version(2, 0, 3));
+Check("update tags reject prereleases and malformed values",
+    VoicePromptTray.UpdateChecker.ParseVersionTag("v1.6.0-beta.1") is null &&
+    VoicePromptTray.UpdateChecker.ParseVersionTag("latest") is null);
+
+bool safeUpdateRequest = false;
+var availableClient = new HttpClient(new StubHttpMessageHandler(request =>
+{
+    safeUpdateRequest =
+        request.RequestUri?.ToString() == VoicePromptTray.UpdateChecker.LatestReleaseEndpoint &&
+        request.Headers.Authorization is null &&
+        request.Headers.UserAgent.ToString() == "VoicePrompt/1.5.1" &&
+        request.Headers.Accept.Any(value => value.MediaType == "application/vnd.github+json");
+    return new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent("""{"tag_name":"v1.6.0"}"""),
+    };
+}));
+var availableUpdate = await new VoicePromptTray.UpdateChecker(availableClient)
+    .CheckAsync(new Version(1, 5, 1, 0));
+Check("update checker reports newer official stable release",
+    safeUpdateRequest &&
+    availableUpdate.State == VoicePromptTray.UpdateState.Available &&
+    availableUpdate.LatestVersion == new Version(1, 6, 0) &&
+    availableUpdate.ReleaseUrl == "https://github.com/seNkoKG/VoicePrompt/releases/tag/v1.6.0");
+
+var currentClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent("""{"tag_name":"v1.5.1"}"""),
+}));
+var currentUpdate = await new VoicePromptTray.UpdateChecker(currentClient)
+    .CheckAsync(new Version(1, 5, 1));
+Check("update checker recognizes the current release",
+    currentUpdate.State == VoicePromptTray.UpdateState.UpToDate);
+
+var failedClient = new HttpClient(new StubHttpMessageHandler(_ =>
+    new HttpResponseMessage(HttpStatusCode.Forbidden)));
+var failedUpdate = await new VoicePromptTray.UpdateChecker(failedClient)
+    .CheckAsync(new Version(1, 5, 1));
+Check("update checker fails closed without throwing",
+    failedUpdate.State == VoicePromptTray.UpdateState.Unavailable &&
+    failedUpdate.ReleaseUrl == "");
+
+var oversizedClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent("{\"tag_name\":\"v1.6.0\",\"body\":\"" + new string('x', 600_000) + "\"}"),
+}));
+var oversizedUpdate = await new VoicePromptTray.UpdateChecker(oversizedClient)
+    .CheckAsync(new Version(1, 5, 1));
+Check("update checker rejects oversized responses",
+    oversizedUpdate.State == VoicePromptTray.UpdateState.Unavailable);
+
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures;
+
+internal sealed class StubHttpMessageHandler(
+    Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken) => Task.FromResult(responseFactory(request));
+}
