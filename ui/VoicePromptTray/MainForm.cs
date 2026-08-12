@@ -93,6 +93,7 @@ internal sealed class MainForm : Form
     private ChoiceStrip _processorChoice = null!;
     private NumericUpDown _temperature = null!;
     private TextBox _hotwordsText = null!;
+    private ToggleSwitch _bufferedTranscriptionToggle = null!;
 
     private Label _diagnosticDaemon = null!;
     private Label _diagnosticRuntime = null!;
@@ -695,6 +696,8 @@ internal sealed class MainForm : Form
         _hotwordsText = new TextBox { PlaceholderText = "Comma-separated terms: OpenAI, Codex, Ljubljana…" };
         _temperature.AccessibleName = "Recognition temperature";
         _hotwordsText.AccessibleName = "Recognition hotwords";
+        _bufferedTranscriptionToggle = new ToggleSwitch("Pre-transcribe long recordings while I speak") { Dock = DockStyle.Left };
+        _bufferedTranscriptionToggle.AccessibleName = "Fast long recordings";
         var hotwordsFrame = new TextFieldFrame(_hotwordsText) { Dock = DockStyle.Fill };
 
         var engine = new SectionBuilder("Recognition engine", "Local Whisper settings balance accuracy, latency, and memory usage.");
@@ -703,6 +706,7 @@ internal sealed class MainForm : Form
         engine.Add("Precision", "FP16 is recommended on modern NVIDIA GPUs; INT8 is useful on CPU.", _computeChoice, 64);
         engine.Add("Temperature", "0 uses deterministic decoding with automatic fallback only when quality checks fail.", LeftControl(_temperature), 62);
         engine.Add("Hotwords", "Extra words to boost. Built-in English/Slovenian vocabulary is added automatically in Auto.", hotwordsFrame, 64);
+        engine.Add("Fast long recordings", "Decodes complete speech blocks in the background, pastes once on release, and keeps full audio for automatic fallback.", _bufferedTranscriptionToggle, 64);
         AddPageItem(body, engine.Build());
 
         _aiModeChoice = new ChoiceStrip(new[] { "Off", "Grammar", "Prompt" }, new[] { "off", "grammar", "prompt" }) { Dock = DockStyle.Fill };
@@ -808,7 +812,7 @@ internal sealed class MainForm : Form
         performance.Add("Latest result", "Language, confidence, and recognition time after key release.", HorizontalControl(_performanceLatest, refreshPerformance), 58);
         performance.Add("Typical latency", "Median and p95 recognition time across up to 50 recent recordings.", _performanceTypical, 58);
         performance.Add("Microphone response", "Median time from hotkey activation until audio capture is ready.", _performanceMicrophone, 58);
-        performance.Add("Safety recovery", "How often the bilingual fallback was needed, plus median decoding speed.", _performanceRecovery, 58);
+        performance.Add("Safety passes", "Bilingual retries, full-audio fallbacks, and median decoding speed.", _performanceRecovery, 58);
         AddPageItem(body, performance.Build());
 
         var diagnostics = new SectionBuilder("System diagnostics", "Read-only signals from the installed application and runtime.");
@@ -975,6 +979,7 @@ internal sealed class MainForm : Form
             choice.SelectedChanged += (_, _) => MarkDirty();
 
         _autoStartToggle.CheckedChanged += (_, _) => MarkDirty();
+        _bufferedTranscriptionToggle.CheckedChanged += (_, _) => MarkDirty();
         _historyEnabled.CheckedChanged += (_, _) => MarkDirty();
         foreach (TextBox text in new[]
         {
@@ -1194,6 +1199,7 @@ internal sealed class MainForm : Form
         _hotwordsText.Text = slang
             ? _config.GetString("voiceprompt", "base_hotwords") ?? _config.GetString("server", "hotwords") ?? ""
             : _config.GetString("server", "hotwords") ?? "";
+        _bufferedTranscriptionToggle.Checked = _config.GetBool("voiceprompt", "buffered_transcription") ?? true;
 
         _threshold.Value = Clamp((decimal)(_config.GetDouble("vad", "threshold") ?? 0.60), _threshold);
         _silenceMs.Value = Clamp(_config.GetInt("vad", "silence_ms") ?? 250, _silenceMs);
@@ -1447,6 +1453,7 @@ internal sealed class MainForm : Form
         string processor = _processorChoice.SelectedValue;
         bool historyEnabled = _historyEnabled.Checked;
         int historyLimit = (int)_historyLimit.Value;
+        bool bufferedTranscription = _bufferedTranscriptionToggle.Checked;
 
         SetBusy(true);
         ShowFooter("Saving settings and restarting the local runtime…", Theme.Accent);
@@ -1464,6 +1471,7 @@ internal sealed class MainForm : Form
                 _config.Set("voiceprompt", "slovenian_slang", slangProfile);
                 _config.Set("voiceprompt", "base_prompt", basePrompt);
                 _config.Set("voiceprompt", "base_hotwords", baseHotwords);
+                _config.Set("voiceprompt", "buffered_transcription", bufferedTranscription);
                 _config.Set("vad", "threshold", threshold);
                 _config.Set("vad", "silence_ms", silenceMs);
                 _config.Set("vad", "min_speech_ms", minimumSpeechMs);
@@ -1700,6 +1708,7 @@ internal sealed class MainForm : Form
         _processorChoice.SelectValue("cuda");
         _computeChoice.SelectValue("float16");
         _temperature.Value = 0;
+        _bufferedTranscriptionToggle.Checked = true;
         MarkDirty();
         ShowFooter("Recommended setup restored. Save to activate it.", Theme.Accent);
     }
@@ -1719,6 +1728,7 @@ internal sealed class MainForm : Form
                 .AppendLine($"Engine: {info.Engine}")
                 .AppendLine($"Config exists: {File.Exists(_paths.ConfigPath)}")
                 .AppendLine($"Runtime installed: {_paths.Installed}")
+                .AppendLine($"Buffered long recordings: {_bufferedTranscriptionToggle.Checked}")
                 .AppendLine($"Performance samples: {performance.Count}")
                 .AppendLine(performance.Count > 0
                     ? $"Recognition median/p95: {performance.MedianTotalSeconds:0.000}s / {performance.P95TotalSeconds:0.000}s"
@@ -1761,7 +1771,7 @@ internal sealed class MainForm : Form
             ? $"{microphoneMs:0} ms median"
             : "Not available in recent samples";
         string speed = snapshot.MedianRealtimeSpeed is { } realtimeSpeed ? $" · {realtimeSpeed:0.0}× real-time" : "";
-        _performanceRecovery.Text = $"{snapshot.RetryCount} of {snapshot.Count} recordings ({(double)snapshot.RetryCount / snapshot.Count:P0}){speed}";
+        _performanceRecovery.Text = $"{snapshot.RetryCount} bilingual · {snapshot.FullFallbackCount} full-audio{speed}";
     }
 
     private void OpenLog()

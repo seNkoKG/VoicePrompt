@@ -34,7 +34,8 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $daemon = Join-Path $Module "daemon.py"
     $history = Join-Path $Module "transcript_history.py"
     $corrections = Join-Path $Module "text_corrections.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections
+    $buffered = Join-Path $Module "buffered_transcription.py"
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -94,8 +95,14 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
         throw "$Name still truncates held recordings."
     }
-    if ([regex]::Matches($daemonSource, "self\._recorded_chunks\.append\(audio\.copy\(\)\)").Count -ne 1) {
-        throw "$Name does not retain each captured batch audio chunk exactly once."
+    if ([regex]::Matches($daemonSource, "self\._recorded_chunks\.append\(audio\.copy\(\)\)").Count -ne 2) {
+        throw "$Name does not retain each batch or buffered audio chunk exactly once per route."
+    }
+    if (-not (Test-Path -LiteralPath $buffered) -or
+        -not $daemonSource.Contains("self._buffered_streaming") -or
+        -not $daemonSource.Contains("full audio will be used") -or
+        -not $daemonSource.Contains("Short or uninterrupted recordings keep the proven exact batch path")) {
+        throw "$Name is missing the lossless buffered transcription contract."
     }
     if (-not $daemonSource.Contains("Paste shortcut sent: %d chars")) {
         throw "$Name does not expose a privacy-safe successful-paste signal."
@@ -112,12 +119,22 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not $daemonSource.Contains("Audio capture ready in %.0f ms")) {
         throw "$Name does not measure microphone cold-start latency."
     }
+    $deactivateStart = $daemonSource.IndexOf("    def _on_deactivate(")
+    $stopAudio = $daemonSource.IndexOf("            audio.stop()", $deactivateStart)
+    $snapshotAudio = $daemonSource.IndexOf("            chunks = list(self._recorded_chunks)", $deactivateStart)
+    if ($deactivateStart -lt 0 -or $stopAudio -lt 0 -or $snapshotAudio -lt 0 -or $snapshotAudio -lt $stopAudio) {
+        throw "$Name snapshots audio before the final capture callback has stopped."
+    }
     Write-Output "PASS $Name"
 }
 
 $cleanModule = New-UpstreamRuntime "clean"
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-first"
+$cleanFirstHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-second"
+if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash -ne $cleanFirstHash) {
+    throw "Clean install patching is not byte-for-byte idempotent."
+}
 Assert-CurrentRuntime $cleanModule "clean install"
 
 $releaseZip = Join-Path $testRoot "VoicePrompt-v1.1.2-windows-x64.zip"
@@ -134,7 +151,11 @@ if (-not (Test-Path -LiteralPath $oldPatch)) {
 $upgradeModule = New-UpstreamRuntime "upgrade"
 Invoke-RuntimePatch $oldPatch $upgradeModule "v1.1.2"
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-first"
+$upgradeFirstHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-second"
+if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash -ne $upgradeFirstHash) {
+    throw "Upgrade patching is not byte-for-byte idempotent."
+}
 Assert-CurrentRuntime $upgradeModule "v1.1.2 upgrade"
 
 Write-Output "PATCH_MIGRATION_GATE=PASS"

@@ -10,6 +10,11 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
+
 BASE = Path.home() / ".voice-typing"
 BASE.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +46,32 @@ logging.basicConfig(
     handlers=[logging.FileHandler(BASE / "daemon.log", encoding="utf-8")],
 )
 
+
+def buffered_transcription_enabled() -> bool:
+    """Enable lossless pre-transcription only for the local engine."""
+    try:
+        from platformdirs import user_config_dir
+
+        config_path = Path(user_config_dir("faster-whisper-dictation")) / "config.toml"
+        with config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+        enabled = config.get("voiceprompt", {}).get("buffered_transcription", True)
+        engine = config.get("engine", {}).get("type", "server")
+        return enabled is True and engine == "local"
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not read buffered transcription setting; using accurate batch mode",
+            exc_info=True,
+        )
+        return False
+
 from whisper_dictation.cli import main  # noqa: E402
 
 sys.argv = [sys.argv[0], "start"]
+if buffered_transcription_enabled():
+    os.environ["VOICEPROMPT_BUFFERED_STREAMING"] = "1"
+    sys.argv.append("--streaming")
+    logging.getLogger(__name__).info(
+        "Lossless buffered transcription enabled for long recordings"
+    )
 sys.exit(main())

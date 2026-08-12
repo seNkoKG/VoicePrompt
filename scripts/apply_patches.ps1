@@ -91,6 +91,9 @@ Write-Output "[SYNCED  ] slang_retry.py -- mixed English/Slovenian routing"
 $decodingOptionsSource = Join-Path $PSScriptRoot "decoding_options.py"
 Copy-Item -LiteralPath $decodingOptionsSource -Destination "$site\decoding_options.py" -Force
 Write-Output "[SYNCED  ] decoding_options.py -- latency-bounded Whisper decoding"
+$bufferedSource = Join-Path $PSScriptRoot "buffered_transcription.py"
+Copy-Item -LiteralPath $bufferedSource -Destination "$site\buffered_transcription.py" -Force
+Write-Output "[SYNCED  ] buffered_transcription.py -- lossless long-recording prefetch"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -499,7 +502,7 @@ Apply-Patch "$site\daemon.py" @'
 
         publish_level(audio)
         ws_engine = self._ws_engine  # snapshot to avoid race with deactivate
-'@ "daemon.py -- publish audio level"
+'@ "daemon.py -- publish audio level" 'publish_level(audio)'
 Apply-Patch "$site\daemon.py" @'
         if audio is not None:
             audio.stop()
@@ -511,7 +514,7 @@ Apply-Patch "$site\daemon.py" @'
         publish_state(False)
 
         if self._use_ws and ws_engine is not None:
-'@ "daemon.py -- publish recording stop"
+'@ "daemon.py -- publish recording stop" 'publish_state(False)'
 
 # Batch recording must never silently discard speech. max_speech_s is passed to
 # Silero VAD as an internal segmentation size; it is not a capture-duration cap.
@@ -537,7 +540,7 @@ Apply-Patch "$site\daemon.py" @'
             with self._lock:
                 # Do not discard the tail of long held recordings.
                 self._recorded_chunks.append(audio.copy())
-'@ "daemon.py -- remove silent 90-second truncation" 'Do not discard the tail of long held recordings.'
+'@ "daemon.py -- remove silent 90-second truncation" 'self._recorded_chunks.append(audio.copy())'
 
 Apply-Patch "$site\daemon.py" @'
             if text:
@@ -1161,5 +1164,411 @@ Replace-Block `
     '_CF_UNICODETEXT = 13' `
     $canonicalWindowsTyper `
     "typer.py -- reliable verified Windows paste"
+
+# 10. Buffered local transcription precomputes complete speech blocks while
+# preserving the entire microphone stream for an automatic accurate fallback.
+Apply-Patch "$site\daemon.py" @'
+import logging
+import threading
+'@ @'
+import logging
+import os
+import threading
+'@ "daemon.py -- buffered mode environment import" 'import os'
+Apply-Patch "$site\daemon.py" @'
+from .audio import AudioStream
+'@ @'
+from .audio import AudioStream
+from .buffered_transcription import BufferedSession
+'@ "daemon.py -- buffered session import" 'from .buffered_transcription import BufferedSession'
+
+$canonicalDaemonInit = @'
+    def __init__(self, config: Config, streaming: bool = False):
+        self.config = config
+        self.streaming = streaming
+        self._engine: TranscriptionEngine = create_engine(config)
+
+        # WebSocket streaming is kept separate from VoicePrompt's local,
+        # one-paste buffered mode.
+        self._use_ws = streaming and config.engine.type == "server"
+        self._buffered_streaming = (
+            streaming
+            and config.engine.type == "local"
+            and os.environ.get("VOICEPROMPT_BUFFERED_STREAMING", "").lower()
+            in ("1", "true", "yes")
+        )
+        self._ws_engine: WhisperLiveKitEngine | None = None
+
+        self._vad = SpeechDetector(
+            sample_rate=config.audio.sample_rate,
+            threshold=config.vad.threshold,
+            silence_ms=config.vad.silence_ms,
+            min_speech_ms=config.vad.min_speech_ms,
+            max_speech_s=config.vad.max_speech_s,
+        )
+        self._audio: AudioStream | None = None
+        self._hotkey: HotkeyListener | None = None
+        self._running = threading.Event()
+        self._stop_event = threading.Event()
+        self._recording = False
+        publish_state(False)
+        self._recording_start: float = 0.0
+        # Batch and buffered modes retain every chunk. Three minutes of 16 kHz
+        # mono float32 audio is only about 11 MiB and guarantees fallback.
+        self._recorded_chunks: list[np.ndarray] = []
+        self._buffered_session: BufferedSession | None = None
+
+        self._lock = threading.Lock()
+        # One worker preserves speech-block and final-paste order and prevents
+        # concurrent access to the faster-whisper model.
+        self._transcribe_pool = ThreadPoolExecutor(max_workers=1)
+        self._last_ws_text: str = ""
+        self._ws_repeat_count: int = 0
+        self._WS_MAX_REPEATS: int = 2
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def __init__(' `
+    '    def _create_ws_engine(' `
+    $canonicalDaemonInit `
+    "daemon.py -- canonical buffered initialization"
+
+$canonicalOnAudio = @'
+    def _on_audio_chunk(self, audio: np.ndarray) -> None:
+        """Publish metering and route one microphone chunk without dropping it."""
+        if not self._recording:
+            return
+
+        publish_level(audio)
+        ws_engine = self._ws_engine
+        if self._use_ws and ws_engine is not None:
+            try:
+                ws_engine.send_audio(audio)
+            except Exception:
+                log.error("WS audio send failed", exc_info=True)
+        elif self._buffered_streaming:
+            with self._lock:
+                self._recorded_chunks.append(audio.copy())
+            self._on_audio_chunk_buffered(audio)
+        elif self.streaming:
+            self._on_audio_chunk_streaming(audio)
+        else:
+            with self._lock:
+                self._recorded_chunks.append(audio.copy())
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _on_audio_chunk(' `
+    '    def _on_audio_chunk_streaming(' `
+    $canonicalOnAudio `
+    "daemon.py -- lossless buffered audio routing"
+
+$canonicalStreamingHandlers = @'
+    def _on_audio_chunk_streaming(self, audio: np.ndarray) -> None:
+        """Upstream live mode: type each VAD-complete utterance immediately."""
+        try:
+            complete, utterance = self._vad.process_chunk(audio)
+        except Exception:
+            log.error("VAD processing failed", exc_info=True)
+            return
+
+        if complete and utterance is not None:
+            self._transcribe_pool.submit(self._transcribe_and_type, utterance)
+
+    def _on_audio_chunk_buffered(self, audio: np.ndarray) -> None:
+        """Queue useful speech batches while retaining one final paste."""
+        session = self._buffered_session
+        if session is None:
+            return
+        try:
+            complete, utterance = self._vad.process_chunk(audio)
+            if not complete or utterance is None:
+                return
+            batch = session.add_utterance(utterance)
+            if batch is not None:
+                self._transcribe_pool.submit(self._transcribe_buffered, session, batch)
+        except Exception:
+            session.mark_failed()
+            log.error("Buffered VAD processing failed; full audio will be used", exc_info=True)
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _on_audio_chunk_streaming(' `
+    '    def _on_ws_text(' `
+    $canonicalStreamingHandlers `
+    "daemon.py -- buffered speech batching"
+
+$canonicalTranscriptionHandlers = @'
+    def _transcribe_buffered(
+        self,
+        session: BufferedSession,
+        audio: np.ndarray,
+    ) -> None:
+        """Decode one retained speech block without touching the target app."""
+        started = time.perf_counter()
+        try:
+            text = self._engine.transcribe(audio, self.config.audio.sample_rate)
+        except Exception:
+            elapsed = time.perf_counter() - started
+            session.record_failure(elapsed)
+            log.error("Buffered transcription failed; full audio will be used", exc_info=True)
+            return
+        elapsed = time.perf_counter() - started
+        session.record_result(text, elapsed)
+        log.info(
+            "Buffered chunk ready: %.1fs audio in %.3fs",
+            len(audio) / self.config.audio.sample_rate,
+            elapsed,
+        )
+
+    def _finalize_buffered(
+        self,
+        session: BufferedSession,
+        full_audio: np.ndarray,
+        release_started: float,
+    ) -> None:
+        """Paste one combined result, or accurately retry the complete audio."""
+        fallback = session.needs_fallback
+        fallback_seconds = 0.0
+        if fallback:
+            fallback_started = time.perf_counter()
+            try:
+                text = self._engine.transcribe(full_audio, self.config.audio.sample_rate)
+            except Exception:
+                log.error("Buffered fallback transcription failed", exc_info=True)
+                notify("Transcription failed", "Open VoicePrompt diagnostics for details")
+                return
+            fallback_seconds = time.perf_counter() - fallback_started
+        else:
+            text = session.text
+
+        release_wait = time.perf_counter() - release_started
+        log.info(
+            "Buffered transcription ready: batches=%d, prefetched=%d, "
+            "compute=%.3fs, release_wait=%.3fs, fallback=%s",
+            session.scheduled_batches,
+            session.scheduled_before_release,
+            session.compute_seconds + fallback_seconds,
+            release_wait,
+            fallback,
+        )
+        if not text:
+            log.info("No speech detected")
+            return
+        try:
+            type_text(text + " ")
+            log.info("Paste shortcut sent: %d chars", len(text))
+        except Exception:
+            log.error("Paste failed after buffered transcription", exc_info=True)
+            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+
+    def _transcribe_and_type(self, audio: np.ndarray) -> None:
+        """Transcribe audio, then paste it with separate failure reporting."""
+        try:
+            text = self._engine.transcribe(audio, self.config.audio.sample_rate)
+        except Exception:
+            log.error("Transcription failed", exc_info=True)
+            notify("Transcription failed", "Open VoicePrompt diagnostics for details")
+            return
+
+        if not text:
+            log.info("No speech detected")
+            return
+
+        try:
+            type_text(text + " ")
+            log.info("Paste shortcut sent: %d chars", len(text))
+        except Exception:
+            log.error("Paste failed after successful transcription", exc_info=True)
+            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+'@
+$daemonTranscriptionSource = [System.IO.File]::ReadAllText("$site\daemon.py")
+$transcriptionHandlerStart = if ($daemonTranscriptionSource.Contains("    def _transcribe_buffered(")) {
+    '    def _transcribe_buffered('
+} else {
+    '    def _transcribe_and_type('
+}
+Replace-Block `
+    "$site\daemon.py" `
+    $transcriptionHandlerStart `
+    '    def _deactivate_ws(' `
+    $canonicalTranscriptionHandlers `
+    "daemon.py -- one-paste buffered transcription"
+
+$canonicalBufferedActivate = @'
+    def _on_activate(self) -> None:
+        """Show feedback immediately, then start a lossless recording session."""
+        activation_started = time.perf_counter()
+        with self._lock:
+            if self._recording:
+                return
+            self._recording = True
+            self._recorded_chunks.clear()
+            self._buffered_session = (
+                BufferedSession(self.config.audio.sample_rate)
+                if self._buffered_streaming
+                else None
+            )
+            self._recording_start = time.monotonic()
+            self._last_ws_text = ""
+            self._ws_repeat_count = 0
+        publish_state(True)
+        log.info(
+            "Recording started (use_ws=%s, streaming=%s, buffered=%s, engine=%s)",
+            self._use_ws,
+            self.streaming,
+            self._buffered_streaming,
+            self.config.engine.type,
+        )
+
+        ws_engine = None
+        if self._use_ws:
+            ws_cfg = self.config.websocket
+            ws_engine = self._create_ws_engine(
+                server_url=self.config.server.url,
+                language=self.config.server.language,
+                reconnect_attempts=ws_cfg.reconnect_attempts,
+                reconnect_delay=ws_cfg.reconnect_delay,
+                on_text=self._on_ws_text,
+            )
+            try:
+                ws_engine.connect()
+            except Exception:
+                log.error("WebSocket connection failed", exc_info=True)
+                ws_engine.close()
+                with self._lock:
+                    self._recording = False
+                    self._buffered_session = None
+                publish_state(False)
+                notify("Error", "WebSocket connection failed")
+                return
+        elif self.streaming:
+            self._vad.reset()
+
+        with self._lock:
+            self._ws_engine = ws_engine
+
+        audio = AudioStream(self.config.audio, self._on_audio_chunk)
+        try:
+            audio.start()
+        except Exception:
+            log.error("Failed to start audio capture", exc_info=True)
+            audio.stop()
+            if ws_engine is not None:
+                ws_engine.close()
+            with self._lock:
+                self._ws_engine = None
+                self._buffered_session = None
+                self._recording = False
+                self._audio = None
+            publish_state(False)
+            notify("Error", "Could not access microphone")
+            return
+
+        with self._lock:
+            self._audio = audio
+        publish_state(True)
+        log.info(
+            "Audio capture ready in %.0f ms",
+            (time.perf_counter() - activation_started) * 1000,
+        )
+        notify("Recording", "Speak now...")
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _on_activate(' `
+    '    def _on_deactivate(' `
+    $canonicalBufferedActivate `
+    "daemon.py -- initialize buffered recording"
+
+$canonicalBufferedDeactivate = @'
+    def _on_deactivate(self) -> None:
+        """Stop recording and queue one ordered final transcription result."""
+        release_started = time.perf_counter()
+        with self._lock:
+            if not self._recording:
+                return
+            self._recording = False
+            audio = self._audio
+            self._audio = None
+            rec_start = self._recording_start
+
+        rec_duration = max(0.0, time.monotonic() - rec_start)
+        log.info("Recording stopped (%.1fs)", rec_duration)
+
+        # Stop and join the capture callback before taking the final chunk
+        # snapshot. A callback already in flight may have passed the recording
+        # check and must still be included in the complete-audio fallback.
+        if audio is not None:
+            audio.stop()
+        with self._lock:
+            chunks = list(self._recorded_chunks)
+            self._recorded_chunks.clear()
+            session = self._buffered_session
+            self._buffered_session = None
+            ws_engine = self._ws_engine
+            self._ws_engine = None
+        publish_state(False)
+
+        if self._use_ws and ws_engine is not None:
+            notify("Transcribing", f"{rec_duration:.0f}s of audio...")
+            self._transcribe_pool.submit(
+                self._deactivate_ws, ws_engine, rec_duration,
+            )
+        elif self._buffered_streaming and session is not None and chunks:
+            full_audio = np.concatenate(chunks)
+            duration = len(full_audio) / self.config.audio.sample_rate
+            try:
+                remaining = self._vad.flush()
+            except Exception:
+                remaining = None
+                session.mark_failed()
+                log.error("Buffered VAD flush failed; full audio will be used", exc_info=True)
+            session.mark_released()
+            if not session.has_prefetch:
+                # Short or uninterrupted recordings keep the proven exact batch path.
+                log.info("Transcribing %.1fs of audio in accurate batch mode...", duration)
+                notify("Transcribing", f"{duration:.0f}s of audio...")
+                self._transcribe_pool.submit(self._transcribe_and_type, full_audio)
+                return
+            try:
+                final_batch = session.add_utterance(remaining, force=True)
+            except Exception:
+                final_batch = None
+                session.mark_failed()
+                log.error("Buffered tail batching failed; full audio will be used", exc_info=True)
+            if final_batch is not None:
+                self._transcribe_pool.submit(
+                    self._transcribe_buffered, session, final_batch,
+                )
+            notify("Finishing", f"{duration:.0f}s recording...")
+            self._transcribe_pool.submit(
+                self._finalize_buffered,
+                session,
+                full_audio,
+                release_started,
+            )
+        elif self.streaming:
+            remaining = self._vad.flush()
+            if remaining is not None:
+                self._transcribe_pool.submit(self._transcribe_and_type, remaining)
+        elif chunks:
+            full_audio = np.concatenate(chunks)
+            duration = len(full_audio) / self.config.audio.sample_rate
+            log.info("Transcribing %.1fs of audio...", duration)
+            notify("Transcribing", f"{duration:.0f}s of audio...")
+            if self.config.engine.type == "server":
+                self._transcribe_pool.submit(self._transcribe_batch_ws, full_audio)
+            else:
+                self._transcribe_pool.submit(self._transcribe_and_type, full_audio)
+        else:
+            log.info("No audio recorded")
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def _on_deactivate(' `
+    '    def _check_server_available(' `
+    $canonicalBufferedDeactivate `
+    "daemon.py -- finalize buffered recording"
 
 Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"

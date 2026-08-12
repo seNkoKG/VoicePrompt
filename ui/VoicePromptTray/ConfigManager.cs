@@ -18,6 +18,7 @@ internal sealed class ConfigManager
 
         [voiceprompt]
         slovenian_slang = false
+        buffered_transcription = true
 
         [hotkey]
         binding = "f1"

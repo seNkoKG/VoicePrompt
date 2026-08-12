@@ -36,8 +36,9 @@ $packageHistory = Join-Path $packageRoot "scripts\transcript_history.py"
 $packageCorrections = Join-Path $packageRoot "scripts\text_corrections.py"
 $packageSlangRetry = Join-Path $packageRoot "scripts\slang_retry.py"
 $packageDecodingOptions = Join-Path $packageRoot "scripts\decoding_options.py"
+$packageBuffered = Join-Path $packageRoot "scripts\buffered_transcription.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -97,6 +98,7 @@ Copy-Item -LiteralPath $packageHistory -Destination (Join-Path $installScripts "
 Copy-Item -LiteralPath $packageCorrections -Destination (Join-Path $installScripts "text_corrections.py") -Force
 Copy-Item -LiteralPath $packageSlangRetry -Destination (Join-Path $installScripts "slang_retry.py") -Force
 Copy-Item -LiteralPath $packageDecodingOptions -Destination (Join-Path $installScripts "decoding_options.py") -Force
+Copy-Item -LiteralPath $packageBuffered -Destination (Join-Path $installScripts "buffered_transcription.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force
 if (Test-Path -LiteralPath (Join-Path $packageRoot "README.md")) {

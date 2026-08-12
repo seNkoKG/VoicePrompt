@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0] - 2026-08-12
+
+### Added
+
+- Added lossless buffered transcription for long local recordings, decoding complete speech blocks in the background while retaining the entire microphone stream.
+- Added a Fast long recordings control and privacy-safe diagnostics for background batch count, compute time, release wait, and full-audio fallback use.
+- Added orchestration, aggregate-performance, clean-install, legacy-upgrade, and byte-for-byte patch idempotence tests.
+
+### Changed
+
+- Keep short and uninterrupted recordings on the proven one-pass batch path; long recordings still paste exactly once and never type partial text while the hotkey is held.
+- Serialize all model work on one worker so speech blocks, fallback, and final paste remain ordered without increasing concurrent GPU load.
+
+### Fixed
+
+- Reduced measured post-release wait for a real-time 99.2-second English sample from a full after-release decode to 0.49 seconds without changing its measured 7.04% word error rate.
+- Fall back automatically to one complete-audio decode after any empty, failed, incomplete, VAD, or tail-batching result instead of risking a partial prompt.
+- Prevent repeated installer runs from duplicating buffered transcription handlers in the patched runtime.
+
 ## [1.4.0] - 2026-08-12
 
 ### Added
