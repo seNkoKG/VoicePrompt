@@ -171,6 +171,74 @@ catch (InvalidDataException)
     Check("duplicate snippets rejected", true);
 }
 
+var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
+{
+    Dictation = new VoicePromptTray.BackupDictationSettings
+    {
+        Hotkey = "ctrl+shift+f1",
+        Activation = "hold",
+        OutputMode = "clipboard",
+        VoiceCommands = true,
+        Language = "sl",
+        Prompt = "Imena: Žan",
+        Hotwords = "Codex, Ljubljana",
+    },
+    Recognition = new VoicePromptTray.BackupRecognitionSettings
+    {
+        Model = "Systran/faster-whisper-large-v3",
+        Processor = "cuda",
+        ComputeType = "float16",
+        BufferedTranscription = true,
+    },
+    Audio = new VoicePromptTray.BackupAudioSettings(),
+    Writing = new VoicePromptTray.BackupWritingSettings
+    {
+        Mode = "clean",
+        Endpoint = "http://127.0.0.1:11434/v1/chat/completions",
+        Model = "qwen2.5:3b",
+        TimeoutMs = 900,
+    },
+    Recovery = new VoicePromptTray.BackupRecoverySettings { Enabled = true, Limit = 25 },
+    Corrections = corrections.ToList(),
+    Snippets = parsedSnippets.ToList(),
+};
+string backupJson = VoicePromptTray.AppBackupStore.Serialize(portableBackup);
+var restoredBackup = VoicePromptTray.AppBackupStore.Deserialize(backupJson);
+Check("settings backup preserves portable Unicode values",
+    restoredBackup.Dictation.Prompt.Contains("Žan") &&
+    restoredBackup.Snippets[0].Content.Contains("Žan") &&
+    restoredBackup.Dictation.OutputMode == "clipboard");
+Check("settings backup excludes API keys", !backupJson.Contains("api_key", StringComparison.OrdinalIgnoreCase));
+Check("settings backup excludes transcript history", !backupJson.Contains("\"history\"", StringComparison.OrdinalIgnoreCase));
+Check("settings backup excludes microphone identity", !backupJson.Contains("microphone", StringComparison.OrdinalIgnoreCase));
+string backupPath = Path.Combine(dir, "portable", "VoicePrompt-settings-backup.json");
+VoicePromptTray.AppBackupStore.Save(backupPath, portableBackup);
+Check("settings backup file round trip", VoicePromptTray.AppBackupStore.Load(backupPath).Snippets.Count == 2);
+try
+{
+    VoicePromptTray.AppBackupStore.Serialize(portableBackup with
+    {
+        Dictation = portableBackup.Dictation with { Hotkey = "ctrl+not-a-key" },
+    });
+    Check("settings backup rejects invalid hotkeys", false);
+}
+catch (InvalidDataException)
+{
+    Check("settings backup rejects invalid hotkeys", true);
+}
+try
+{
+    VoicePromptTray.AppBackupStore.Serialize(portableBackup with
+    {
+        Writing = portableBackup.Writing with { Endpoint = "https://secret@example.test/v1/chat/completions" },
+    });
+    Check("settings backup rejects endpoint credentials", false);
+}
+catch (InvalidDataException)
+{
+    Check("settings backup rejects endpoint credentials", true);
+}
+
 string historyPath = Path.Combine(dir, "local", "history.json");
 string historySettingsPath = Path.Combine(dir, "local", "history-settings.json");
 var history = new VoicePromptTray.TranscriptHistoryStore(historyPath, historySettingsPath);

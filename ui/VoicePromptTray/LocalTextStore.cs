@@ -178,8 +178,7 @@ internal sealed class TextSnippetStore
             if (!document.RootElement.TryGetProperty("items", out JsonElement items))
                 return "";
             var entries = items.Deserialize<List<TextSnippetEntry>>() ?? [];
-            return string.Join(Environment.NewLine, entries.Select(entry =>
-                $"{entry.Name} => {EscapeContent(entry.Content)}"));
+            return Format(entries);
         }
         catch
         {
@@ -224,6 +223,10 @@ internal sealed class TextSnippetStore
             throw new InvalidDataException("Text snippets are limited to 50 entries.");
         return entries;
     }
+
+    public static string Format(IEnumerable<TextSnippetEntry> entries) =>
+        string.Join(Environment.NewLine, entries.Select(entry =>
+            $"{entry?.Name ?? ""} => {EscapeContent(entry?.Content ?? "")}"));
 
     private static string EscapeContent(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal)

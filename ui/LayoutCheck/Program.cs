@@ -137,6 +137,14 @@ using (var advancedToolsBitmap = new Bitmap(form.Width, form.Height))
     form.DrawToBitmap(advancedToolsBitmap, new Rectangle(Point.Empty, form.Size));
     advancedToolsBitmap.Save(advancedToolsPath);
 }
+pageMap["advanced"].AutoScrollPosition = new Point(0, 720);
+Application.DoEvents();
+string dataPortabilityPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_data_portability.png");
+using (var dataPortabilityBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(dataPortabilityBitmap, new Rectangle(Point.Empty, form.Size));
+    dataPortabilityBitmap.Save(dataPortabilityPath);
+}
 
 form.ShowPageForDiagnostics("intelligence");
 pageMap["intelligence"].AutoScrollPosition = new Point(0, 430);
@@ -184,6 +192,7 @@ if (!form.HasUnsavedChanges)
 typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>());
 Application.DoEvents();
+
 if (form.HasUnsavedChanges || threshold.Value != originalThreshold)
 {
     behaviorFailures++;
@@ -276,6 +285,42 @@ if (form.HasUnsavedChanges || aiModeChoice.SelectedValue != originalAiMode)
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR Discard did not restore the writing mode");
 }
+
+var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
+    VoicePromptTray.AppBackupStore.Serialize(new VoicePromptBackupDocument
+    {
+        Dictation = new BackupDictationSettings
+        {
+            Hotkey = "ctrl+shift+f2",
+            Activation = "toggle",
+            OutputMode = "clipboard",
+            VoiceCommands = true,
+            Language = "en",
+            Prompt = "Product: VoicePrompt",
+            Hotwords = "Codex",
+        },
+        Recognition = new BackupRecognitionSettings(),
+        Audio = new BackupAudioSettings(),
+        Writing = new BackupWritingSettings { Mode = "clean" },
+        Recovery = new BackupRecoverySettings { Limit = 30 },
+        Corrections = [new CorrectionEntry("codecs", "Codex")],
+        Snippets = [new TextSnippetEntry("reply", "Thank you")],
+    }));
+typeof(MainForm).GetMethod("ApplyAppBackup", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, new object[] { importedBackup });
+Application.DoEvents();
+string backupLanguage = (string)typeof(MainForm)
+    .GetMethod("SelectedLanguageCode", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>())!;
+if (!form.HasUnsavedChanges || backupLanguage != "en" || outputChoice.SelectedValue != "clipboard" ||
+    !voiceCommands.Checked || aiModeChoice.SelectedValue != "clean" || !snippetsText.Text.Contains("reply => Thank you"))
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR imported settings backup did not populate reviewable portable fields");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
 
 var languageChoice = (ChoiceStrip)typeof(MainForm)
     .GetField("_languageChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -466,6 +511,7 @@ foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
+Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");

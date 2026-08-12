@@ -905,6 +905,14 @@ internal sealed class MainForm : Form
         tools.Add("Files & updates", "Open the live config directory or the public download page.", HorizontalControl(config, release), 62);
         AddPageItem(body, tools.Build());
 
+        var portability = new SectionBuilder("Data portability", "Move your setup without exposing API keys or transcript history.");
+        var exportBackup = new ActionButton("Export backup", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        exportBackup.Click += (_, _) => ExportAppBackup();
+        var importBackup = new ActionButton("Import backup", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        importBackup.Click += (_, _) => ImportAppBackup();
+        portability.Add("Settings & vocabulary", "Includes portable settings, corrections, and snippets. Review imports before Save & restart.", HorizontalControl(exportBackup, importBackup), 64);
+        AddPageItem(body, portability.Build());
+
         var maintenance = new SectionBuilder("Maintenance", "Safe recovery actions. Nothing changes until you confirm or save.");
         var recommended = new ActionButton("Restore recommended setup", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
         recommended.Click += (_, _) => RestoreRecommendedSetup();
@@ -1281,6 +1289,154 @@ internal sealed class MainForm : Form
         _correctionsText.Text = profile.CorrectionsText;
         UpdateLanguageControls();
         UpdateOverview();
+        MarkDirty();
+    }
+
+    private void ExportAppBackup()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = "json",
+            FileName = "VoicePrompt-settings-backup.json",
+            Filter = "VoicePrompt settings backup (*.json)|*.json",
+            OverwritePrompt = true,
+            Title = "Export VoicePrompt settings and vocabulary",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        try
+        {
+            AppBackupStore.Save(dialog.FileName, BuildAppBackup());
+            ShowFooter("Backup exported · no API key, transcript history, microphone, or machine paths included", Theme.Ok);
+        }
+        catch (Exception ex)
+        {
+            ShowFooter("Could not export backup · " + ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
+    private void ImportAppBackup()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Filter = "VoicePrompt settings backup (*.json)|*.json",
+            Multiselect = false,
+            Title = "Import VoicePrompt settings and vocabulary",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        try
+        {
+            ApplyAppBackup(AppBackupStore.Load(dialog.FileName));
+            ShowFooter("Backup loaded · review each page, then Save & restart", Theme.Accent);
+        }
+        catch (Exception ex)
+        {
+            ShowFooter("Could not import backup · " + ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
+    private VoicePromptBackupDocument BuildAppBackup()
+    {
+        LanguageProfileDocument profile = LanguageProfileStore.Create(
+            SelectedLanguageCode(),
+            _promptText.Text,
+            _hotwordsText.Text,
+            _correctionsText.Text);
+        return new VoicePromptBackupDocument
+        {
+            Dictation = new BackupDictationSettings
+            {
+                Hotkey = _hotkeyRecorder.Binding,
+                Activation = _activationChoice.SelectedValue,
+                OutputMode = _outputChoice.SelectedValue,
+                VoiceCommands = _voiceCommandsToggle.Checked,
+                Language = profile.Language,
+                Prompt = profile.Prompt,
+                Hotwords = profile.Hotwords,
+            },
+            Recognition = new BackupRecognitionSettings
+            {
+                Model = _recognitionModelCombo.Text,
+                Processor = _processorChoice.SelectedValue,
+                ComputeType = _computeChoice.SelectedValue,
+                Temperature = (double)_temperature.Value,
+                BufferedTranscription = _bufferedTranscriptionToggle.Checked,
+            },
+            Audio = new BackupAudioSettings
+            {
+                SampleRate = int.Parse(_sampleRateChoice.SelectedValue, System.Globalization.CultureInfo.InvariantCulture),
+                Threshold = (double)_threshold.Value,
+                SilenceMs = (int)_silenceMs.Value,
+                MinimumSpeechMs = (int)_minimumSpeechMs.Value,
+                MaximumSpeechSeconds = (double)_maximumSpeechSeconds.Value,
+            },
+            Writing = new BackupWritingSettings
+            {
+                Mode = _aiModeChoice.SelectedValue,
+                Endpoint = _aiEndpointText.Text,
+                Model = _aiModelText.Text,
+                TimeoutMs = (int)_aiTimeoutMs.Value,
+            },
+            Recovery = new BackupRecoverySettings
+            {
+                Enabled = _historyEnabled.Checked,
+                Limit = (int)_historyLimit.Value,
+            },
+            Corrections = profile.Corrections,
+            Snippets = TextSnippetStore.Parse(_snippetsText.Text).ToList(),
+        };
+    }
+
+    private void ApplyAppBackup(VoicePromptBackupDocument backup)
+    {
+        _loading = true;
+        try
+        {
+            _hotkeyRecorder.Binding = backup.Dictation.Hotkey;
+            _activationChoice.SelectValue(backup.Dictation.Activation);
+            _outputChoice.SelectValue(backup.Dictation.OutputMode);
+            _voiceCommandsToggle.Checked = backup.Dictation.VoiceCommands;
+            ApplyLanguageProfile(new LanguageProfileDocument
+            {
+                Language = backup.Dictation.Language,
+                Prompt = backup.Dictation.Prompt,
+                Hotwords = backup.Dictation.Hotwords,
+                Corrections = backup.Corrections,
+            });
+            _snippetsText.Text = TextSnippetStore.Format(backup.Snippets);
+
+            _recognitionModelCombo.Text = backup.Recognition.Model;
+            _processorChoice.SelectValue(backup.Recognition.Processor);
+            _computeChoice.SelectValue(backup.Recognition.ComputeType);
+            _temperature.Value = (decimal)backup.Recognition.Temperature;
+            _bufferedTranscriptionToggle.Checked = backup.Recognition.BufferedTranscription;
+
+            _sampleRateChoice.SelectValue(backup.Audio.SampleRate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _threshold.Value = (decimal)backup.Audio.Threshold;
+            _silenceMs.Value = backup.Audio.SilenceMs;
+            _minimumSpeechMs.Value = backup.Audio.MinimumSpeechMs;
+            _maximumSpeechSeconds.Value = (decimal)backup.Audio.MaximumSpeechSeconds;
+
+            _aiModeChoice.SelectValue(backup.Writing.Mode);
+            _aiEndpointText.Text = backup.Writing.Endpoint;
+            _aiModelText.Text = backup.Writing.Model;
+            _aiTimeoutMs.Value = backup.Writing.TimeoutMs;
+            ResetAiKeyField();
+            _historyEnabled.Checked = backup.Recovery.Enabled;
+            _historyLimit.Value = backup.Recovery.Limit;
+            UpdateActivationHint();
+            UpdateOutputHint();
+            UpdateLanguageControls();
+            UpdateAiAvailability();
+            UpdateOverview();
+        }
+        finally
+        {
+            _loading = false;
+        }
         MarkDirty();
     }
 

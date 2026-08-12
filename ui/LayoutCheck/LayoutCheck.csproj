@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Compile Include="..\VoicePromptTray\AppPaths.cs" />
+    <Compile Include="..\VoicePromptTray\AppBackupStore.cs" />
     <Compile Include="..\VoicePromptTray\AiSettings.cs" />
     <Compile Include="..\VoicePromptTray\AudioMeterReader.cs" />
     <Compile Include="..\VoicePromptTray\ConfigManager.cs" />

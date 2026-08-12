@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.13.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.14.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -117,6 +117,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
 - **Portable language profiles** — exports or imports language, recognition context, hotwords, and personal corrections in a small JSON file. Profiles never contain API keys, transcript history, hotkeys, microphone names, or hardware settings.
+- **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, and snippet settings without API keys, transcripts, microphone identity, startup state, or machine paths.
 - **All settings** — language (English + Slovenian Auto, dedicated defaults, or any pinned Whisper language), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe performance statistics and copied diagnostics, and one-click log/config access.
 - **Private update check** — manually checks GitHub's public latest stable release with a three-second timeout, then shows the current/latest version and opens only the official release page. It never checks in the background or installs silently.
@@ -185,6 +186,12 @@ Enable **Voice commands** on the Dictation page. A command runs only when the en
 
 Snippets are edited under **Dictation → Reusable text**, one per line as `name => content`. Use `\n` where the inserted text should contain a line break. Snippets remain local, are loaded once when the runtime starts, and share the same exact-match safety gate as the built-in commands.
 
+### Settings and vocabulary backup
+
+Use **Advanced → Data portability** to export or import one validated JSON backup. Import is review-first: it fills the settings pages but changes neither the running daemon nor saved files until **Save & restart** is clicked. The backup includes the global hotkey, language and vocabulary, output behavior, recognition and VAD tuning, AI mode/provider settings, recovery preferences, corrections, and snippets.
+
+The encrypted API key, transcript history, microphone identity, Windows startup state, window preferences, logs, and machine-specific paths are never exported. Endpoint URLs containing embedded credentials, query strings, or fragments are rejected to prevent accidental token leakage.
+
 ## 🔧 Patches (required on Windows)
 
 Fourteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
@@ -223,7 +230,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_text_snippets.py` — verifies bounded Unicode snippet loading, bilingual exact resolution, malformed-data fallback, and false-positive protection.
 - `tests/test_patch_migrations.ps1` — verifies clean and legacy upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
-- `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
+- `ui/ConfigManager.Tests` — verifies the comment-preserving config editor plus privacy-safe, validated settings/vocabulary backup round trips (run: `dotnet run --project ui\ConfigManager.Tests`).
 
 Verified end-to-end results (simulated): a clear English utterance landed **0.78 s** after key release; an ambiguous Slovenian utterance requiring the safety decode landed in **1.86 s**. The original batch path retained a **129.9-second** recording's opening sentence, all 18 checkpoints, and unique final sentence. With fast long recordings enabled, a real-time **99.2-second** English sample produced one ordered paste **0.49 s** after release and matched the full one-pass decode's measured **7.04% WER** on the same reference.
 

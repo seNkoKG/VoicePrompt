@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.14.0] - 2026-08-12
+
+### Added
+
+- Added a validated JSON backup for portable dictation, recognition, audio-detection, writing, recovery, correction, and snippet settings.
+- Added Advanced-page Export backup and Import backup actions with review-first import behavior.
+- Added Unicode round-trip, atomic file, privacy exclusion, invalid-hotkey, embedded-credential, UI interaction, accessibility, and scrolled-layout coverage.
+
+### Changed
+
+- Preserve the current encrypted API key during import and require Save & restart before imported values affect the runtime.
+- Exclude transcript history, API keys, microphone identity, startup state, window preferences, logs, and machine paths from every backup.
+
+### Fixed
+
+- Reject oversized or malformed backups and unsafe provider URLs containing embedded credentials, query strings, or fragments.
+
 ## [1.13.0] - 2026-08-12
 
 ### Added
