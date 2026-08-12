@@ -8,8 +8,8 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
-Application.EnableVisualStyles();
-Application.SetCompatibleTextRenderingDefault(false);
+ApplicationConfiguration.Initialize();
+Application.SetColorMode(SystemColorMode.Dark);
 
 var paths = AppPaths.Default;
 string preferencesPath = Path.Combine(paths.AppDataDir, "prefs.json");
@@ -87,6 +87,20 @@ void CheckTree(Control parent, string context)
     }
 }
 
+void SaveClientScreenshot(string path)
+{
+    using var window = new Bitmap(form.Width, form.Height);
+    form.DrawToBitmap(window, new Rectangle(Point.Empty, form.Size));
+    Rectangle clientOnScreen = form.RectangleToScreen(form.ClientRectangle);
+    var clientInWindow = new Rectangle(
+        Math.Max(0, clientOnScreen.Left - form.Left),
+        Math.Max(0, clientOnScreen.Top - form.Top),
+        Math.Min(form.ClientSize.Width, window.Width),
+        Math.Min(form.ClientSize.Height, window.Height));
+    using Bitmap client = window.Clone(clientInWindow, window.PixelFormat);
+    client.Save(path);
+}
+
 void RenderPage(string page, Size size, bool saveScreenshot)
 {
     form.ClientSize = size;
@@ -107,9 +121,7 @@ void RenderPage(string page, Size size, bool saveScreenshot)
         return;
 
     string path = Path.Combine(Path.GetTempPath(), screenshotNames[page]);
-    using var bitmap = new Bitmap(form.Width, form.Height);
-    form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
-    bitmap.Save(path);
+    SaveClientScreenshot(path);
 }
 
 foreach (string page in pages)
@@ -141,11 +153,7 @@ var pageMap = (Dictionary<string, Panel>)typeof(MainForm)
 pageMap["history"].AutoScrollPosition = new Point(0, 300);
 Application.DoEvents();
 string historyComparisonPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_history_comparison.png");
-using (var historyComparisonBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(historyComparisonBitmap, new Rectangle(Point.Empty, form.Size));
-    historyComparisonBitmap.Save(historyComparisonPath);
-}
+SaveClientScreenshot(historyComparisonPath);
 
 form.ClientSize = new Size(1080, 780);
 form.ShowPageForDiagnostics("advanced");
@@ -178,40 +186,38 @@ if (form.HasUnsavedChanges || !updateStatus.Text.Contains(
 }
 updateChannel.SelectValue(originalUpdateChannel);
 Application.DoEvents();
+var themePicker = (ThemePicker)typeof(MainForm)
+    .GetField("_themePicker", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalTheme = themePicker.SelectedValue;
+string alternateTheme = originalTheme == "evergreen" ? "ember" : "evergreen";
+themePicker.SelectValue(alternateTheme);
+Application.DoEvents();
+if (Theme.Current.Id != alternateTheme || form.BackColor != Theme.Canvas || form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR interface theme did not apply instantly and independently");
+}
+themePicker.SelectValue(originalTheme);
+Application.DoEvents();
 pageMap["advanced"].AutoScrollPosition = new Point(0, 460);
 Application.DoEvents();
 string advancedToolsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_advanced_tools.png");
-using (var advancedToolsBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(advancedToolsBitmap, new Rectangle(Point.Empty, form.Size));
-    advancedToolsBitmap.Save(advancedToolsPath);
-}
+SaveClientScreenshot(advancedToolsPath);
 pageMap["advanced"].AutoScrollPosition = new Point(0, 720);
 Application.DoEvents();
 string dataPortabilityPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_data_portability.png");
-using (var dataPortabilityBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(dataPortabilityBitmap, new Rectangle(Point.Empty, form.Size));
-    dataPortabilityBitmap.Save(dataPortabilityPath);
-}
+SaveClientScreenshot(dataPortabilityPath);
 
 form.ShowPageForDiagnostics("intelligence");
 pageMap["intelligence"].AutoScrollPosition = new Point(0, 430);
 Application.DoEvents();
 string writingModesPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_writing_modes.png");
-using (var writingModesBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(writingModesBitmap, new Rectangle(Point.Empty, form.Size));
-    writingModesBitmap.Save(writingModesPath);
-}
+SaveClientScreenshot(writingModesPath);
 pageMap["intelligence"].AutoScrollPosition = new Point(0, 800);
 Application.DoEvents();
 string applicationProfilesPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_application_profiles.png");
-using (var applicationProfilesBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(applicationProfilesBitmap, new Rectangle(Point.Empty, form.Size));
-    applicationProfilesBitmap.Save(applicationProfilesPath);
-}
+SaveClientScreenshot(applicationProfilesPath);
 
 foreach (string page in pages)
     RenderPage(page, new Size(900, 650), saveScreenshot: false);
@@ -406,11 +412,7 @@ form.ShowPageForDiagnostics("intelligence");
 pageMap["intelligence"].AutoScrollPosition = Point.Empty;
 Application.DoEvents();
 string recognitionServerPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_recognition_server.png");
-using (var recognitionServerBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(recognitionServerBitmap, new Rectangle(Point.Empty, form.Size));
-    recognitionServerBitmap.Save(recognitionServerPath);
-}
+SaveClientScreenshot(recognitionServerPath);
 typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>());
 Application.DoEvents();
@@ -516,19 +518,11 @@ form.ShowPageForDiagnostics("dictation");
 pageMap["dictation"].AutoScrollPosition = new Point(0, 560);
 Application.DoEvents();
 string languageProfilePath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_language_profile.png");
-using (var languageProfileBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(languageProfileBitmap, new Rectangle(Point.Empty, form.Size));
-    languageProfileBitmap.Save(languageProfilePath);
-}
+SaveClientScreenshot(languageProfilePath);
 pageMap["dictation"].AutoScrollPosition = new Point(0, 980);
 Application.DoEvents();
 string snippetsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_snippets.png");
-using (var snippetsBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(snippetsBitmap, new Rectangle(Point.Empty, form.Size));
-    snippetsBitmap.Save(snippetsPath);
-}
+SaveClientScreenshot(snippetsPath);
 typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>());
 Application.DoEvents();
@@ -616,11 +610,7 @@ if (!inputMeter.Listening || inputMeter.DisplayLevel < 0.20f)
     failures.AppendLine($"BEHAVIOR input test did not read the shared microphone level: {inputMeter.DisplayLevel:0.00}");
 }
 string inputTestPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_input_test.png");
-using (var inputTestBitmap = new Bitmap(form.Width, form.Height))
-{
-    form.DrawToBitmap(inputTestBitmap, new Rectangle(Point.Empty, form.Size));
-    inputTestBitmap.Save(inputTestPath);
-}
+SaveClientScreenshot(inputTestPath);
 
 using (var recorder = new HotkeyRecorder { Binding = "f1" })
 {

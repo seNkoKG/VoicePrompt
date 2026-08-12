@@ -3,6 +3,182 @@ using System.Drawing.Drawing2D;
 
 namespace VoicePromptTray;
 
+internal sealed class BrandMark : Control
+{
+    public BrandMark()
+    {
+        BackColor = Theme.Sidebar;
+        AccessibleRole = AccessibleRole.Graphic;
+        AccessibleName = "VoicePrompt";
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.UserPaint,
+            true);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        var bounds = Rectangle.Inflate(ClientRectangle, -1, -1);
+        if (bounds.Width < 4 || bounds.Height < 4)
+            return;
+
+        using var tile = Theme.RoundedRect(bounds, Math.Max(7, bounds.Width / 4));
+        using var fill = new LinearGradientBrush(bounds, Theme.SurfaceRaised, Theme.Canvas, 55f);
+        using var border = new Pen(Theme.BorderStrong, 1.1f);
+        e.Graphics.FillPath(fill, tile);
+        e.Graphics.DrawPath(border, tile);
+
+        PointF P(float x, float y) => new(bounds.Left + bounds.Width * x, bounds.Top + bounds.Height * y);
+        PointF[] waveform =
+        {
+            P(.18f, .52f), P(.28f, .52f), P(.32f, .39f), P(.38f, .67f),
+            P(.44f, .22f), P(.51f, .78f), P(.58f, .40f), P(.64f, .66f),
+            P(.69f, .52f), P(.82f, .52f),
+        };
+        using var signal = new Pen(Theme.Accent, Math.Max(2f, bounds.Width * .065f))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        e.Graphics.DrawLines(signal, waveform);
+    }
+}
+
+internal sealed class ThemePicker : Control
+{
+    private int _hovered = -1;
+    private string _selectedValue = Theme.Current.Id;
+
+    public event EventHandler? SelectedChanged;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string SelectedValue => _selectedValue;
+
+    public ThemePicker()
+    {
+        Height = 76;
+        BackColor = Theme.Surface;
+        Cursor = Cursors.Hand;
+        TabStop = true;
+        AccessibleRole = AccessibleRole.List;
+        AccessibleName = "Interface theme";
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.Selectable |
+            ControlStyles.UserPaint,
+            true);
+    }
+
+    public void SelectValue(string? value)
+    {
+        ThemePalette palette = Theme.Find(value);
+        if (_selectedValue == palette.Id)
+            return;
+        _selectedValue = palette.Id;
+        Invalidate();
+        SelectedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        IReadOnlyList<ThemePalette> options = Theme.Available;
+        using var labelFont = Theme.Font(9f, FontStyle.Bold);
+        int gap = 8;
+        int width = Math.Max(1, (ClientSize.Width - gap * (options.Count - 1)) / options.Count);
+        for (int i = 0; i < options.Count; i++)
+        {
+            ThemePalette palette = options[i];
+            var bounds = new Rectangle(i * (width + gap), 1, i == options.Count - 1 ? ClientSize.Width - i * (width + gap) : width, Height - 2);
+            bool selected = palette.Id == _selectedValue;
+            using var path = Theme.RoundedRect(Rectangle.Inflate(bounds, -1, -1), 11);
+            using var fill = new SolidBrush(palette.SurfaceRaised);
+            using var border = new Pen(selected ? palette.Accent : i == _hovered ? palette.BorderStrong : palette.Border, selected ? 1.8f : 1f);
+            e.Graphics.FillPath(fill, path);
+            e.Graphics.DrawPath(border, path);
+
+            using var accent = new SolidBrush(palette.Accent);
+            using var surface = new SolidBrush(palette.Control);
+            e.Graphics.FillEllipse(accent, bounds.Left + 14, bounds.Top + 15, 12, 12);
+            e.Graphics.FillEllipse(surface, bounds.Left + 22, bounds.Top + 15, 12, 12);
+            TextRenderer.DrawText(
+                e.Graphics,
+                palette.Name,
+                labelFont,
+                new Rectangle(bounds.Left + 14, bounds.Top + 37, bounds.Width - 28, 22),
+                palette.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+        if (Focused && ShowFocusCues)
+            ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -2, -2));
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        int next = IndexAt(e.Location);
+        if (next != _hovered)
+        {
+            _hovered = next;
+            Invalidate();
+        }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        _hovered = -1;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        Focus();
+        int index = IndexAt(e.Location);
+        if (e.Button == MouseButtons.Left && index >= 0)
+            SelectValue(Theme.Available[index].Id);
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        int current = Theme.Available.ToList().FindIndex(option => option.Id == _selectedValue);
+        int next = e.KeyCode switch
+        {
+            Keys.Left or Keys.Up => Math.Max(0, current - 1),
+            Keys.Right or Keys.Down => Math.Min(Theme.Available.Count - 1, current + 1),
+            _ => current,
+        };
+        if (next != current)
+        {
+            SelectValue(Theme.Available[next].Id);
+            e.Handled = true;
+        }
+        base.OnKeyDown(e);
+    }
+
+    private int IndexAt(Point location)
+    {
+        int count = Theme.Available.Count;
+        int gap = 8;
+        int width = Math.Max(1, (ClientSize.Width - gap * (count - 1)) / count);
+        for (int i = 0; i < count; i++)
+        {
+            int right = i == count - 1 ? ClientSize.Width : i * (width + gap) + width;
+            if (location.X >= i * (width + gap) && location.X < right)
+                return i;
+        }
+        return -1;
+    }
+}
+
 internal enum ActionButtonStyle
 {
     Primary,
@@ -32,7 +208,7 @@ internal sealed class ActionButton : Control
     {
         Text = text;
         _visualStyle = style;
-        Height = 38;
+        Height = 40;
         Font = Theme.Font(9.25f, FontStyle.Bold);
         Width = Math.Max(86, TextRenderer.MeasureText(text, Font).Width + 34);
         ForeColor = Theme.Text;
@@ -55,7 +231,7 @@ internal sealed class ActionButton : Control
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
-        using var path = Theme.RoundedRect(bounds, 9);
+        using var path = Theme.RoundedRect(bounds, 10);
 
         Color fill;
         Color border;
@@ -211,7 +387,7 @@ internal sealed class NavigationButton : Control
         PageKey = pageKey;
         Glyph = glyph;
         Text = text;
-        Height = 44;
+        Height = 46;
         Font = Theme.Font(9.75f, FontStyle.Bold);
         ForeColor = Theme.TextSecondary;
         BackColor = Theme.Sidebar;
@@ -235,20 +411,25 @@ internal sealed class NavigationButton : Control
         var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
         if (_selected || _hovered)
         {
-            using var path = Theme.RoundedRect(Rectangle.Inflate(bounds, -4, -2), 9);
+            using var path = Theme.RoundedRect(Rectangle.Inflate(bounds, -4, -2), 11);
             using var fill = new SolidBrush(_selected ? Theme.AccentSoft : Theme.Surface);
             e.Graphics.FillPath(fill, path);
+            if (_selected)
+            {
+                using var outline = new Pen(Color.FromArgb(145, Theme.BorderStrong), 1f);
+                e.Graphics.DrawPath(outline, path);
+            }
         }
 
         if (_selected)
         {
             using var marker = new SolidBrush(Theme.Accent);
-            e.Graphics.FillRectangle(marker, 4, 12, 3, 20);
+            e.Graphics.FillEllipse(marker, 7, Height / 2 - 2, 4, 4);
         }
 
-        var iconBounds = new Rectangle(18, 12, 20, 20);
+        var iconBounds = new Rectangle(20, 13, 20, 20);
         DrawGlyph(e.Graphics, iconBounds, _selected ? Theme.Accent : Theme.Muted);
-        var textBounds = new Rectangle(50, 0, Math.Max(0, Width - 62), Height);
+        var textBounds = new Rectangle(53, 0, Math.Max(0, Width - 66), Height);
         TextRenderer.DrawText(
             e.Graphics,
             Text,
@@ -353,7 +534,7 @@ internal sealed class SurfacePanel : Panel
 {
     private Color _surfaceColor = Theme.Surface;
     private Color _borderColor = Theme.Border;
-    private int _radius = 12;
+    private int _radius = 16;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color SurfaceColor
@@ -392,7 +573,7 @@ internal sealed class SurfacePanel : Panel
     {
         BackColor = Theme.Canvas;
         DoubleBuffered = true;
-        Padding = new Padding(24);
+        Padding = new Padding(26);
         SetStyle(ControlStyles.ResizeRedraw, true);
     }
 
@@ -405,6 +586,9 @@ internal sealed class SurfacePanel : Panel
         using var border = new Pen(BorderColor);
         e.Graphics.FillPath(fill, path);
         e.Graphics.DrawPath(border, path);
+        using var highlight = new Pen(Color.FromArgb(24, Theme.Text));
+        using var highlightPath = Theme.RoundedRect(new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3)), Math.Max(1, Radius - 1));
+        e.Graphics.DrawPath(highlight, highlightPath);
     }
 }
 

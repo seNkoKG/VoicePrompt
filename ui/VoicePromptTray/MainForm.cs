@@ -28,12 +28,12 @@ internal sealed class MainForm : Form
     private readonly Dictionary<string, NavigationButton> _navigation = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Title, string Description)> _pageCopy = new(StringComparer.Ordinal)
     {
-        [OverviewPage] = ("Overview", "Everything you need to confirm VoicePrompt is ready."),
-        [DictationPage] = ("Dictation", "Choose how recording starts and how your speech is interpreted."),
-        [AudioPage] = ("Audio", "Select the microphone and tune speech detection without guesswork."),
-        [IntelligencePage] = ("Intelligence", "Control recognition performance and optional AI text cleanup."),
-        [HistoryPage] = ("Recovery", "Recover, copy, or remove recent transcripts stored only on this computer."),
-        [AdvancedPage] = ("Advanced", "Diagnostics, application paths, maintenance, and recovery tools."),
+        [OverviewPage] = ("Overview", "Your local dictation workspace at a glance."),
+        [DictationPage] = ("Dictation", "Control the shortcut, writing behavior, languages, and vocabulary."),
+        [AudioPage] = ("Audio", "Choose your microphone and tune speech detection with live feedback."),
+        [IntelligencePage] = ("Engine & AI", "Balance local recognition speed, accuracy, and optional text refinement."),
+        [HistoryPage] = ("Recovery", "Review and recover recent transcripts stored only on this computer."),
+        [AdvancedPage] = ("System", "Appearance, performance, updates, maintenance, and diagnostics."),
     };
 
     private Panel _pageHost = null!;
@@ -124,6 +124,7 @@ internal sealed class MainForm : Form
     private Label _updateStatus = null!;
     private ChoiceStrip _updateChannelChoice = null!;
     private ActionButton _updateButton = null!;
+    private ThemePicker _themePicker = null!;
     private string _updateReleaseUrl = "";
 
     private bool _loading = true;
@@ -152,14 +153,16 @@ internal sealed class MainForm : Form
         _snippetStore = new TextSnippetStore(paths.SnippetsPath);
         _appProfileStore = new AppProfileStore(paths.AppProfilesPath);
 
-        Text = "VoicePrompt Settings";
+        Theme.Use(ReadThemePreference(Path.Combine(paths.AppDataDir, "prefs.json")));
+
+        Text = "VoicePrompt";
         BackColor = Theme.Canvas;
         ForeColor = Theme.Text;
         Font = Theme.Font();
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(900, 650);
-        Size = new Size(1080, 780);
+        MinimumSize = new Size(980, 700);
+        Size = new Size(1180, 820);
         DoubleBuffered = true;
         KeyPreview = true;
         try
@@ -186,6 +189,18 @@ internal sealed class MainForm : Form
         UpdateOverview();
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        NativeWindowStyle.Apply(this);
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        NativeWindowStyle.Apply(this);
+    }
+
     private void BuildWindow()
     {
         var sidebar = BuildSidebar();
@@ -199,9 +214,9 @@ internal sealed class MainForm : Form
         var sidebar = new Panel
         {
             Dock = DockStyle.Left,
-            Width = 232,
+            Width = 248,
             BackColor = Theme.Sidebar,
-            Padding = new Padding(14, 16, 14, 16),
+            Padding = new Padding(16, 18, 16, 18),
         };
         sidebar.Paint += (_, e) =>
         {
@@ -212,52 +227,50 @@ internal sealed class MainForm : Form
         var brand = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = 92,
             BackColor = Theme.Sidebar,
         };
-        var logo = new PictureBox
+        var logo = new BrandMark
         {
-            Bounds = new Rectangle(6, 7, 38, 38),
-            SizeMode = PictureBoxSizeMode.Zoom,
+            Bounds = new Rectangle(4, 5, 46, 46),
             BackColor = Theme.Sidebar,
         };
-        try
-        {
-            logo.Image = Icon.ExtractAssociatedIcon(Application.ExecutablePath)?.ToBitmap();
-        }
-        catch
-        {
-        }
         brand.Controls.Add(logo);
 
-        var title = Theme.Label("VoicePrompt", Theme.Text, 12.25f, FontStyle.Bold, Theme.Sidebar);
-        title.Location = new Point(54, 7);
+        var title = Theme.Label("VoicePrompt", Theme.Text, 13f, FontStyle.Bold, Theme.Sidebar);
+        title.Location = new Point(62, 7);
         brand.Controls.Add(title);
-        var caption = Theme.Label("Local voice to text", Theme.Muted, 8.4f, FontStyle.Regular, Theme.Sidebar);
-        caption.Location = new Point(54, 33);
+        var caption = Theme.Label("Private voice to text", Theme.Muted, 8.5f, FontStyle.Regular, Theme.Sidebar);
+        caption.Location = new Point(62, 35);
         brand.Controls.Add(caption);
         var nav = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 294,
+            Height = 336,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = Theme.Sidebar,
-            Padding = new Padding(0, 2, 0, 0),
+            Padding = new Padding(0, 0, 0, 0),
         };
+        var navLabel = Theme.Label("WORKSPACE", Theme.Muted, 7.6f, FontStyle.Bold, Theme.Sidebar);
+        navLabel.AutoSize = false;
+        navLabel.Size = new Size(214, 24);
+        navLabel.Padding = new Padding(8, 2, 0, 0);
+        navLabel.Margin = new Padding(0, 0, 0, 4);
+        nav.Controls.Add(navLabel);
         AddNavigation(nav, OverviewPage, "Overview", NavigationGlyph.Overview);
         AddNavigation(nav, DictationPage, "Dictation", NavigationGlyph.Dictation);
         AddNavigation(nav, AudioPage, "Audio", NavigationGlyph.Audio);
-        AddNavigation(nav, IntelligencePage, "Intelligence", NavigationGlyph.Intelligence);
+        AddNavigation(nav, IntelligencePage, "Engine & AI", NavigationGlyph.Intelligence);
         AddNavigation(nav, HistoryPage, "Recovery", NavigationGlyph.History);
-        AddNavigation(nav, AdvancedPage, "Advanced", NavigationGlyph.Advanced);
+        AddNavigation(nav, AdvancedPage, "System", NavigationGlyph.Advanced);
         sidebar.Controls.Add(nav);
         sidebar.Controls.Add(brand);
 
         var sidebarBottom = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 162,
+            Height = 168,
             BackColor = Theme.Sidebar,
         };
 
@@ -274,7 +287,7 @@ internal sealed class MainForm : Form
 
         var hideButton = new ActionButton("Hide to tray", ActionButtonStyle.Secondary)
         {
-            Bounds = new Rectangle(6, 88, 198, 38),
+            Bounds = new Rectangle(4, 92, 212, 40),
             BackColor = Theme.Sidebar,
         };
         hideButton.Click += (_, _) => Hide();
@@ -282,7 +295,7 @@ internal sealed class MainForm : Form
 
         string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? Application.ProductVersion;
         var versionLabel = Theme.Label($"Version {version}", Theme.Muted, 8f, FontStyle.Regular, Theme.Sidebar);
-        versionLabel.Location = new Point(6, 138);
+        versionLabel.Location = new Point(6, 146);
         sidebarBottom.Controls.Add(versionLabel);
         sidebar.Controls.Add(sidebarBottom);
         return sidebar;
@@ -292,7 +305,7 @@ internal sealed class MainForm : Form
     {
         var button = new NavigationButton(key, text, glyph)
         {
-            Width = 204,
+            Width = 216,
             Margin = new Padding(0, 0, 0, 4),
             BackColor = Theme.Sidebar,
         };
@@ -312,24 +325,24 @@ internal sealed class MainForm : Form
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 104,
+            Height = 112,
             BackColor = Theme.Canvas,
-            Padding = new Padding(32, 22, 32, 12),
+            Padding = new Padding(38, 24, 38, 12),
         };
-        _pageTitle = Theme.Label("Overview", Theme.Text, 18.5f, FontStyle.Bold, Theme.Canvas);
-        _pageTitle.Location = new Point(32, 20);
+        _pageTitle = Theme.Label("Overview", Theme.Text, 20.5f, FontStyle.Bold, Theme.Canvas);
+        _pageTitle.Location = new Point(38, 20);
         header.Controls.Add(_pageTitle);
-        _pageDescription = Theme.Label("", Theme.TextSecondary, 9.25f, FontStyle.Regular, Theme.Canvas);
-        _pageDescription.Location = new Point(33, 56);
+        _pageDescription = Theme.Label("", Theme.TextSecondary, 9.5f, FontStyle.Regular, Theme.Canvas);
+        _pageDescription.Location = new Point(39, 61);
         header.Controls.Add(_pageDescription);
         _headerStatus = new StatusPill { BackColor = Theme.Canvas, Anchor = AnchorStyles.Top | AnchorStyles.Right };
         header.Controls.Add(_headerStatus);
-        header.SizeChanged += (_, _) => _headerStatus.Location = new Point(header.ClientSize.Width - _headerStatus.Width - 32, 29);
+        header.SizeChanged += (_, _) => _headerStatus.Location = new Point(header.ClientSize.Width - _headerStatus.Width - 38, 31);
 
         var footer = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 72,
+            Height = 70,
             BackColor = Theme.Sidebar,
         };
         footer.Paint += (_, e) =>
@@ -339,7 +352,7 @@ internal sealed class MainForm : Form
         };
         _footerMessage = Theme.Label("All changes saved", Theme.Muted, 8.8f, FontStyle.Regular, Theme.Sidebar);
         _footerMessage.AutoSize = false;
-        _footerMessage.Bounds = new Rectangle(32, 26, 430, 24);
+        _footerMessage.Bounds = new Rectangle(38, 24, 470, 24);
         footer.Controls.Add(_footerMessage);
 
         _discardButton = new ActionButton("Discard", ActionButtonStyle.Secondary)
@@ -357,8 +370,8 @@ internal sealed class MainForm : Form
         footer.Controls.Add(_saveButton);
         footer.SizeChanged += (_, _) =>
         {
-            _saveButton.Location = new Point(footer.ClientSize.Width - _saveButton.Width - 32, 17);
-            _discardButton.Location = new Point(_saveButton.Left - _discardButton.Width - 10, 17);
+            _saveButton.Location = new Point(footer.ClientSize.Width - _saveButton.Width - 38, 15);
+            _discardButton.Location = new Point(_saveButton.Left - _discardButton.Width - 10, 15);
         };
 
         _pageHost = new Panel
@@ -393,6 +406,7 @@ internal sealed class MainForm : Form
             Visible = false,
             AccessibleName = _pageCopy[key].Title + " settings page",
         };
+        page.HandleCreated += (_, _) => NativeWindowStyle.ApplyToTree(page);
         var body = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.TopDown,
@@ -400,7 +414,7 @@ internal sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             BackColor = Theme.Canvas,
-            Padding = new Padding(32, 8, 32, 40),
+            Padding = new Padding(38, 8, 38, 48),
             Margin = Padding.Empty,
         };
         page.Controls.Add(body);
@@ -413,16 +427,16 @@ internal sealed class MainForm : Form
 
     private static void ResizePageBody(Panel page, FlowLayoutPanel body)
     {
-        int availableWidth = Math.Max(610, page.ClientSize.Width - (page.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+        int availableWidth = Math.Max(650, page.ClientSize.Width - (page.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
         body.Width = availableWidth;
-        int cardWidth = Math.Max(550, availableWidth - body.Padding.Horizontal);
+        int cardWidth = Math.Max(580, availableWidth - body.Padding.Horizontal);
         foreach (Control child in body.Controls)
             child.Width = cardWidth;
     }
 
     private static void AddPageItem(FlowLayoutPanel body, Control control)
     {
-        control.Margin = new Padding(0, 0, 0, 14);
+        control.Margin = new Padding(0, 0, 0, 16);
         body.Controls.Add(control);
     }
 
@@ -1078,6 +1092,13 @@ internal sealed class MainForm : Form
     private void BuildAdvancedPage()
     {
         var body = CreatePage(AdvancedPage);
+        _themePicker = new ThemePicker { Dock = DockStyle.Fill };
+        _themePicker.SelectValue(Theme.Current.Id);
+        _themePicker.SelectedChanged += (_, _) => ApplySelectedTheme();
+        var appearance = new SectionBuilder("Appearance", "Three restrained dark palettes, designed to stay readable for long sessions.");
+        appearance.Add("Interface theme", "Graphite is the neutral default. Changes apply instantly and stay on this computer.", _themePicker, 96);
+        AddPageItem(body, appearance.Build());
+
         var performance = new SectionBuilder("Recent performance", "Timing metadata from the local runtime log. No audio or transcript text is read.");
         _performanceLatest = BuildValueLabel();
         _performanceTypical = BuildValueLabel();
@@ -1161,15 +1182,30 @@ internal sealed class MainForm : Form
         AddPageItem(body, paths.Build());
     }
 
+    private void ApplySelectedTheme()
+    {
+        if (_loading)
+            return;
+
+        ThemePalette previous = Theme.Use(_themePicker.SelectedValue);
+        if (previous.Id == Theme.Current.Id)
+            return;
+
+        Theme.ApplyToTree(this, previous);
+        NativeWindowStyle.Apply(this);
+        SavePreferences();
+        ShowFooter($"{Theme.Current.Name} theme applied", Theme.Ok);
+    }
+
     private static void AddCardHeading(SurfacePanel card, string title, string subtitle)
     {
-        var heading = Theme.Label(title, Theme.Text, 11.5f, FontStyle.Bold, Theme.Surface);
-        heading.Location = new Point(24, 20);
+        var heading = Theme.Label(title, Theme.Text, 12f, FontStyle.Bold, Theme.Surface);
+        heading.Location = new Point(26, 21);
         card.Controls.Add(heading);
-        var description = Theme.Label(subtitle, Theme.Muted, 8.7f, FontStyle.Regular, Theme.Surface);
+        var description = Theme.Label(subtitle, Theme.TextSecondary, 8.7f, FontStyle.Regular, Theme.Surface);
         description.AutoSize = false;
-        description.Bounds = new Rectangle(24, 47, 200, 20);
-        card.SizeChanged += (_, _) => description.Width = Math.Max(80, card.ClientSize.Width - 48);
+        description.Bounds = new Rectangle(26, 49, 200, 20);
+        card.SizeChanged += (_, _) => description.Width = Math.Max(80, card.ClientSize.Width - 52);
         card.Controls.Add(description);
     }
 
@@ -2648,6 +2684,23 @@ internal sealed class MainForm : Form
 
     private string PreferencesPath => Path.Combine(_paths.AppDataDir, "prefs.json");
 
+    private static string ReadThemePreference(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return "graphite";
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.TryGetProperty("theme", out JsonElement theme)
+                ? Theme.Find(theme.GetString()).Id
+                : "graphite";
+        }
+        catch
+        {
+            return "graphite";
+        }
+    }
+
     private void LoadPreferences()
     {
         try
@@ -2672,6 +2725,7 @@ internal sealed class MainForm : Form
                 _selectedPage = page.GetString() ?? OverviewPage;
             if (root.TryGetProperty("updateChannel", out JsonElement updateChannel))
                 _updateChannelChoice.SelectValue(updateChannel.GetString() == "preview" ? "preview" : "stable");
+            _themePicker.SelectValue(Theme.Current.Id);
         }
         catch
         {
@@ -2688,6 +2742,7 @@ internal sealed class MainForm : Form
                 bounds = new { x = Bounds.X, y = Bounds.Y, w = Bounds.Width, h = Bounds.Height },
                 page = _selectedPage,
                 updateChannel = _updateChannelChoice.SelectedValue,
+                theme = Theme.Current.Id,
             });
             File.WriteAllText(PreferencesPath, json);
         }
@@ -2773,17 +2828,17 @@ internal sealed class MainForm : Form
     {
         private readonly SurfacePanel _card;
         private readonly TableLayoutPanel _table;
-        private int _height = 78;
+        private int _height = 86;
 
         public SectionBuilder(string title, string subtitle)
         {
-            _card = new SurfacePanel { Height = 160 };
-            var heading = Theme.Label(title, Theme.Text, 11.5f, FontStyle.Bold, Theme.Surface);
-            heading.Location = new Point(24, 18);
+            _card = new SurfacePanel { Height = 170 };
+            var heading = Theme.Label(title, Theme.Text, 12f, FontStyle.Bold, Theme.Surface);
+            heading.Location = new Point(26, 20);
             _card.Controls.Add(heading);
-            var description = Theme.Label(subtitle, Theme.Muted, 8.65f, FontStyle.Regular, Theme.Surface);
+            var description = Theme.Label(subtitle, Theme.TextSecondary, 8.7f, FontStyle.Regular, Theme.Surface);
             description.AutoSize = false;
-            description.Bounds = new Rectangle(24, 45, 200, 20);
+            description.Bounds = new Rectangle(26, 50, 200, 20);
             _card.Controls.Add(description);
 
             _table = new TableLayoutPanel
@@ -2791,18 +2846,18 @@ internal sealed class MainForm : Form
                 BackColor = Theme.Surface,
                 ColumnCount = 2,
                 RowCount = 0,
-                Location = new Point(24, 76),
+                Location = new Point(26, 84),
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             };
-            _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
-            _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+            _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
+            _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64));
             _card.Controls.Add(_table);
             _card.SizeChanged += (_, _) =>
             {
-                description.Width = Math.Max(80, _card.ClientSize.Width - 48);
-                _table.Width = Math.Max(300, _card.ClientSize.Width - 48);
+                description.Width = Math.Max(80, _card.ClientSize.Width - 52);
+                _table.Width = Math.Max(300, _card.ClientSize.Width - 52);
             };
         }
 
@@ -2845,8 +2900,8 @@ internal sealed class MainForm : Form
 
         public SurfacePanel Build()
         {
-            _table.Height = _height - 78;
-            _card.Height = _height + 18;
+            _table.Height = _height - 86;
+            _card.Height = _height + 20;
             return _card;
         }
     }

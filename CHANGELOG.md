@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.19.0] - 2026-08-12
+
+### Added
+
+- Added three instant, locally persisted dark interface themes: Graphite, Evergreen, and Ember.
+- Added a scalable waveform brand mark shared by the app sidebar, executable, desktop shortcut, tray, repository, and product site.
+- Added theme selection and screenshot-gallery coverage to the automated Windows layout harness.
+
+### Changed
+
+- Rebuilt the settings visual system with a calmer neutral palette, stronger hierarchy, roomier navigation, refined cards, controls, typography, and clearer Engine & AI and System workspaces.
+- Redesigned the GitHub Pages presentation around current client-only screenshots, dark Windows-style frames, an interactive palette preview, and a four-view product gallery.
+- Generate the application icon from reusable vector geometry so every embedded ICO size remains crisp and consistent.
+
+### Fixed
+
+- Apply native Windows dark-mode attributes to the caption, border, controls, and scroll surfaces, removing the bright frame around the dark application.
+- Stop diagnostic screenshot generation from capturing light operating-system chrome around the app.
+- Stop the sidebar brand from inheriting the generic executable icon used by diagnostic builds.
+
 ## [1.18.2] - 2026-08-12
 
 ### Added

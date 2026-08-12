@@ -78,6 +78,23 @@ copyButton?.addEventListener('click', async () => {
   }
 });
 
+const themeButtons = [...document.querySelectorAll('[data-theme-switcher] [data-theme]')];
+const themeColors = { graphite: '#0c0e10', evergreen: '#080d0c', ember: '#0e0c0b' };
+
+function applyTheme(theme, persist = true) {
+  const selected = themeButtons.some((button) => button.dataset.theme === theme) ? theme : 'graphite';
+  document.documentElement.dataset.theme = selected;
+  themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.theme === selected)));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColors[selected]);
+  if (!persist) return;
+  try { localStorage.setItem('voiceprompt-theme', selected); } catch { /* Preference stays in this tab. */ }
+}
+
+let savedTheme = 'graphite';
+try { savedTheme = localStorage.getItem('voiceprompt-theme') || savedTheme; } catch { /* Storage can be disabled. */ }
+applyTheme(savedTheme, false);
+themeButtons.forEach((button) => button.addEventListener('click', () => applyTheme(button.dataset.theme)));
+
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (reducedMotion || !('IntersectionObserver' in window)) {
   document.querySelectorAll('.reveal').forEach((element) => element.classList.add('visible'));

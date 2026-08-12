@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/seNkoKG/VoicePrompt/releases/latest"><img src="https://img.shields.io/github/v/release/seNkoKG/VoicePrompt?color=343a40" alt="release" /></a>
-  <a href="https://senkokg.github.io/VoicePrompt/"><img src="https://img.shields.io/badge/website-open-d5ff8f?labelColor=212529" alt="website" /></a>
+  <a href="https://senkokg.github.io/VoicePrompt/"><img src="https://img.shields.io/badge/website-open-cddad1?labelColor=212529" alt="website" /></a>
   <img src="https://img.shields.io/badge/engine-faster--whisper--large--v3-343a40" alt="engine" />
   <img src="https://img.shields.io/badge/acceleration-CUDA%20float16-22c55e" alt="cuda" />
   <img src="https://img.shields.io/badge/languages-100%20supported-495057" alt="langs" />
@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.2-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.19.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -104,10 +104,12 @@ First start downloads the model (~1.6 GB turbo / ~3.1 GB full) into `~/.cache/hu
 
 ## 🖥️ Tray UI (`ui/VoicePromptTray`)
 
-A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
+A responsive dark Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
 
 - **Setup overview** — confirms runtime, hotkey, microphone, and recognition readiness at a glance, with direct recovery and support actions.
-- **Focused workspaces** — Dictation, Audio, Intelligence, Recovery, and Advanced pages keep everyday setup simple while leaving expert controls available.
+- **Three interface themes** — Graphite, Evergreen, and Ember apply instantly, stay local, and share the same restrained dark visual system.
+- **Native dark window** — the Windows caption, frame, controls, and scroll surfaces match the app instead of flashing light chrome around it.
+- **Focused workspaces** — Dictation, Audio, Engine & AI, Recovery, and System pages keep everyday setup simple while leaving expert controls available.
 - **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **VoicePrompt** shortcut) to open settings. The tray menu can instantly copy the latest saved transcript, start/stop/restart the daemon, and quit the app.
 - **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Live input test** — the Audio page shows quiet, good-signal, and very-loud microphone levels while the hotkey is held by reusing the overlay stream, with no second capture or extra GPU work.

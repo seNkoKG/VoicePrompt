@@ -8,6 +8,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LayoutCheck</RootNamespace>
     <AssemblyName>VoicePromptTray</AssemblyName>
+    <ApplicationIcon>..\..\assets\voiceprompt.ico</ApplicationIcon>
+    <Version>1.19.0</Version>
+    <AssemblyVersion>1.19.0.0</AssemblyVersion>
+    <FileVersion>1.19.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +29,7 @@
     <Compile Include="..\VoicePromptTray\LanguageCatalog.cs" />
     <Compile Include="..\VoicePromptTray\LanguageProfileStore.cs" />
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
+    <Compile Include="..\VoicePromptTray\NativeWindowStyle.cs" />
     <Compile Include="..\VoicePromptTray\PerformanceSnapshot.cs" />
     <Compile Include="..\VoicePromptTray\RecordingOverlay.cs" />
     <Compile Include="..\VoicePromptTray\RecognitionServer.cs" />

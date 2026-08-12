@@ -77,7 +77,13 @@
       <div class="hero-visual reveal reveal-delay" aria-label="VoicePrompt interface preview">
         <div class="visual-glow" aria-hidden="true"></div>
         <div class="app-window product-shot-frame">
-          <img src="assets/app-overview.png" alt="VoicePrompt Overview showing runtime status, hotkey, language, microphone, and recognition setup" width="1104" height="819">
+          <div class="window-bar" aria-hidden="true">
+            <span class="window-title"><img src="assets/mark.svg" alt="" width="18" height="18"> VoicePrompt</span>
+            <span class="window-actions"><i>—</i><i>□</i><i>×</i></span>
+          </div>
+          <div class="window-canvas">
+            <img src="assets/app-overview.png" alt="VoicePrompt Overview showing runtime status, hotkey, language, microphone, and recognition setup" width="1080" height="780">
+          </div>
         </div>
         <div class="recording-preview">
           <img src="assets/recording-overlay.png" alt="The actual compact VoicePrompt microphone and waveform overlay" width="184" height="44">
@@ -91,6 +97,18 @@
       <div><strong>~0.6 s</strong><span>Measured 8 s decode*</span></div>
       <div><strong>100 languages</strong><span>EN + SL Auto by default</span></div>
       <div><strong>Open source</strong><span>Inspect every line</span></div>
+    </section>
+
+    <section class="palette-strip shell reveal" aria-label="VoicePrompt interface themes">
+      <div class="palette-copy">
+        <span>Designed for focus</span>
+        <strong>Graphite, Evergreen, or Ember. Always dark, never loud.</strong>
+      </div>
+      <div class="palette-controls" role="group" aria-label="Preview a website theme" data-theme-switcher>
+        <button type="button" aria-pressed="true" data-theme="graphite"><i></i>Graphite</button>
+        <button type="button" aria-pressed="false" data-theme="evergreen"><i></i>Evergreen</button>
+        <button type="button" aria-pressed="false" data-theme="ember"><i></i>Ember</button>
+      </div>
     </section>
 
     <section class="section shell" id="how-it-works">
@@ -182,16 +200,23 @@
       <div class="section-heading reveal">
         <p class="kicker">The application users actually download</p>
         <h2>Current interface.<br>Current capabilities.</h2>
-        <p>These views come from the current Windows release. The same six workspaces guide setup, dictation, audio, intelligence, recovery, and advanced tools.</p>
+        <p>These views come from the current Windows release. Six focused workspaces guide setup, dictation, audio, Engine &amp; AI, recovery, and system tools.</p>
       </div>
       <div class="interface-showcase reveal" data-interface-showcase>
         <div class="interface-tabs" role="tablist" aria-label="VoicePrompt interface views">
           <button type="button" role="tab" aria-controls="interface-panel" aria-selected="true" data-shot="assets/app-overview.png" data-alt="VoicePrompt Overview with readiness and setup cards" data-title="Readiness at a glance" data-copy="Confirm the runtime, hotkey, microphone, language, and recognition engine from one screen.">Overview</button>
           <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-languages.png" data-alt="VoicePrompt language profile with French selected from the 100-language catalog" data-title="100 language profiles" data-copy="Search and pin any Whisper language, then export its context, hotwords, and corrections as a portable profile.">Languages</button>
           <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-writing.png" data-alt="VoicePrompt Intelligence page with Verbatim, Clean, Grammar, and Prompt writing modes" data-title="Local first, optional intelligence" data-copy="Verbatim adds no provider delay. Clean, Grammar, and Prompt are explicit text-only options with strict fallback.">Writing modes</button>
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-system.png" data-alt="VoicePrompt System page showing Graphite, Evergreen, and Ember themes" data-title="A calmer interface, your way" data-copy="Switch instantly between three restrained dark palettes. The choice is local and independent of dictation settings.">Themes</button>
         </div>
         <div class="interface-stage" id="interface-panel" role="tabpanel">
-          <img src="assets/app-overview.png" alt="VoicePrompt Overview with readiness and setup cards" width="1104" height="819" data-interface-image>
+          <div class="shot-window">
+            <div class="window-bar" aria-hidden="true">
+              <span class="window-title"><img src="assets/mark.svg" alt="" width="18" height="18"> VoicePrompt</span>
+              <span class="window-actions"><i>—</i><i>□</i><i>×</i></span>
+            </div>
+            <img src="assets/app-overview.png" alt="VoicePrompt Overview with readiness and setup cards" width="1080" height="780" data-interface-image>
+          </div>
         </div>
         <div class="interface-caption" aria-live="polite">
           <strong data-interface-title>Readiness at a glance</strong>
