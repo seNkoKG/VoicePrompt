@@ -48,7 +48,7 @@ jobs:
           test "$actual" = "$expected"
           echo "Verified $RELEASE_ZIP ($actual)"
       - name: Upload site
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - name: Deploy
