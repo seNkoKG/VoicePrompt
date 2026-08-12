@@ -29,6 +29,7 @@ function Invoke-RuntimePatch([string]$Patch, [string]$Module, [string]$Name) {
 }
 
 function Assert-CurrentRuntime([string]$Module, [string]$Name) {
+    $audio = Join-Path $Module "audio.py"
     $localEngine = Join-Path $Module "engine\local.py"
     $serverEngine = Join-Path $Module "engine\server.py"
     $typer = Join-Path $Module "typer.py"
@@ -40,7 +41,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
+    & $Python -m py_compile $audio $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -130,6 +131,12 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         throw "$Name is missing the exact opt-in voice-command router."
     }
 
+    $audioSource = [System.IO.File]::ReadAllText($audio)
+    if ([regex]::Matches($audioSource, "Using default audio input").Count -ne 2 -or
+        -not $audioSource.Contains("sd.query_devices(device)")) {
+        throw "$Name does not recover a stale microphone selection."
+    }
+
     $daemonSource = [System.IO.File]::ReadAllText($daemon)
     if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
         throw "$Name still truncates held recordings."
@@ -185,12 +192,13 @@ if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm S
 }
 Assert-CurrentRuntime $cleanModule "clean install"
 
-$releaseZip = Join-Path $testRoot "VoicePrompt-v1.1.2-windows-x64.zip"
+$oldArchive = Join-Path $testRoot "v1.1.2-fixture.zip"
 $releaseRoot = Join-Path $testRoot "v1.1.2"
-Invoke-WebRequest `
-    -Uri "https://github.com/seNkoKG/VoicePrompt/releases/download/v1.1.2/VoicePrompt-v1.1.2-windows-x64.zip" `
-    -OutFile $releaseZip
-Expand-Archive -LiteralPath $releaseZip -DestinationPath $releaseRoot
+& git -C $root archive --format=zip "--output=$oldArchive" v1.1.2 scripts run_daemon.pyw
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not read the v1.1.2 upgrade fixture from git history."
+}
+Expand-Archive -LiteralPath $oldArchive -DestinationPath $releaseRoot
 $oldPatch = Join-Path $releaseRoot "scripts\apply_patches.ps1"
 if (-not (Test-Path -LiteralPath $oldPatch)) {
     throw "The v1.1.2 upgrade fixture is missing apply_patches.ps1."

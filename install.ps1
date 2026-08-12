@@ -43,7 +43,8 @@ $packageAppProfiles = Join-Path $packageRoot "scripts\app_profiles.py"
 $packageTextSnippets = Join-Path $packageRoot "scripts\text_snippets.py"
 $packageVoiceCommands = Join-Path $packageRoot "scripts\voice_commands.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageRunner)) {
+$packageRequirements = Join-Path $packageRoot "requirements.txt"
+foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageRunner, $packageRequirements)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -53,7 +54,23 @@ Write-Step "Checking Python"
 $pythonExe = $null
 $launcher = Get-Command "py.exe" -ErrorAction SilentlyContinue
 if ($launcher) {
-    $pythonExe = (& $launcher.Source -3 -c "import sys; print(sys.executable)" 2>$null | Select-Object -Last 1).Trim()
+    foreach ($selector in @("-3.12", "-3.13", "-3.11", "-3.14", "-3")) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "SilentlyContinue"
+            $candidate = & $launcher.Source $selector -c "import sys; print(sys.executable)" 2>$null | Select-Object -Last 1
+            $candidateExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($candidateExitCode -eq 0 -and $candidate) {
+            $pythonExe = $candidate.Trim()
+            if (Test-Path -LiteralPath $pythonExe) {
+                break
+            }
+            $pythonExe = $null
+        }
+    }
 }
 if (-not $pythonExe) {
     $python = Get-Command "python.exe" -ErrorAction SilentlyContinue
@@ -62,11 +79,11 @@ if (-not $pythonExe) {
     }
 }
 if (-not $pythonExe -or -not (Test-Path -LiteralPath $pythonExe)) {
-    throw "Python 3.10 or newer was not found. Install it from https://www.python.org/downloads/windows/ and run this installer again."
+    throw "Python 3.11 or newer was not found. Install it from https://www.python.org/downloads/windows/ and run this installer again."
 }
 $pythonVersionText = (& $pythonExe -c "import sys; print('.'.join(map(str, sys.version_info[:3])))").Trim()
-if ($LASTEXITCODE -ne 0 -or [version]$pythonVersionText -lt [version]"3.10") {
-    throw "Python 3.10 or newer is required; found $pythonVersionText at $pythonExe."
+if ($LASTEXITCODE -ne 0 -or [version]$pythonVersionText -lt [version]"3.11") {
+    throw "Python 3.11 or newer is required; found $pythonVersionText at $pythonExe."
 }
 Write-Host "Python ${pythonVersionText}: $pythonExe"
 
@@ -109,6 +126,7 @@ Copy-Item -LiteralPath $packageAppProfiles -Destination (Join-Path $installScrip
 Copy-Item -LiteralPath $packageTextSnippets -Destination (Join-Path $installScripts "text_snippets.py") -Force
 Copy-Item -LiteralPath $packageVoiceCommands -Destination (Join-Path $installScripts "voice_commands.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
+Copy-Item -LiteralPath $packageRequirements -Destination (Join-Path $installRoot "requirements.txt") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force
 if (Test-Path -LiteralPath (Join-Path $packageRoot "README.md")) {
     Copy-Item -LiteralPath (Join-Path $packageRoot "README.md") -Destination (Join-Path $installRoot "README.md") -Force
@@ -125,19 +143,39 @@ if (Test-Path -LiteralPath (Join-Path $packageRoot "version.txt")) {
 
 Write-Step "Preparing the local speech-to-text runtime"
 New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-if (-not (Test-Path -LiteralPath $venvPython)) {
-    Invoke-Checked $pythonExe @("-m", "venv", $venvRoot)
-}
 $daemonExe = Join-Path $venvRoot "Scripts\faster-whisper-dictation.exe"
 if (Test-Path -LiteralPath $daemonExe) {
     Write-Step "Stopping the dictation runtime for a clean upgrade"
     Invoke-Checked $daemonExe @("stop")
 }
-Invoke-Checked $venvPython @("-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "pip")
+
+$venvIsCompatible = $false
+if (Test-Path -LiteralPath $venvPython) {
+    $venvVersionOutput = & $venvPython -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>$null | Select-Object -Last 1
+    if ($LASTEXITCODE -eq 0 -and $venvVersionOutput) {
+        try {
+            $venvIsCompatible = [version]$venvVersionOutput.Trim() -ge [version]"3.11"
+        } catch {
+            $venvIsCompatible = $false
+        }
+    }
+}
+if ((Test-Path -LiteralPath $venvRoot) -and -not $venvIsCompatible) {
+    Write-Step "Rebuilding an outdated or incomplete local runtime"
+    $resolvedRuntimeRoot = [System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd('\') + '\'
+    $resolvedVenvRoot = [System.IO.Path]::GetFullPath($venvRoot)
+    if (-not $resolvedVenvRoot.StartsWith($resolvedRuntimeRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to rebuild a runtime outside the VoicePrompt data directory: $resolvedVenvRoot"
+    }
+    Remove-Item -LiteralPath $resolvedVenvRoot -Recurse -Force
+}
+if (-not (Test-Path -LiteralPath $venvPython)) {
+    Invoke-Checked $pythonExe @("-m", "venv", $venvRoot)
+}
+Invoke-Checked $venvPython @("-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "pip==26.2.1")
 Invoke-Checked $venvPython @(
-    "-m", "pip", "install", "--disable-pip-version-check", "--upgrade",
-    "faster-whisper-dictation[local-gpu]==0.2.0",
-    "nvidia-cublas-cu12", "nvidia-cudnn-cu12", "nvidia-cuda-runtime-cu12", "nvidia-cuda-nvrtc-cu12"
+    "-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "--only-binary=:all:",
+    "--requirement", $packageRequirements
 )
 
 Write-Step "Applying tested Windows integration fixes"

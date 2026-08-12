@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.20.0] - 2026-08-12
+
+### Added
+
+- Added a pinned Windows runtime lock so every installation receives the same tested faster-whisper, CTranslate2, audio, CUDA, and support-package versions.
+- Added CI verification for every pull request and `main` update. Release publishing now waits for Python behavior, patch migration, configuration, layout, shortcut, and package gates.
+- Added deterministic WER, CER, language-accuracy, repetition, VRAM, and latency measurements to the local model benchmark harness.
+- Added Dependabot coverage for the pinned Python runtime and GitHub Actions.
+
+### Changed
+
+- Rotate runtime logs at 2 MB with three retained archives instead of allowing one unbounded file to grow indefinitely.
+- Read runtime settings once at daemon startup and record unhandled startup failures in the local log.
+- Use the VoicePrompt name consistently in tray notifications, runtime errors, and the Windows startup shortcut.
+- Preserve an enabled Windows auto-start setting while migrating verified legacy startup links to the installed VoicePrompt executable.
+- Build the release package during verification, before a version tag can publish it.
+
+### Fixed
+
+- Recover automatically through the Windows default input when a saved microphone index or name no longer exists after unplugging or device changes.
+- Show microphone enumeration failures in Settings instead of presenting a failed scan as an empty but successful result.
+- Make the legacy-upgrade migration gate independent of GitHub release-asset availability by reading its pinned fixture from repository history.
+- Align documentation, website requirements, screenshots, and runtime behavior with the current application.
+
 ## [1.19.1] - 2026-08-12
 
 ### Changed

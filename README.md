@@ -67,36 +67,33 @@ Measured on an RTX 5080:
 
 ## Download and install
 
-Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
+Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.19.1-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.20.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-The installer creates the private Python environment, installs the tested speech engine, applies the Windows integration fixes, installs the self-contained tray app, and creates desktop and Start Menu shortcuts. Open **VoicePrompt**, then hold **F1** to talk. The first start downloads the selected model (~3.1 GB for `large-v3`) once.
+The installer creates the private Python environment, installs the exact pinned speech runtime, applies the Windows integration fixes, installs the self-contained tray app, and creates desktop and Start Menu shortcuts. Open **VoicePrompt**, then hold **F1** to talk. The first start downloads the selected model (~3.1 GB for `large-v3`) once.
 
 > The executable is not code-signed yet, so Windows may show an “unknown publisher” warning. Only run packages downloaded from this repository's official Releases page. The SHA-256 checksums are attached to every release.
 
 ### Build from source
 
 ```powershell
-# 1. Create the venv and install the engine (requires Python 3.10+ and an NVIDIA GPU)
+# 1. Create the venv and install the tested runtime (requires Python 3.11+ and an NVIDIA GPU)
 py -m venv "$env:USERPROFILE\.voice-typing\venv"
-& "$env:USERPROFILE\.voice-typing\venv\Scripts\pip" install faster-whisper-dictation[local-gpu]
+& "$env:USERPROFILE\.voice-typing\venv\Scripts\pip" install --only-binary=:all: -r requirements.txt
 
-# 2. CUDA 12 DLLs (needed on driver 600+ / CUDA 13 UMD systems without a CUDA toolkit)
-& "$env:USERPROFILE\.voice-typing\venv\Scripts\pip" install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12
-
-# 3. Apply the Windows fixes (see "Patches")
+# 2. Apply the Windows fixes (see "Patches")
 powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1
 
-# 4. Build the self-contained Windows x64 tray UI (requires .NET SDK 10+)
+# 3. Build the self-contained Windows x64 tray UI (requires .NET SDK 10+)
 powershell -ExecutionPolicy Bypass -File scripts\build_ui.ps1
 
-# 5. Start Voice Typing — it runs in the system tray and auto-starts the daemon
+# 4. Start VoicePrompt. It runs in the system tray and starts the daemon.
 .\ui\publish\VoicePromptTray.exe --tray
 ```
 
@@ -162,7 +159,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 **Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
-If Whisper reports Finnish, Spanish, Latin, or another unsupported language, VoicePrompt uses Whisper's language probabilities to force the most likely English/Slovenian candidate. A weak English or Slovenian detection receives one verification pass in the other supported language only when its transcript score is also weak. The forced result must show a real decoder-score gain before VoicePrompt changes languages, preventing uncertain English tails from turning into Slovenian while protecting genuine Slovenian speech. Slovenian verification alone receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
+Detected English and Slovenian are never replaced by a decode in the other supported language. If Whisper reports Finnish, Spanish, Latin, or another unrelated language, VoicePrompt uses the model's language probabilities and recent supported-language evidence to choose one bounded English or Slovenian recovery pass. The retry is accepted only when its transcript remains physically plausible and its decoder score is not materially worse. Slovenian recovery receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
 
 ### Additional languages
 
@@ -170,7 +167,7 @@ The Dictation page includes a searchable catalog of all 100 language codes suppo
 
 ### Compatible recognition server
 
-Under **Intelligence → Recognition engine**, choose **Compatible server**, enter the server base URL, set a bounded wait, and click **Test server**. The test performs only `GET /health`; it sends no audio, transcript, credentials, or request body. Actual dictation sends one completed WAV recording to `POST /v1/audio/transcriptions`, following the upstream OpenAI-compatible REST contract. Local processor, precision, and background pre-transcription controls are disabled because inference occurs on the server.
+Under **Engine & AI → Recognition engine**, choose **Compatible server**, enter the server base URL, set a bounded wait, and click **Test server**. The test performs only `GET /health`; it sends no audio, transcript, credentials, or request body. Actual dictation sends one completed WAV recording to `POST /v1/audio/transcriptions`, following the upstream OpenAI-compatible REST contract. Local processor, precision, and background pre-transcription controls are disabled because inference occurs on the server.
 
 The default `http://localhost:8000` keeps audio on the same PC. Remote HTTPS is supported with a clear notice that completed recordings leave the computer. Remote unencrypted HTTP is allowed for deliberate trusted-network setups but receives a prominent warning. VoicePrompt does not add an authorization header, so use a server that is already protected by its own trusted network or reverse proxy. [WhisperLiveKit](https://github.com/QuentinFuxa/WhisperLiveKit) is the upstream-recommended compatible server; the base daemon documentation covers its [server mode](https://github.com/bhargavchippada/faster-whisper-dictation#engine-modes).
 
@@ -204,17 +201,17 @@ Snippets are edited under **Dictation → Reusable text**, one per line as `name
 
 ### Settings and vocabulary backup
 
-Use **Advanced → Data portability** to export or import one validated JSON backup. Import is review-first: it fills the settings pages but changes neither the running daemon nor saved files until **Save & restart** is clicked. The backup includes the global hotkey, language and vocabulary, output behavior, recognition engine/server settings and VAD tuning, AI mode/provider settings, recovery preferences, corrections, snippets, and application profiles.
+Use **System → Data portability** to export or import one validated JSON backup. Import is review-first: it fills the settings pages but changes neither the running daemon nor saved files until **Save & restart** is clicked. The backup includes the global hotkey, language and vocabulary, output behavior, recognition engine/server settings and VAD tuning, AI mode/provider settings, recovery preferences, corrections, snippets, and application profiles.
 
 The encrypted API key, transcript history, microphone identity, Windows startup state, window preferences, logs, and machine-specific paths are never exported. Endpoint URLs containing embedded credentials, query strings, or fragments are rejected to prevent accidental token leakage.
 
 ### Application profiles
 
-Use **Intelligence → Application profiles** to select a running app and add an exact executable rule. Each line uses `app.exe => writing, output`. Writing can be `inherit`, `verbatim`, `clean`, `grammar`, or `prompt`; output can be `inherit`, `paste`, or `clipboard`. Matching is case-insensitive but otherwise exact—no paths, wildcards, background monitoring, or hidden changes. Profiles are empty by default and unmatched applications keep the global behavior.
+Use **Engine & AI → Application profiles** to select a running app and add an exact executable rule. Each line uses `app.exe => writing, output`. Writing can be `inherit`, `verbatim`, `clean`, `grammar`, or `prompt`; output can be `inherit`, `paste`, or `clipboard`. Matching is case-insensitive but otherwise exact—no paths, wildcards, background monitoring, or hidden changes. Profiles are empty by default and unmatched applications keep the global behavior.
 
 ## 🔧 Patches (required on Windows)
 
-Sixteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
+VoicePrompt's tested Windows integration layer is applied **after every reinstall or upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures, retry bounded clipboard contention, verify the full Unicode payload, and fail visibly instead of dropping text.
@@ -232,6 +229,7 @@ Sixteen Windows integration fixes ship in this repo — apply them **after every
 14. **`typer.py` / `voice_commands.py` / `text_snippets.py`** — recognizes only enabled whole-utterance English/Slovenian commands and saved snippets, skips AI and history for them, and marks Undo input so the global hotkey listener ignores VoicePrompt's own shortcut.
 15. **`typer.py` / `app_profiles.py` / `ai_rewriter.py`** — resolves an optional exact focused-app rule once after transcription, overrides only writing/output behavior, and inherits global settings after any missing, inaccessible, unmatched, or invalid rule.
 16. **`engine/server.py`** — maps the internal Slovenian slang profile to the standard `sl` API code and omits an empty language field so compatible servers can auto-detect safely.
+17. **`audio.py`** — validates a saved input device on every recording and falls back to the current Windows default when that device was unplugged, renamed, or removed.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -240,7 +238,7 @@ Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 The E2E harness simulates what a human does (no spoken voice needed):
 
 - `tests/e2e_test.ps1` — opens a live text target window, presses the hotkey via `keybd_event`, plays an audio file through the speakers/microphone path, and proves the transcribed text lands there (timestamps the release→paste latency).
-- `tests/bench_one.py` — model load time, VRAM delta, decode time per utterance.
+- `tests/bench_one.py` / `tests/accuracy_metrics.py` — model load time, VRAM, WER, CER, language accuracy, repetition rate, and p50/p95 latency from an optional reference manifest.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
 - `tests/test_slang_retry.py` — verifies language-neutral primary decoding, bilingual recovery, transcript confidence gates, and safeguards against translating real English.
@@ -261,9 +259,9 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 
 | Symptom | Cause / fix |
 |---|---|
-| `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
+| `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → rerun `install.ps1` so the pinned `nvidia-*cu12` packages are repaired; `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
-| Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run Voice Typing at the same privilege level, or choose a binding the app does not reserve |
+| Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run VoicePrompt at the same privilege level, or choose a binding the app does not reserve |
 | Bad or slangy Slovenian accuracy | Leave language on **Auto** for English/Slovenian routing; Slovenian recovery adds colloquial vocabulary automatically. Keep `large-v3` for best accuracy and add only personal names or exact terms to Prompt/Hotwords |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 | AI test fails or times out | Confirm the endpoint and model, start the provider, then click **Test** again; live dictation will paste the original transcript whenever cleanup is unavailable |
@@ -272,7 +270,7 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 
 - **Auto-start on login**: `shell:startup` shortcut → `VoicePromptTray.exe --tray` (tray UI; starts the daemon itself)
 - Shortcuts: one canonical **VoicePrompt** link on the desktop and in the Start Menu; upgrades remove only recognized VoicePrompt-owned legacy links.
-- Logs: `%USERPROFILE%\.voice-typing\daemon.log`
+- Logs: `%USERPROFILE%\.voice-typing\daemon.log` (rotates at 2 MB; three archives retained)
 - State: daemon PID/status via `faster-whisper-dictation.exe status`
 - UI prefs: `%APPDATA%\VoicePrompt\prefs.json`
 - AI settings: `%APPDATA%\VoicePrompt\ai.json` (API key protected with Windows account encryption)
@@ -284,4 +282,11 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 - [faster-whisper-dictation](https://github.com/bhargavchippada/faster-whisper-dictation) — the dictation daemon (MIT)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — CTranslate2 whisper runtime (MIT)
 - [OpenAI Whisper large-v3](https://github.com/openai/whisper) — the model (MIT)
-- Logo artwork: generated for Voice Typing; multi-resolution Windows icon packaged by `scripts/make_icon.ps1`
+- Logo artwork: generated for VoicePrompt; multi-resolution Windows icon packaged by `scripts/make_icon.ps1`
+
+## Roadmap
+
+- **1.21, daily workflow**: guided microphone calibration, explicit correction learning from Recovery, more global actions, and shortcut-conflict guidance.
+- **1.22, optional context**: privacy-visible selected-text and focused-app formatting, kept off by default and blocked in secure fields.
+- **1.23, broader hardware**: benchmark-gated CPU, AMD, and Intel engine options plus an explicit VRAM-saving mode.
+- **Later**: file transcription, scratchpad reprocessing, speaker separation, and a signed installer and updater. Code signing requires a trusted signing certificate and stays separate from unsigned development builds.

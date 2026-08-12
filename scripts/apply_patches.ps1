@@ -117,6 +117,41 @@ Apply-Patch $serverEngine '                    "language": self.config.language,
                     ) or None,
 '@ "engine/server.py -- safe language routing" '"sl" if self.config.language == "sl-slang"'
 
+$audio = "$site\audio.py"
+Apply-Patch $audio @'
+        # Try to find device by name if string
+        if isinstance(device, str):
+            matched = False
+            for d in sd.query_devices():
+                if device.lower() in d["name"].lower() and d["max_input_channels"] > 0:
+                    device = d["name"]
+                    matched = True
+                    break
+            if not matched:
+                log.warning("Audio device %r not found, passing as-is to sounddevice", device)
+'@ @'
+        if isinstance(device, int):
+            try:
+                selected = sd.query_devices(device)
+                if selected["max_input_channels"] <= 0:
+                    raise ValueError("selected device has no input channels")
+            except (IndexError, sd.PortAudioError, ValueError):
+                log.warning("Audio device %r is unavailable. Using default audio input.", device)
+                device = None
+
+        # Resolve a saved device name on every recording so unplugged devices recover.
+        if isinstance(device, str):
+            matched = False
+            for d in sd.query_devices():
+                if device.lower() in d["name"].lower() and d["max_input_channels"] > 0:
+                    device = d["name"]
+                    matched = True
+                    break
+            if not matched:
+                log.warning("Audio device %r is unavailable. Using default audio input.", device)
+                device = None
+'@ "audio.py -- unavailable device fallback" 'Using default audio input.'
+
 # 1. cli.py - Windows-safe _pid_alive() (os.kill(pid, 0) raises WinError 87 on Win32)
 $cli = "$site\cli.py"
 $cliContent = [System.IO.File]::ReadAllText($cli)
@@ -1745,4 +1780,4 @@ Replace-Block `
     $canonicalBufferedDeactivate `
     "daemon.py -- finalize buffered recording"
 
-Write-Output "`nAll patches applied. Restart the daemon: Stop Voice Typing -> Start Voice Typing"
+Write-Output "`nAll patches applied. Restart VoicePrompt to activate them."

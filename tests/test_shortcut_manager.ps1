@@ -20,9 +20,10 @@ if (-not $resolvedTest.StartsWith($resolvedTemp, [System.StringComparison]::Ordi
 try {
     $desktop = Join-Path $testRoot "desktop"
     $programs = Join-Path $testRoot "programs"
+    $startup = Join-Path $testRoot "startup"
     $installRoot = Join-Path $testRoot "installed"
     $runtime = Join-Path $testRoot "runtime"
-    New-Item -ItemType Directory -Path $desktop, $programs, $installRoot, $runtime -Force | Out-Null
+    New-Item -ItemType Directory -Path $desktop, $programs, $startup, $installRoot, $runtime -Force | Out-Null
     $installedExe = Join-Path $installRoot "VoicePromptTray.exe"
     $pythonw = Join-Path $runtime "pythonw.exe"
     Copy-Item -LiteralPath "$env:SystemRoot\System32\notepad.exe" -Destination $installedExe
@@ -40,12 +41,17 @@ try {
     $unrelated = $shell.CreateShortcut((Join-Path $desktop "Stop Voice Typing.lnk"))
     $unrelated.TargetPath = "$env:SystemRoot\System32\notepad.exe"
     $unrelated.Save()
+    $legacyStartup = $shell.CreateShortcut((Join-Path $startup "Voice Typing (faster-whisper-dictation).lnk"))
+    $legacyStartup.TargetPath = $installedExe
+    $legacyStartup.Arguments = "--tray"
+    $legacyStartup.Save()
 
     Install-VoicePromptShortcuts `
         -InstalledExe $installedExe `
         -InstallRoot $installRoot `
         -DesktopDirectory $desktop `
-        -ProgramsDirectory $programs
+        -ProgramsDirectory $programs `
+        -StartupDirectory $startup
 
     if (Test-Path -LiteralPath (Join-Path $desktop "Voice Typing Settings.lnk")) {
         throw "Owned legacy settings shortcut was not removed."
@@ -55,6 +61,9 @@ try {
     }
     if (-not (Test-Path -LiteralPath (Join-Path $desktop "Stop Voice Typing.lnk"))) {
         throw "Unrelated same-name shortcut was removed."
+    }
+    if (Test-Path -LiteralPath (Join-Path $startup "Voice Typing (faster-whisper-dictation).lnk")) {
+        throw "Owned legacy startup shortcut was not removed."
     }
 
     foreach ($canonicalPath in @(
@@ -69,11 +78,19 @@ try {
         }
     }
 
+    $startupShortcut = $shell.CreateShortcut((Join-Path $startup "VoicePrompt.lnk"))
+    if ($startupShortcut.TargetPath -ne $installedExe -or
+        $startupShortcut.Arguments -ne "--tray" -or
+        $startupShortcut.WorkingDirectory -ne $installRoot) {
+        throw "Canonical startup shortcut does not preserve auto-start with the installed application."
+    }
+
     Install-VoicePromptShortcuts `
         -InstalledExe $installedExe `
         -InstallRoot $installRoot `
         -DesktopDirectory $desktop `
-        -ProgramsDirectory $programs
+        -ProgramsDirectory $programs `
+        -StartupDirectory $startup
     if (-not (Test-Path -LiteralPath (Join-Path $desktop "Stop Voice Typing.lnk"))) {
         throw "Repeated migration removed an unrelated shortcut."
     }

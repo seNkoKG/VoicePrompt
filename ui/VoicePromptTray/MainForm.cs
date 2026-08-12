@@ -1970,13 +1970,13 @@ internal sealed class MainForm : Form
 
         string saved = _microphoneCombo.Tag as string ?? (_microphoneCombo.SelectedItem as ComboItem)?.Value ?? "";
         ShowFooter("Refreshing microphones…", Theme.TextSecondary);
-        IReadOnlyList<string> devices = await Task.Run(_daemon.ListDevices);
+        DeviceScanResult scan = await Task.Run(_daemon.ListDevices);
         if (IsDisposed)
             return;
 
         _loading = true;
         var items = new List<ComboItem> { new("System default", "") };
-        foreach (string raw in devices)
+        foreach (string raw in scan.Devices)
         {
             int separator = raw.IndexOf(':');
             string name = separator >= 0 ? raw[(separator + 1)..].Trim() : raw.Trim();
@@ -1993,7 +1993,12 @@ internal sealed class MainForm : Form
         _microphoneCombo.Tag = (_microphoneCombo.SelectedItem as ComboItem)?.Value ?? "";
         _loading = false;
         if (!_dirty)
-            ShowFooter(devices.Count == 0 ? "Using the Windows default microphone" : $"Found {devices.Count} microphone input(s)", Theme.Muted);
+        {
+            if (scan.Error.Length > 0)
+                ShowFooter("Could not scan microphones · " + ShortMessage(scan.Error), Theme.Warn);
+            else
+                ShowFooter(scan.Devices.Count == 0 ? "Using the Windows default microphone" : $"Found {scan.Devices.Count} microphone input(s)", Theme.Muted);
+        }
         UpdateOverview();
     }
 
@@ -2753,12 +2758,16 @@ internal sealed class MainForm : Form
 
     private string StartupShortcut => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Startup),
+        "VoicePrompt.lnk");
+
+    private string LegacyStartupShortcut => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Startup),
         "Voice Typing (faster-whisper-dictation).lnk");
 
     private void LoadAutoStartState()
     {
         _loading = true;
-        _autoStartToggle.Checked = File.Exists(StartupShortcut);
+        _autoStartToggle.Checked = File.Exists(StartupShortcut) || File.Exists(LegacyStartupShortcut);
         _loading = false;
     }
 
@@ -2766,10 +2775,20 @@ internal sealed class MainForm : Form
     {
         try
         {
-            if (_autoStartToggle.Checked && !File.Exists(StartupShortcut))
-                CreateShortcut(StartupShortcut, Application.ExecutablePath, "--tray");
-            else if (!_autoStartToggle.Checked && File.Exists(StartupShortcut))
-                File.Delete(StartupShortcut);
+            if (_autoStartToggle.Checked)
+            {
+                if (!File.Exists(StartupShortcut))
+                    CreateShortcut(StartupShortcut, Application.ExecutablePath, "--tray");
+                if (File.Exists(LegacyStartupShortcut))
+                    File.Delete(LegacyStartupShortcut);
+            }
+            else
+            {
+                if (File.Exists(StartupShortcut))
+                    File.Delete(StartupShortcut);
+                if (File.Exists(LegacyStartupShortcut))
+                    File.Delete(LegacyStartupShortcut);
+            }
             return null;
         }
         catch (Exception ex)

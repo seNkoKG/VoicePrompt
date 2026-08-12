@@ -28,7 +28,7 @@ internal sealed class TrayApp : IDisposable
         _tray = new NotifyIcon
         {
             Icon = LoadIcon(),
-            Text = "Voice Typing",
+            Text = "VoicePrompt",
             Visible = true,
         };
         _tray.DoubleClick += (_, _) => OpenSettings();
@@ -84,7 +84,7 @@ internal sealed class TrayApp : IDisposable
         {
             _startupTimer.Stop();
             if (_daemon.Refresh(true).State != DaemonState.Running)
-                await RunDaemonActionAsync(_daemon.Start, "Voice Typing ready", "Hold your hotkey to talk.");
+                await RunDaemonActionAsync(_daemon.Start, "VoicePrompt ready", "Hold your hotkey to talk.");
         };
         _startupTimer.Start();
         Poll();
@@ -131,7 +131,7 @@ internal sealed class TrayApp : IDisposable
         }
         catch (Exception ex)
         {
-            Balloon("Voice Typing error", ex.Message);
+            Balloon("VoicePrompt error", ex.Message);
         }
         finally
         {
@@ -175,7 +175,7 @@ internal sealed class TrayApp : IDisposable
         if (_lastState != DaemonState.Unknown && info.State != _lastState)
         {
             if (info.State == DaemonState.Running)
-                Balloon("Voice Typing ready", $"Daemon running — hotkey {info.Hotkey} ({info.Mode} mode).");
+                Balloon("VoicePrompt ready", $"Daemon running — hotkey {info.Hotkey} ({info.Mode} mode).");
             else if (info.State == DaemonState.Stopped)
                 Balloon("Daemon stopped", "Dictation is off.");
         }
@@ -185,8 +185,8 @@ internal sealed class TrayApp : IDisposable
         _toggleItem.Enabled = !_busy;
         _restartItem.Enabled = info.State == DaemonState.Running && !_busy;
         _tray.Text = info.State == DaemonState.Running && info.Hotkey != null
-            ? $"Voice Typing — {info.Hotkey} ({info.Mode})"
-            : "Voice Typing";
+            ? $"VoicePrompt — {info.Hotkey} ({info.Mode})"
+            : "VoicePrompt";
     }
 
     private void ShowFirstRunBalloon()
@@ -198,7 +198,7 @@ internal sealed class TrayApp : IDisposable
                 return;
             Directory.CreateDirectory(_paths.AppDataDir);
             File.WriteAllText(flag, "1");
-            _tray.BalloonTipTitle = "Voice Typing is running";
+            _tray.BalloonTipTitle = "VoicePrompt is running";
             _tray.BalloonTipText = "Click the icon for settings. Double-click to open.";
             _tray.ShowBalloonTip(4000);
         }

@@ -23,9 +23,10 @@ function Install-VoicePromptShortcuts(
     [string]$InstalledExe,
     [string]$InstallRoot,
     [string]$DesktopDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory),
-    [string]$ProgramsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    [string]$ProgramsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs),
+    [string]$StartupDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
 ) {
-    foreach ($directory in @($DesktopDirectory, $ProgramsDirectory)) {
+    foreach ($directory in @($DesktopDirectory, $ProgramsDirectory, $StartupDirectory)) {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
     }
 
@@ -45,6 +46,17 @@ function Install-VoicePromptShortcuts(
     }
 
     $shell = New-Object -ComObject WScript.Shell
+
+    $canonicalStartup = Join-Path $StartupDirectory "VoicePrompt.lnk"
+    $legacyStartup = Join-Path $StartupDirectory "Voice Typing (faster-whisper-dictation).lnk"
+    $canonicalStartupOwned = Test-VoicePromptLegacyShortcut $canonicalStartup
+    $legacyStartupOwned = Test-VoicePromptLegacyShortcut $legacyStartup
+    $startupEnabled = $canonicalStartupOwned -or $legacyStartupOwned
+    if ($legacyStartupOwned) {
+        Remove-Item -LiteralPath $legacyStartup -Force
+        Write-Output "Removed legacy shortcut: $legacyStartup"
+    }
+
     foreach ($shortcutPath in @(
         (Join-Path $DesktopDirectory "VoicePrompt.lnk"),
         (Join-Path $ProgramsDirectory "VoicePrompt.lnk")
@@ -55,5 +67,19 @@ function Install-VoicePromptShortcuts(
         $shortcut.IconLocation = "$InstalledExe,0"
         $shortcut.Description = "VoicePrompt voice typing"
         $shortcut.Save()
+    }
+
+    if ($startupEnabled) {
+        if ((Test-Path -LiteralPath $canonicalStartup) -and -not $canonicalStartupOwned) {
+            Write-Warning "A non-VoicePrompt shortcut already uses the startup name VoicePrompt.lnk; it was left unchanged."
+        } else {
+            $shortcut = $shell.CreateShortcut($canonicalStartup)
+            $shortcut.TargetPath = $InstalledExe
+            $shortcut.Arguments = "--tray"
+            $shortcut.WorkingDirectory = $InstallRoot
+            $shortcut.IconLocation = "$InstalledExe,0"
+            $shortcut.Description = "Start VoicePrompt with Windows"
+            $shortcut.Save()
+        }
     }
 }

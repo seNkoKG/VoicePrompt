@@ -21,6 +21,7 @@ internal sealed record DaemonInfo
 }
 
 internal sealed record AiTestResult(bool Ok, string Text, string Error, int LatencyMs);
+internal sealed record DeviceScanResult(IReadOnlyList<string> Devices, string Error);
 
 internal sealed class DaemonManager
 {
@@ -95,7 +96,7 @@ internal sealed class DaemonManager
         if (_last.State == DaemonState.Running)
             return;
         if (!File.Exists(_paths.Pythonw) || !File.Exists(_paths.RunnerPy))
-            throw new InvalidOperationException("Voice Typing runtime is not installed.");
+            throw new InvalidOperationException("VoicePrompt runtime is not installed.");
 
         var psi = new ProcessStartInfo(_paths.Pythonw)
         {
@@ -103,7 +104,7 @@ internal sealed class DaemonManager
             UseShellExecute = true,
             CreateNoWindow = true,
         };
-        using var started = Process.Start(psi) ?? throw new InvalidOperationException("Could not start Voice Typing runtime.");
+        using var started = Process.Start(psi) ?? throw new InvalidOperationException("Could not start VoicePrompt runtime.");
 
         for (int i = 0; i < 40; i++)
         {
@@ -138,11 +139,11 @@ internal sealed class DaemonManager
         Start();
     }
 
-    public IReadOnlyList<string> ListDevices()
+    public DeviceScanResult ListDevices()
     {
         var result = new List<string>();
         if (!Installed)
-            return result;
+            return new DeviceScanResult(result, "The local runtime is not installed.");
 
         try
         {
@@ -155,10 +156,11 @@ internal sealed class DaemonManager
                     result.Add($"{m.Groups[1].Value}: {m.Groups[2].Value.Trim()}");
             }
         }
-        catch
+        catch (Exception ex)
         {
+            return new DeviceScanResult(result, ex.Message);
         }
-        return result;
+        return new DeviceScanResult(result, "");
     }
 
     public AiTestResult TestAi(string? configPath = null)
