@@ -21,6 +21,7 @@
     <Compile Include="..\VoicePromptTray\InputLevelMeter.cs" />
     <Compile Include="..\VoicePromptTray\LocalTextStore.cs" />
     <Compile Include="..\VoicePromptTray\LanguageCatalog.cs" />
+    <Compile Include="..\VoicePromptTray\LanguageProfileStore.cs" />
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
     <Compile Include="..\VoicePromptTray\PerformanceSnapshot.cs" />
     <Compile Include="..\VoicePromptTray\RecordingOverlay.cs" />

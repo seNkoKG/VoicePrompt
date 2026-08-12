@@ -629,6 +629,23 @@ internal sealed class MainForm : Form
         language.Add("Additional language", "Search the 98 other languages already built into the installed model; no model download needed.", _additionalLanguageCombo, 64);
         language.Add("Recognition context", "Give Whisper examples of names and technical terms; this is not sent to an AI service.", promptFrame, 136);
         language.Add("Personal corrections", "One local replacement per line: misheard => intended. Applied before optional AI cleanup.", correctionsFrame, 136);
+        var importProfile = new ActionButton("Import profile", ActionButtonStyle.Secondary) { Width = 112, BackColor = Theme.Surface };
+        importProfile.Click += (_, _) => ImportLanguageProfile();
+        var exportProfile = new ActionButton("Export profile", ActionButtonStyle.Secondary) { Width = 112, BackColor = Theme.Surface };
+        exportProfile.Click += (_, _) => ExportLanguageProfile();
+        var profileActions = new FlowLayoutPanel
+        {
+            AutoSize = false,
+            BackColor = Theme.Surface,
+            FlowDirection = FlowDirection.LeftToRight,
+            Size = new Size(240, 40),
+            WrapContents = false,
+        };
+        importProfile.Margin = new Padding(0, 0, 8, 0);
+        exportProfile.Margin = Padding.Empty;
+        profileActions.Controls.Add(importProfile);
+        profileActions.Controls.Add(exportProfile);
+        language.Add("Language profile", "Share language, context, hotwords, and corrections without sharing secrets or device settings.", LeftControl(profileActions), 64);
         AddPageItem(body, language.Build());
     }
 
@@ -1147,6 +1164,86 @@ internal sealed class MainForm : Form
     private string SelectedLanguageCode() => _languageChoice.SelectedValue == "other"
         ? ResolveAdditionalLanguage()?.Code ?? ""
         : _languageChoice.SelectedValue;
+
+    private void ExportLanguageProfile()
+    {
+        if (_languageChoice.SelectedValue == "other" && ResolveAdditionalLanguage() is null)
+        {
+            ShowFooter("Choose the additional language before exporting its profile.", Theme.Warn);
+            return;
+        }
+        using var dialog = new SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = "json",
+            FileName = "VoicePrompt-language-profile.json",
+            Filter = "VoicePrompt language profile (*.json)|*.json",
+            OverwritePrompt = true,
+            Title = "Export VoicePrompt language profile",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        try
+        {
+            LanguageProfileDocument profile = LanguageProfileStore.Create(
+                SelectedLanguageCode(),
+                _promptText.Text,
+                _hotwordsText.Text,
+                _correctionsText.Text);
+            LanguageProfileStore.Save(dialog.FileName, profile);
+            ShowFooter("Language profile exported · no secrets or device settings included", Theme.Ok);
+        }
+        catch (Exception ex)
+        {
+            ShowFooter("Could not export profile · " + ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
+    private void ImportLanguageProfile()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Filter = "VoicePrompt language profile (*.json)|*.json",
+            Multiselect = false,
+            Title = "Import VoicePrompt language profile",
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        try
+        {
+            ApplyLanguageProfile(LanguageProfileStore.Load(dialog.FileName));
+            ShowFooter("Language profile loaded · review, then Save & restart", Theme.Accent);
+        }
+        catch (Exception ex)
+        {
+            ShowFooter("Could not import profile · " + ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
+    private void ApplyLanguageProfile(LanguageProfileDocument profile)
+    {
+        string? primary = LanguageCatalog.PrimaryModeFor(profile.Language);
+        if (primary is not null)
+        {
+            _languageChoice.SelectValue(primary);
+            _additionalLanguageCombo.SelectedIndex = -1;
+            _additionalLanguageCombo.Text = "";
+        }
+        else
+        {
+            LanguageOption option = LanguageCatalog.Find(profile.Language)
+                ?? throw new InvalidDataException("The profile language is not supported.");
+            _languageChoice.SelectValue("other");
+            _additionalLanguageCombo.SelectedItem = option;
+        }
+        _promptText.Text = profile.Prompt;
+        _hotwordsText.Text = profile.Hotwords;
+        _correctionsText.Text = profile.CorrectionsText;
+        UpdateLanguageControls();
+        UpdateOverview();
+        MarkDirty();
+    }
 
     private void UpdateOverview()
     {

@@ -161,6 +161,54 @@ history.Delete("empty");
 history.Delete("one");
 Check("history deletes selected transcript", history.Load().Count == 0 && history.Latest() is null);
 
+var languageProfile = VoicePromptTray.LanguageProfileStore.Create(
+    "es",
+    "Nombres propios: Žiga, Ljubljana",
+    "Codex, Polymarket",
+    "codecs => Codex\npolly market => Polymarket");
+string languageProfileJson = VoicePromptTray.LanguageProfileStore.Serialize(languageProfile);
+var importedLanguageProfile = VoicePromptTray.LanguageProfileStore.Deserialize(languageProfileJson);
+Check("language profile preserves Unicode and vocabulary",
+    importedLanguageProfile.Language == "es" &&
+    importedLanguageProfile.Prompt.Contains("Žiga") &&
+    importedLanguageProfile.CorrectionsText.Contains("polly market => Polymarket"));
+Check("language profile excludes private and machine settings",
+    !languageProfileJson.Contains("apiKey", StringComparison.OrdinalIgnoreCase) &&
+    !languageProfileJson.Contains("microphone", StringComparison.OrdinalIgnoreCase) &&
+    !languageProfileJson.Contains("hotkey", StringComparison.OrdinalIgnoreCase) &&
+    !languageProfileJson.Contains("history", StringComparison.OrdinalIgnoreCase));
+Check("language profile normalizes Auto", VoicePromptTray.LanguageProfileStore.Create("AUTO", "", "", "").Language == "");
+string languageProfilePath = Path.Combine(dir, "language-profile.json");
+VoicePromptTray.LanguageProfileStore.Save(languageProfilePath, languageProfile);
+Check("language profile file round trip", VoicePromptTray.LanguageProfileStore.Load(languageProfilePath).Language == "es");
+try
+{
+    VoicePromptTray.LanguageProfileStore.Deserialize("{\"format\":\"voiceprompt-language-profile\",\"version\":1,\"language\":\"xx\"}");
+    Check("language profile rejects unsupported language", false);
+}
+catch (InvalidDataException)
+{
+    Check("language profile rejects unsupported language", true);
+}
+try
+{
+    VoicePromptTray.LanguageProfileStore.Deserialize("{\"format\":\"unknown\",\"version\":1,\"language\":\"en\"}");
+    Check("language profile rejects unknown schema", false);
+}
+catch (InvalidDataException)
+{
+    Check("language profile rejects unknown schema", true);
+}
+try
+{
+    VoicePromptTray.LanguageProfileStore.Deserialize(new string('x', 128 * 1024 + 1));
+    Check("language profile bounds input size", false);
+}
+catch (InvalidDataException)
+{
+    Check("language profile bounds input size", true);
+}
+
 Check("Whisper catalog has 100 unique languages",
     VoicePromptTray.LanguageCatalog.All.Count == 100 &&
     VoicePromptTray.LanguageCatalog.All.Select(option => option.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 100);

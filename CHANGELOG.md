@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0] - 2026-08-12
+
+### Added
+
+- Added portable language-profile export and import for the selected language, recognition context, hotwords, and personal corrections.
+- Added strict profile schema, version, language, correction, field-length, and 128 KB file-size validation with atomic exports.
+- Added clean round-trip, Unicode, privacy-exclusion, Auto-normalization, unsupported-language, and oversized-input tests.
+
+### Changed
+
+- Import only updates the visible language fields for review; users still choose **Save & restart** before the live runtime changes.
+- Exclude API credentials, AI provider settings, transcript history, microphone names, hotkeys, audio settings, and hardware choices from every exported profile.
+- Keep English + Slovenian Auto as the default; imported languages remain explicit opt-in choices and reuse the installed multilingual model.
+
 ## [1.8.0] - 2026-08-12
 
 ### Added

@@ -201,6 +201,46 @@ typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlag
     .Invoke(form, Array.Empty<object>());
 Application.DoEvents();
 
+var importedProfile = LanguageProfileStore.Create(
+    "fr",
+    "Noms propres: Élodie",
+    "Codex, VoicePrompt",
+    "codecs => Codex");
+typeof(MainForm).GetMethod("ApplyLanguageProfile", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, new object[] { importedProfile });
+Application.DoEvents();
+string importedLanguage = (string)typeof(MainForm)
+    .GetMethod("SelectedLanguageCode", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>())!;
+var promptText = (TextBox)typeof(MainForm)
+    .GetField("_promptText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var hotwordsText = (TextBox)typeof(MainForm)
+    .GetField("_hotwordsText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var correctionsText = (TextBox)typeof(MainForm)
+    .GetField("_correctionsText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+if (importedLanguage != "fr" || !promptText.Text.Contains("Élodie") ||
+    !hotwordsText.Text.Contains("VoicePrompt") || !correctionsText.Text.Contains("codecs => Codex") ||
+    !form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR imported language profile did not populate reviewable unsaved fields");
+}
+form.ShowPageForDiagnostics("dictation");
+pageMap["dictation"].AutoScrollPosition = new Point(0, 560);
+Application.DoEvents();
+string languageProfilePath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_language_profile.png");
+using (var languageProfileBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(languageProfileBitmap, new Rectangle(Point.Empty, form.Size));
+    languageProfileBitmap.Save(languageProfilePath);
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+
 string overlayPath = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
 long overlayActivationMs;
 using (var overlay = new RecordingOverlay
@@ -320,6 +360,7 @@ foreach (string page in pages)
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
+Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");
 
 form.Close();
 return layoutFailures + behaviorFailures;
