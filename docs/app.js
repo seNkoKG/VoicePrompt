@@ -15,6 +15,37 @@ menuButton?.addEventListener('click', () => {
 
 navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
 
+const interfaceShowcase = document.querySelector('[data-interface-showcase]');
+const interfaceImage = interfaceShowcase?.querySelector('[data-interface-image]');
+const interfaceTitle = interfaceShowcase?.querySelector('[data-interface-title]');
+const interfaceCopy = interfaceShowcase?.querySelector('[data-interface-copy]');
+const interfaceTabs = [...(interfaceShowcase?.querySelectorAll('[role="tab"]') ?? [])];
+
+function selectInterfaceTab(selected) {
+  if (!interfaceImage || !interfaceTitle || !interfaceCopy) return;
+  interfaceTabs.forEach((tab) => {
+    const active = tab === selected;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+  });
+  interfaceImage.src = selected.dataset.shot;
+  interfaceImage.alt = selected.dataset.alt;
+  interfaceTitle.textContent = selected.dataset.title;
+  interfaceCopy.textContent = selected.dataset.copy;
+}
+
+interfaceTabs.forEach((tab, index) => {
+  tab.addEventListener('click', () => selectInterfaceTab(tab));
+  tab.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const offset = event.key === 'ArrowRight' ? 1 : -1;
+    const next = interfaceTabs[(index + offset + interfaceTabs.length) % interfaceTabs.length];
+    selectInterfaceTab(next);
+    next.focus();
+  });
+});
+
 window.addEventListener('scroll', () => {
   header?.classList.toggle('scrolled', window.scrollY > 20);
 }, { passive: true });

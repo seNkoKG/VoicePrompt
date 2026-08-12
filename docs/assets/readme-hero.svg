@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
   <title id="title">VoicePrompt</title>
-  <desc id="desc">Private voice typing for Windows. Speak naturally and type anywhere.</desc>
+  <desc id="desc">Private voice typing for Windows with 100 supported languages. Speak naturally and type anywhere.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="520" gradientUnits="userSpaceOnUse">
       <stop stop-color="#171b1f"/>
@@ -33,7 +33,7 @@
   <text x="74" y="321" fill="#8f9891" font-family="Segoe UI,Arial,sans-serif" font-size="17">Private, GPU-accelerated voice typing for Windows.</text>
   <g transform="translate(74 364)" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="600">
     <rect width="112" height="34" rx="17" fill="#222823" stroke="#475149"/><circle cx="17" cy="17" r="4" fill="#d5ff8f"/><text x="29" y="21" fill="#dbe0da">Local-first</text>
-    <rect x="122" width="158" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="141" y="21" fill="#b9c0ba">English + Slovenian</text>
+    <rect x="122" width="158" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="155" y="21" fill="#b9c0ba">100 languages</text>
     <rect x="290" width="105" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="309" y="21" fill="#b9c0ba">Open source</text>
   </g>
 

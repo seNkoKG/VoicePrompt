@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0c0e10">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="VoicePrompt is private, GPU-accelerated voice typing for Windows. Hold a hotkey, speak, and paste accurate English or Slovenian text into any app.">
+  <meta name="description" content="VoicePrompt is private, GPU-accelerated voice typing for Windows with 100 Whisper languages, tuned English and Slovenian Auto, recovery, app profiles, and optional AI cleanup.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="VoicePrompt — private voice typing for Windows">
-  <meta property="og:description" content="Your voice becomes text in the app you are already using. Local by default, fast on NVIDIA GPUs, and built for English and Slovenian.">
+  <meta property="og:description" content="Dictate in any of 100 Whisper languages. Local by default, fast on NVIDIA GPUs, with tuned English and Slovenian automatic detection.">
   <meta property="og:url" content="https://senkokg.github.io/VoicePrompt/">
   <meta property="og:image" content="https://raw.githubusercontent.com/seNkoKG/VoicePrompt/main/assets/logo.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -23,9 +23,10 @@
     "name": "VoicePrompt",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Windows 11",
-    "description": "Private, GPU-accelerated voice-to-text dictation for Windows.",
+    "description": "Private, GPU-accelerated voice-to-text dictation for Windows with 100 supported Whisper languages.",
     "downloadUrl": "https://github.com/seNkoKG/VoicePrompt/releases/latest",
     "softwareRequirements": "Windows 11, Python 3.10 or newer, NVIDIA GPU",
+    "featureList": "100 Whisper languages, English and Slovenian Auto, global push-to-talk hotkeys, long-recording buffering, local transcript recovery, reusable snippets, application profiles, optional AI text cleanup",
     "license": "https://opensource.org/license/mit"
   }
   </script>
@@ -58,9 +59,9 @@
   <main id="main">
     <section class="hero shell" id="top">
       <div class="hero-copy reveal">
-        <div class="eyebrow"><span class="pulse-dot"></span> Private voice typing for Windows</div>
+        <div class="eyebrow"><span class="pulse-dot"></span> Local-first dictation · 100 languages</div>
         <h1>Speak naturally.<br><span>Type anywhere.</span></h1>
-        <p class="hero-lede">Hold one key, say what you mean, and release. VoicePrompt turns English or Slovenian speech into text inside the app you are already using.</p>
+        <p class="hero-lede">Hold one key, say what you mean, and release. VoicePrompt recognizes any of Whisper's 100 languages and puts the result inside the app you are already using.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/seNkoKG/VoicePrompt/releases/latest">
             <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15.5h14"/></svg>
@@ -70,64 +71,17 @@
             View source <span aria-hidden="true">↗</span>
           </a>
         </div>
-        <p class="hero-note">Free and open source. No account. Audio stays local by default.</p>
+        <p class="hero-note">English and Slovenian share a tuned automatic mode. Every other language is one searchable selection away.</p>
       </div>
 
       <div class="hero-visual reveal reveal-delay" aria-label="VoicePrompt interface preview">
         <div class="visual-glow" aria-hidden="true"></div>
-        <div class="app-window">
-          <div class="window-bar">
-            <div class="window-title"><img src="assets/mark.svg" alt="" width="20" height="20"> VoicePrompt</div>
-            <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
-          </div>
-          <div class="window-body">
-            <aside class="mock-sidebar" aria-hidden="true">
-              <div class="mock-brand-line"></div>
-              <div class="mock-nav active"><i></i><span>Dictation</span></div>
-              <div class="mock-nav"><i></i><span>Audio</span></div>
-              <div class="mock-nav"><i></i><span>Intelligence</span></div>
-              <div class="mock-nav"><i></i><span>Recovery</span></div>
-              <div class="mock-nav"><i></i><span>Advanced</span></div>
-            </aside>
-            <div class="mock-content">
-              <div class="mock-heading">
-                <div><span>DICTATION</span><strong>Ready when you are</strong></div>
-                <div class="status-pill"><i></i> Ready</div>
-              </div>
-              <div class="mock-card hotkey-card">
-                <div>
-                  <span class="mock-label">HOLD TO SPEAK</span>
-                  <strong>F1</strong>
-                  <small>Global hotkey · release to paste</small>
-                </div>
-                <div class="keycap">F1</div>
-              </div>
-              <div class="mock-grid">
-                <div class="mock-card language-card">
-                  <span class="mock-label">LANGUAGE</span>
-                  <strong>English + Slovenian</strong>
-                  <small>Automatic per utterance</small>
-                  <div class="language-chips"><span>EN</span><span>SL</span><i>Auto</i></div>
-                </div>
-                <div class="mock-card privacy-card">
-                  <span class="mock-label">RECOGNITION</span>
-                  <strong>Local GPU</strong>
-                  <small>Audio never leaves this PC</small>
-                  <svg aria-hidden="true" viewBox="0 0 32 32"><path d="M16 3l10 4v7c0 7-4.2 12-10 15-5.8-3-10-8-10-15V7l10-4z"/><path d="M11 16l3 3 7-7"/></svg>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="app-window product-shot-frame">
+          <img src="assets/app-overview.png" alt="VoicePrompt Overview showing runtime status, hotkey, language, microphone, and recognition setup" width="1104" height="819">
         </div>
-
-        <div class="recording-pill">
-          <div class="mic-icon" aria-hidden="true"><span></span></div>
-          <div class="live-wave" aria-label="Live microphone waveform">
-            <i style="--h:8px"></i><i style="--h:14px"></i><i style="--h:22px"></i><i style="--h:11px"></i>
-            <i style="--h:27px"></i><i style="--h:17px"></i><i style="--h:30px"></i><i style="--h:13px"></i>
-            <i style="--h:24px"></i><i style="--h:9px"></i><i style="--h:18px"></i><i style="--h:7px"></i>
-          </div>
-          <span>Listening</span>
+        <div class="recording-preview">
+          <img src="assets/recording-overlay.png" alt="The actual compact VoicePrompt microphone and waveform overlay" width="184" height="44">
+          <span>Actual hotkey overlay</span>
         </div>
       </div>
     </section>
@@ -135,7 +89,7 @@
     <section class="trust-strip shell reveal" aria-label="Product highlights">
       <div><strong>Local-first</strong><span>Private audio pipeline</span></div>
       <div><strong>~0.6 s</strong><span>Measured 8 s decode*</span></div>
-      <div><strong>100</strong><span>Whisper languages</span></div>
+      <div><strong>100 languages</strong><span>EN + SL Auto by default</span></div>
       <div><strong>Open source</strong><span>Inspect every line</span></div>
     </section>
 
@@ -150,19 +104,19 @@
           <span class="step-number">01</span>
           <div class="step-icon key-icon" aria-hidden="true">F1</div>
           <h3>Hold</h3>
-          <p>Press your global hotkey in a browser, IDE, chat, document, or anywhere else.</p>
+          <p>Use a single key or key combination in a browser, IDE, chat, document, or game.</p>
         </article>
         <article class="step reveal reveal-delay-one">
           <span class="step-number">02</span>
           <div class="step-icon wave-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
           <h3>Speak</h3>
-          <p>A compact waveform confirms the microphone is hearing you without stealing focus.</p>
+          <p>A compact waveform confirms the microphone is hearing you. Speak in any supported language.</p>
         </article>
         <article class="step reveal reveal-delay-two">
           <span class="step-number">03</span>
           <div class="step-icon paste-icon" aria-hidden="true"><span></span></div>
           <h3>Release</h3>
-          <p>Your complete text lands once in the focused app. Long prompts are prepared while you talk.</p>
+          <p>Your complete text lands once by paste, or stays on the clipboard when an app blocks input.</p>
         </article>
       </div>
     </section>
@@ -176,14 +130,14 @@
         <div class="bento">
           <article class="bento-card bento-language reveal">
             <div class="card-copy">
-              <span class="card-tag">Bilingual Auto</span>
-              <h3>English and Slovenian, without a switch.</h3>
-              <p>Language-neutral detection keeps normal English clean, understands standard or colloquial Slovenian, and verifies weak cross-language guesses before they reach your text.</p>
+              <span class="card-tag">100-language recognition</span>
+              <h3>Your language is already in the model.</h3>
+              <p>Search and pin any language supported by Whisper large-v3. English and Slovenian get tuned automatic routing by default, including a dedicated Slovenian slang profile.</p>
             </div>
             <div class="language-orbit" aria-hidden="true">
               <div class="orbit-ring"></div>
               <span class="lang-en">EN</span><span class="lang-sl">SL</span>
-              <i>Auto</i>
+              <i>Auto</i><b>+98</b>
             </div>
           </article>
 
@@ -197,9 +151,9 @@
           </article>
 
           <article class="bento-card bento-wave reveal">
-            <span class="card-tag">Live feedback</span>
-            <h3>A signal you can see.</h3>
-            <p>The click-through overlay follows the active screen and responds to the actual microphone level.</p>
+            <span class="card-tag">Fast long recordings</span>
+            <h3>Keep talking. The wait stays short.</h3>
+            <p>Complete speech blocks are prepared while you speak. The full recording remains available for automatic fallback, then VoicePrompt pastes once.</p>
             <div class="wave-stage" aria-hidden="true">
               <svg viewBox="0 0 600 120" preserveAspectRatio="none">
                 <path class="wave-line wave-back" d="M0 60 C40 60 42 31 75 60 S112 90 148 60 S192 12 230 60 S274 108 310 60 S352 33 387 60 S426 83 461 60 S502 18 540 60 S575 60 600 60"/>
@@ -209,17 +163,58 @@
           </article>
 
           <article class="bento-card bento-tools reveal reveal-delay-one">
-            <span class="card-tag">More than transcription</span>
-            <h3>Shape the output, only when you want to.</h3>
+            <span class="card-tag">A complete daily workflow</span>
+            <h3>Useful controls, without hidden behavior.</h3>
             <div class="tool-list">
-              <div><i>01</i><span><strong>Personal corrections</strong><small>Fix recurring names and technical terms locally.</small></span></div>
-              <div><i>02</i><span><strong>Writing modes</strong><small>Optional cleanup, grammar, or prompt formatting.</small></span></div>
-              <div><i>03</i><span><strong>Recovery history</strong><small>Copy the result again if a target app refuses paste.</small></span></div>
-              <div><i>04</i><span><strong>App profiles</strong><small>Choose output behavior for exact applications.</small></span></div>
+              <div><i>01</i><span><strong>Corrections, commands, and snippets</strong><small>Keep recurring text fixes and reusable phrases local.</small></span></div>
+              <div><i>02</i><span><strong>Four writing modes</strong><small>Verbatim, Clean, Grammar, or structured Prompt.</small></span></div>
+              <div><i>03</i><span><strong>Recovery comparison</strong><small>Copy the delivered result or untouched original.</small></span></div>
+              <div><i>04</i><span><strong>Application profiles</strong><small>Set writing and output behavior per executable.</small></span></div>
+              <div><i>05</i><span><strong>Portable backups</strong><small>Move settings without keys, transcripts, or device paths.</small></span></div>
+              <div><i>06</i><span><strong>Compatible server mode</strong><small>Opt into self-hosted recognition on other hardware.</small></span></div>
             </div>
           </article>
         </div>
       </div>
+    </section>
+
+    <section class="section shell interface-section" id="interface">
+      <div class="section-heading reveal">
+        <p class="kicker">The application users actually download</p>
+        <h2>Current interface.<br>Current capabilities.</h2>
+        <p>These views come from the current Windows release. The same six workspaces guide setup, dictation, audio, intelligence, recovery, and advanced tools.</p>
+      </div>
+      <div class="interface-showcase reveal" data-interface-showcase>
+        <div class="interface-tabs" role="tablist" aria-label="VoicePrompt interface views">
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="true" data-shot="assets/app-overview.png" data-alt="VoicePrompt Overview with readiness and setup cards" data-title="Readiness at a glance" data-copy="Confirm the runtime, hotkey, microphone, language, and recognition engine from one screen.">Overview</button>
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-languages.png" data-alt="VoicePrompt language profile with French selected from the 100-language catalog" data-title="100 language profiles" data-copy="Search and pin any Whisper language, then export its context, hotwords, and corrections as a portable profile.">Languages</button>
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-writing.png" data-alt="VoicePrompt Intelligence page with Verbatim, Clean, Grammar, and Prompt writing modes" data-title="Local first, optional intelligence" data-copy="Verbatim adds no provider delay. Clean, Grammar, and Prompt are explicit text-only options with strict fallback.">Writing modes</button>
+        </div>
+        <div class="interface-stage" id="interface-panel" role="tabpanel">
+          <img src="assets/app-overview.png" alt="VoicePrompt Overview with readiness and setup cards" width="1104" height="819" data-interface-image>
+        </div>
+        <div class="interface-caption" aria-live="polite">
+          <strong data-interface-title>Readiness at a glance</strong>
+          <span data-interface-copy>Confirm the runtime, hotkey, microphone, language, and recognition engine from one screen.</span>
+        </div>
+      </div>
+      <ul class="capability-grid reveal" aria-label="VoicePrompt capabilities">
+        <li><strong>100 language profiles</strong><span>One multilingual model</span></li>
+        <li><strong>English + Slovenian Auto</strong><span>Tuned bilingual default</span></li>
+        <li><strong>Single keys or combos</strong><span>Selective global capture</span></li>
+        <li><strong>Hold or toggle</strong><span>Two activation styles</span></li>
+        <li><strong>Paste or Copy only</strong><span>Reliable output choices</span></li>
+        <li><strong>Buffered long prompts</strong><span>One ordered result</span></li>
+        <li><strong>Live input test</strong><span>No second audio capture</span></li>
+        <li><strong>Commands and snippets</strong><span>Exact local actions</span></li>
+        <li><strong>Personal corrections</strong><span>Deterministic replacements</span></li>
+        <li><strong>Four writing modes</strong><span>Verbatim through Prompt</span></li>
+        <li><strong>Result and original recovery</strong><span>Bounded local history</span></li>
+        <li><strong>Per-application profiles</strong><span>Exact executable rules</span></li>
+        <li><strong>Portable backups</strong><span>Private fields excluded</span></li>
+        <li><strong>Compatible server mode</strong><span>Explicit self-hosted option</span></li>
+        <li><strong>Manual update channels</strong><span>Stable or Preview</span></li>
+      </ul>
     </section>
 
     <section class="section shell privacy-section" id="privacy">
@@ -227,7 +222,12 @@
         <div class="privacy-copy">
           <p class="kicker">A privacy model you can explain</p>
           <h2>Local audio.<br>Visible choices.</h2>
-          <p>The default path is simple: microphone to local GPU to focused app. There is no account, analytics SDK, hidden upload, or saved recording.</p>
+          <p>The default path is microphone to local GPU to focused app. There is no account, analytics SDK, hidden upload, or saved recording.</p>
+          <ul class="privacy-details">
+            <li>Optional AI cleanup sends completed text only.</li>
+            <li>Compatible server mode sends audio only to the server you configure.</li>
+            <li>Manual update checks contact the official GitHub release endpoint only when requested.</li>
+          </ul>
           <a class="text-link" href="https://github.com/seNkoKG/VoicePrompt">Audit the source <span aria-hidden="true">↗</span></a>
         </div>
         <div class="privacy-flow" aria-label="Private data flow">
@@ -245,7 +245,7 @@
         <div class="section-heading reveal">
           <p class="kicker">Start in a few minutes</p>
           <h2>One download.<br>One install command.</h2>
-          <p>VoicePrompt installs its private Python environment, tested speech runtime, tray interface, and Windows integration fixes.</p>
+          <p>VoicePrompt installs its private Python environment, tested speech runtime, tray interface, and Windows integration fixes. The multilingual model downloads once on first start.</p>
           <div class="requirements"><span>Windows 11 x64</span><span>Python 3.10+</span><span>NVIDIA GPU</span></div>
         </div>
         <div class="install-card reveal reveal-delay-one">
@@ -267,7 +267,7 @@
       </div>
       <p class="kicker">Less typing. More thinking.</p>
       <h2>Your next sentence is faster out loud.</h2>
-      <p>Download VoicePrompt, hold one key, and keep your hands on the work that matters.</p>
+      <p>Download VoicePrompt, choose from 100 languages, and keep your hands on the work that matters.</p>
       <div class="hero-actions centered">
         <a class="button button-primary" href="https://github.com/seNkoKG/VoicePrompt/releases/latest">Download latest release</a>
         <a class="button button-ghost" href="https://github.com/seNkoKG/VoicePrompt">Star on GitHub <span aria-hidden="true">↗</span></a>
@@ -279,7 +279,7 @@
     <div class="shell footer-grid">
       <div>
         <a class="brand" href="#top"><img src="assets/mark.svg" alt="" width="30" height="30"><span>VoicePrompt</span></a>
-        <p>Private voice typing for Windows.</p>
+        <p>Local-first voice typing in 100 languages.</p>
       </div>
       <div class="footer-links">
         <a href="https://github.com/seNkoKG/VoicePrompt/releases/latest">Download</a>
