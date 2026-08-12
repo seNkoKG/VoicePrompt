@@ -28,10 +28,28 @@ jobs:
         uses: actions/checkout@v7
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Prepare resilient site download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v1.20.1
+          RELEASE_ZIP: VoicePrompt-v1.20.1-windows-x64.zip
+          RELEASE_SUMS: VoicePrompt-v1.20.1-SHA256SUMS.txt
+        run: |
+          mkdir -p _site/downloads
+          cp -R docs/. _site/
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$RELEASE_ZIP" \
+            --pattern "$RELEASE_SUMS" \
+            --dir _site/downloads
+          expected="$(awk -v file="$RELEASE_ZIP" '$2 == file { print $1 }' "_site/downloads/$RELEASE_SUMS")"
+          actual="$(sha256sum "_site/downloads/$RELEASE_ZIP" | awk '{ print $1 }')"
+          test -n "$expected"
+          test "$actual" = "$expected"
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
         with:
-          path: docs
+          path: _site
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
