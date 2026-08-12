@@ -17,6 +17,14 @@ internal sealed record TranscriptEntry
 
     [JsonPropertyName("originalText")]
     public string OriginalText { get; init; } = "";
+
+    [JsonIgnore]
+    public string SourceText => string.IsNullOrWhiteSpace(OriginalText) ? Text : OriginalText;
+
+    [JsonIgnore]
+    public bool WasRewritten =>
+        !string.IsNullOrWhiteSpace(OriginalText) &&
+        !string.Equals(OriginalText, Text, StringComparison.Ordinal);
 }
 
 internal sealed record HistorySettings

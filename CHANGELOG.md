@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.15.0] - 2026-08-12
+
+### Added
+
+- Added a side-by-side Recovery comparison for the delivered result and untouched original transcript.
+- Added separate Copy result and Copy original actions with screen-reader labels and responsive layout coverage.
+
+### Changed
+
+- Make unchanged Verbatim transcripts explicit instead of combining both versions in one ambiguous text box.
+
+### Fixed
+
+- Preserve access to the exact pre-cleanup wording when optional AI cleanup changes a transcript.
+
 ## [1.14.0] - 2026-08-12
 
 ### Added

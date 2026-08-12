@@ -250,6 +250,18 @@ File.WriteAllText(historyPath, """
 """);
 Check("history reads Unicode transcript", history.Load().Last().Text == "Pozdravljen svet");
 Check("history finds latest usable transcript", history.Latest()?.Text == "Pozdravljen svet");
+var rewrittenHistory = new VoicePromptTray.TranscriptEntry
+{
+    Text = "This is the cleaned sentence.",
+    OriginalText = "uh this is the sentence",
+};
+Check("history exposes delivered and original text separately",
+    rewrittenHistory.WasRewritten &&
+    rewrittenHistory.SourceText == "uh this is the sentence" &&
+    rewrittenHistory.Text == "This is the cleaned sentence.");
+var verbatimHistory = new VoicePromptTray.TranscriptEntry { Text = "Živjo svet" };
+Check("verbatim history uses delivered text as its source",
+    !verbatimHistory.WasRewritten && verbatimHistory.SourceText == "Živjo svet");
 history.Delete("empty");
 history.Delete("one");
 Check("history deletes selected transcript", history.Load().Count == 0 && history.Latest() is null);

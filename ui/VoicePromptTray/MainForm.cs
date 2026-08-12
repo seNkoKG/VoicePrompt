@@ -92,7 +92,10 @@ internal sealed class MainForm : Form
     private ToggleSwitch _historyEnabled = null!;
     private NumericUpDown _historyLimit = null!;
     private ListBox _historyList = null!;
-    private TextBox _historyPreview = null!;
+    private TextBox _historyResultPreview = null!;
+    private TextBox _historyOriginalPreview = null!;
+    private ActionButton _historyCopyOriginalButton = null!;
+    private Label _historyComparisonStatus = null!;
     private Label _historyStatus = null!;
 
     private ComboBox _recognitionModelCombo = null!;
@@ -823,19 +826,15 @@ internal sealed class MainForm : Form
             AccessibleName = "Recent transcripts",
         };
         _historyList.SelectedIndexChanged += (_, _) => UpdateHistorySelection();
-        _historyPreview = new TextBox
-        {
-            Dock = DockStyle.Fill,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            BackColor = Theme.Control,
-            ForeColor = Theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
-            AccessibleName = "Selected transcript text",
-        };
-        var copy = new ActionButton("Copy transcript", ActionButtonStyle.Primary) { BackColor = Theme.Surface };
-        copy.Click += (_, _) => CopySelectedHistory();
+        _historyResultPreview = BuildHistoryPreview("Delivered transcript");
+        _historyOriginalPreview = BuildHistoryPreview("Original transcript before AI cleanup");
+        _historyComparisonStatus = BuildInlineHint(Theme.Surface);
+        _historyComparisonStatus.Text = "Select a transcript to compare both versions.";
+        var comparison = BuildHistoryComparison();
+        var copy = new ActionButton("Copy result", ActionButtonStyle.Primary) { BackColor = Theme.Surface };
+        copy.Click += (_, _) => CopySelectedHistory(original: false);
+        _historyCopyOriginalButton = new ActionButton("Copy original", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        _historyCopyOriginalButton.Click += (_, _) => CopySelectedHistory(original: true);
         var delete = new ActionButton("Delete", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
         delete.Click += (_, _) => DeleteSelectedHistory();
         var refresh = new ActionButton("Refresh", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
@@ -847,9 +846,98 @@ internal sealed class MainForm : Form
 
         var recovery = new SectionBuilder("Recent transcripts", "Newest first. Select an entry to inspect or copy it.");
         recovery.Add("Saved entries", "Timestamp and a short preview. Transcript text stays out of logs and diagnostics.", _historyList, 176);
-        recovery.Add("Selected text", "If AI cleanup changed the text, recovery keeps the pasted result.", _historyPreview, 148);
-        recovery.Add("Actions", "Copy returns the exact saved text to your clipboard.", StackControl(HorizontalControl(copy, delete, refresh, clear), _historyStatus, 58), 80);
+        recovery.Add("Compare versions", "See the delivered result beside the untouched local transcript. Both remain private.", comparison, 220);
+        recovery.Add("Actions", "Copy either version, or manage the selected local recovery entry.", BuildHistoryActions(copy, _historyCopyOriginalButton, delete, refresh, clear), 122);
         AddPageItem(body, recovery.Build());
+    }
+
+    private static TextBox BuildHistoryPreview(string accessibleName) => new()
+    {
+        Dock = DockStyle.Fill,
+        Multiline = true,
+        ReadOnly = true,
+        ScrollBars = ScrollBars.Vertical,
+        BackColor = Theme.Control,
+        ForeColor = Theme.Text,
+        BorderStyle = BorderStyle.FixedSingle,
+        AccessibleName = accessibleName,
+    };
+
+    private Control BuildHistoryComparison()
+    {
+        var comparison = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Theme.Surface,
+            ColumnCount = 2,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        comparison.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        comparison.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        comparison.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        comparison.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        comparison.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+
+        var resultLabel = Theme.Label("DELIVERED", Theme.TextSecondary, 8.1f, FontStyle.Bold, Theme.Surface);
+        resultLabel.Dock = DockStyle.Fill;
+        resultLabel.TextAlign = ContentAlignment.MiddleLeft;
+        var originalLabel = Theme.Label("ORIGINAL", Theme.TextSecondary, 8.1f, FontStyle.Bold, Theme.Surface);
+        originalLabel.Dock = DockStyle.Fill;
+        originalLabel.TextAlign = ContentAlignment.MiddleLeft;
+        comparison.Controls.Add(resultLabel, 0, 0);
+        comparison.Controls.Add(originalLabel, 1, 0);
+
+        _historyResultPreview.Margin = new Padding(0, 0, 6, 4);
+        _historyOriginalPreview.Margin = new Padding(6, 0, 0, 4);
+        comparison.Controls.Add(_historyResultPreview, 0, 1);
+        comparison.Controls.Add(_historyOriginalPreview, 1, 1);
+        _historyComparisonStatus.Dock = DockStyle.Fill;
+        comparison.Controls.Add(_historyComparisonStatus, 0, 2);
+        comparison.SetColumnSpan(_historyComparisonStatus, 2);
+        return comparison;
+    }
+
+    private Control BuildHistoryActions(params ActionButton[] buttons)
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Theme.Surface,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        FlowLayoutPanel MakeRow(IEnumerable<ActionButton> rowButtons)
+        {
+            var row = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Surface,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+            };
+            foreach (ActionButton button in rowButtons)
+            {
+                button.Margin = new Padding(0, 0, 8, 4);
+                row.Controls.Add(button);
+            }
+            return row;
+        }
+
+        panel.Controls.Add(MakeRow(buttons.Take(2)), 0, 0);
+        panel.Controls.Add(MakeRow(buttons.Skip(2)), 0, 1);
+        _historyStatus.Dock = DockStyle.Fill;
+        panel.Controls.Add(_historyStatus, 0, 2);
+        return panel;
     }
 
     private void BuildAdvancedPage()
@@ -1968,7 +2056,7 @@ internal sealed class MainForm : Form
         if (_historyList.Items.Count > 0)
             _historyList.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
         else
-            _historyPreview.Clear();
+            ClearHistorySelection();
         _historyStatus.Text = entries.Count == 0
             ? "No transcripts saved yet."
             : $"{entries.Count} local transcript{(entries.Count == 1 ? "" : "s")} available.";
@@ -1979,15 +2067,28 @@ internal sealed class MainForm : Form
     {
         if (_historyList.SelectedItem is not HistoryListItem selected)
         {
-            _historyPreview.Clear();
+            ClearHistorySelection();
             return;
         }
-        _historyPreview.Text = string.IsNullOrWhiteSpace(selected.Entry.OriginalText)
-            ? selected.Entry.Text
-            : selected.Entry.Text + Environment.NewLine + Environment.NewLine + "Original transcript:" + Environment.NewLine + selected.Entry.OriginalText;
+        _historyResultPreview.Text = selected.Entry.Text;
+        _historyOriginalPreview.Text = selected.Entry.SourceText;
+        _historyCopyOriginalButton.Enabled = true;
+        _historyComparisonStatus.Text = selected.Entry.WasRewritten
+            ? "AI cleanup changed this transcript · both versions are recoverable"
+            : "No AI changes recorded · both versions are identical";
+        _historyComparisonStatus.ForeColor = selected.Entry.WasRewritten ? Theme.Ok : Theme.Muted;
     }
 
-    private void CopySelectedHistory()
+    private void ClearHistorySelection()
+    {
+        _historyResultPreview.Clear();
+        _historyOriginalPreview.Clear();
+        _historyCopyOriginalButton.Enabled = false;
+        _historyComparisonStatus.Text = "Select a transcript to compare both versions.";
+        _historyComparisonStatus.ForeColor = Theme.Muted;
+    }
+
+    private void CopySelectedHistory(bool original)
     {
         if (_historyList.SelectedItem is not HistoryListItem selected)
         {
@@ -1996,8 +2097,8 @@ internal sealed class MainForm : Form
         }
         try
         {
-            Clipboard.SetDataObject(selected.Entry.Text, true, 5, 40);
-            ShowFooter("Transcript copied to clipboard", Theme.Ok);
+            Clipboard.SetDataObject(original ? selected.Entry.SourceText : selected.Entry.Text, true, 5, 40);
+            ShowFooter(original ? "Original transcript copied" : "Delivered transcript copied", Theme.Ok);
         }
         catch (Exception ex)
         {

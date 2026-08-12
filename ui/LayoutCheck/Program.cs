@@ -113,6 +113,38 @@ void RenderPage(string page, Size size, bool saveScreenshot)
 foreach (string page in pages)
     RenderPage(page, new Size(1080, 780), saveScreenshot: true);
 
+form.ShowPageForDiagnostics("history");
+Application.DoEvents();
+var historyResultPreview = (TextBox)typeof(MainForm)
+    .GetField("_historyResultPreview", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var historyOriginalPreview = (TextBox)typeof(MainForm)
+    .GetField("_historyOriginalPreview", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var historyCopyOriginal = (ActionButton)typeof(MainForm)
+    .GetField("_historyCopyOriginalButton", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+if (historyResultPreview.Bounds == historyOriginalPreview.Bounds ||
+    historyResultPreview.Width < 100 || historyOriginalPreview.Width < 100 ||
+    string.IsNullOrWhiteSpace(historyResultPreview.AccessibleName) ||
+    string.IsNullOrWhiteSpace(historyOriginalPreview.AccessibleName) ||
+    historyCopyOriginal.Parent is null)
+{
+    layoutFailures++;
+    failures.AppendLine("LAYOUT Recovery comparison is missing, overlapping, or inaccessible");
+}
+var pageMap = (Dictionary<string, Panel>)typeof(MainForm)
+    .GetField("_pages", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+pageMap["history"].AutoScrollPosition = new Point(0, 300);
+Application.DoEvents();
+string historyComparisonPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_history_comparison.png");
+using (var historyComparisonBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(historyComparisonBitmap, new Rectangle(Point.Empty, form.Size));
+    historyComparisonBitmap.Save(historyComparisonPath);
+}
+
 form.ClientSize = new Size(1080, 780);
 form.ShowPageForDiagnostics("advanced");
 Application.DoEvents();
@@ -126,9 +158,6 @@ if (!updateButton.Visible || updateButton.Parent is null ||
     layoutFailures++;
     failures.AppendLine("LAYOUT update action is hidden or covered in its shared row");
 }
-var pageMap = (Dictionary<string, Panel>)typeof(MainForm)
-    .GetField("_pages", BindingFlags.Instance | BindingFlags.NonPublic)!
-    .GetValue(form)!;
 pageMap["advanced"].AutoScrollPosition = new Point(0, 460);
 Application.DoEvents();
 string advancedToolsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_advanced_tools.png");
@@ -514,6 +543,7 @@ Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
+Console.WriteLine($"SCREENSHOT history-comparison={historyComparisonPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");
 Console.WriteLine($"SCREENSHOT snippets={snippetsPath}");
 

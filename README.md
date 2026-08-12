@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.14.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.15.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -114,7 +114,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Reusable snippets** — save up to 50 local text templates and insert one by its exact English or Slovenian spoken name, including multi-line content without AI or network delay.
 - **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
-- **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
+- **Recovery** — keeps a configurable 5–100 recent transcripts locally, compares the delivered result with the untouched original, and lets you copy either version. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
 - **Portable language profiles** — exports or imports language, recognition context, hotwords, and personal corrections in a small JSON file. Profiles never contain API keys, transcript history, hotkeys, microphone names, or hardware settings.
 - **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, and snippet settings without API keys, transcripts, microphone identity, startup state, or machine paths.
