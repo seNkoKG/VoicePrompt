@@ -97,6 +97,9 @@ Write-Output "[SYNCED  ] buffered_transcription.py -- lossless long-recording pr
 $outputModeSource = Join-Path $PSScriptRoot "output_mode.py"
 Copy-Item -LiteralPath $outputModeSource -Destination "$site\output_mode.py" -Force
 Write-Output "[SYNCED  ] output_mode.py -- safe transcript delivery routing"
+$textSnippetsSource = Join-Path $PSScriptRoot "text_snippets.py"
+Copy-Item -LiteralPath $textSnippetsSource -Destination "$site\text_snippets.py" -Force
+Write-Output "[SYNCED  ] text_snippets.py -- bounded reusable text"
 $voiceCommandsSource = Join-Path $PSScriptRoot "voice_commands.py"
 Copy-Item -LiteralPath $voiceCommandsSource -Destination "$site\voice_commands.py" -Force
 Write-Output "[SYNCED  ] voice_commands.py -- exact opt-in spoken commands"

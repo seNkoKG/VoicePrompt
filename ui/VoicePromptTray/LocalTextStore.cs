@@ -159,3 +159,99 @@ internal sealed class PersonalDictionaryStore
         return entries;
     }
 }
+
+internal sealed record TextSnippetEntry(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("content")] string Content);
+
+internal sealed class TextSnippetStore
+{
+    private readonly string _path;
+
+    public TextSnippetStore(string path) => _path = path;
+
+    public string LoadText()
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(_path));
+            if (!document.RootElement.TryGetProperty("items", out JsonElement items))
+                return "";
+            var entries = items.Deserialize<List<TextSnippetEntry>>() ?? [];
+            return string.Join(Environment.NewLine, entries.Select(entry =>
+                $"{entry.Name} => {EscapeContent(entry.Content)}"));
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    public void SaveText(string text)
+    {
+        var entries = Parse(text);
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        string temp = _path + ".tmp";
+        string json = JsonSerializer.Serialize(new { version = 1, items = entries });
+        File.WriteAllText(temp, json, new UTF8Encoding(false));
+        File.Move(temp, _path, true);
+    }
+
+    public static IReadOnlyList<TextSnippetEntry> Parse(string text)
+    {
+        var entries = new List<TextSnippetEntry>();
+        foreach (string rawLine in text.ReplaceLineEndings("\n").Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0)
+                continue;
+            int separator = line.IndexOf("=>", StringComparison.Ordinal);
+            if (separator <= 0 || separator >= line.Length - 2)
+                throw new InvalidDataException($"Invalid snippet: {line}. Use name => content.");
+            string name = line[..separator].Trim();
+            string content = UnescapeContent(line[(separator + 2)..].Trim());
+            if (name.Length == 0 || content.Length == 0)
+                throw new InvalidDataException($"Invalid snippet: {line}. Use name => content.");
+            if (name.Length > 60)
+                throw new InvalidDataException("Snippet names must be 60 characters or shorter.");
+            if (content.Length > 4_000)
+                throw new InvalidDataException("Snippet content must be 4,000 characters or shorter.");
+            if (entries.Any(entry => entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException($"Duplicate snippet: {name}.");
+            entries.Add(new TextSnippetEntry(name, content));
+        }
+        if (entries.Count > 50)
+            throw new InvalidDataException("Text snippets are limited to 50 entries.");
+        return entries;
+    }
+
+    private static string EscapeContent(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .ReplaceLineEndings("\\n");
+
+    private static string UnescapeContent(string value)
+    {
+        var result = new StringBuilder(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\\' && i + 1 < value.Length)
+            {
+                char next = value[i + 1];
+                if (next == 'n')
+                {
+                    result.Append('\n');
+                    i++;
+                    continue;
+                }
+                if (next == '\\')
+                {
+                    result.Append('\\');
+                    i++;
+                    continue;
+                }
+            }
+            result.Append(value[i]);
+        }
+        return result.ToString();
+    }
+}

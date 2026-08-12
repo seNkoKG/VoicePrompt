@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.voice_commands import commands_enabled, execute_voice_command, resolve_voice_command
+from scripts.text_snippets import TextSnippet
 
 
 class VoiceCommandTests(unittest.TestCase):
@@ -62,6 +63,15 @@ class VoiceCommandTests(unittest.TestCase):
         self.assertEqual(execute_voice_command(cancel, deliver, undo), "cancelled")
         self.assertEqual(delivered, ["\n\n"])
         self.assertEqual(undos, [True])
+
+    def test_saved_snippet_becomes_a_normal_text_command(self) -> None:
+        command = resolve_voice_command(
+            "Vstavi predlogo podpis.",
+            True,
+            {"podpis": TextSnippet("Podpis", "Lep pozdrav,\nŽan")},
+        )
+        self.assertIsNotNone(command)
+        self.assertEqual((command.name, command.text), ("snippet", "Lep pozdrav,\nŽan"))
 
 
 if __name__ == "__main__":

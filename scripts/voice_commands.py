@@ -7,6 +7,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .text_snippets import TextSnippet, load_snippets, resolve_snippet
+
 
 @dataclass(frozen=True)
 class VoiceCommand:
@@ -27,6 +29,7 @@ _COMMANDS = {
     "preklici": VoiceCommand("cancel", None),
     "prekliči": VoiceCommand("cancel", None),
 }
+_SNIPPETS = load_snippets()
 
 
 def commands_enabled(value: object | None = None) -> bool:
@@ -45,10 +48,18 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", normalized)
 
 
-def resolve_voice_command(text: str, enabled: object | None = None) -> VoiceCommand | None:
+def resolve_voice_command(
+    text: str,
+    enabled: object | None = None,
+    snippets: dict[str, TextSnippet] | None = None,
+) -> VoiceCommand | None:
     if not commands_enabled(enabled) or not isinstance(text, str):
         return None
-    return _COMMANDS.get(_normalize(text))
+    command = _COMMANDS.get(_normalize(text))
+    if command is not None:
+        return command
+    snippet = resolve_snippet(text, _SNIPPETS if snippets is None else snippets)
+    return VoiceCommand("snippet", snippet.content) if snippet is not None else None
 
 
 def execute_voice_command(

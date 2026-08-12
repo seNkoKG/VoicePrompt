@@ -43,6 +43,8 @@ internal sealed class AppPaths
 
     public string CorrectionsPath => Path.Combine(AppDataDir, "corrections.json");
 
+    public string SnippetsPath => Path.Combine(AppDataDir, "snippets.json");
+
     public string AiRewriterPath => Path.Combine(
         Home,
         "venv",

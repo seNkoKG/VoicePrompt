@@ -38,9 +38,10 @@ $packageSlangRetry = Join-Path $packageRoot "scripts\slang_retry.py"
 $packageDecodingOptions = Join-Path $packageRoot "scripts\decoding_options.py"
 $packageBuffered = Join-Path $packageRoot "scripts\buffered_transcription.py"
 $packageOutputMode = Join-Path $packageRoot "scripts\output_mode.py"
+$packageTextSnippets = Join-Path $packageRoot "scripts\text_snippets.py"
 $packageVoiceCommands = Join-Path $packageRoot "scripts\voice_commands.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageVoiceCommands, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageTextSnippets, $packageVoiceCommands, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -102,6 +103,7 @@ Copy-Item -LiteralPath $packageSlangRetry -Destination (Join-Path $installScript
 Copy-Item -LiteralPath $packageDecodingOptions -Destination (Join-Path $installScripts "decoding_options.py") -Force
 Copy-Item -LiteralPath $packageBuffered -Destination (Join-Path $installScripts "buffered_transcription.py") -Force
 Copy-Item -LiteralPath $packageOutputMode -Destination (Join-Path $installScripts "output_mode.py") -Force
+Copy-Item -LiteralPath $packageTextSnippets -Destination (Join-Path $installScripts "text_snippets.py") -Force
 Copy-Item -LiteralPath $packageVoiceCommands -Destination (Join-Path $installScripts "voice_commands.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force

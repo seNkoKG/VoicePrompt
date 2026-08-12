@@ -36,8 +36,9 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $corrections = Join-Path $Module "text_corrections.py"
     $buffered = Join-Path $Module "buffered_transcription.py"
     $outputMode = Join-Path $Module "output_mode.py"
+    $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $voiceCommands
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $textSnippets $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -97,7 +98,8 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($typerSource, "def _copy_text_impl\(").Count -ne 1) {
         throw "$Name is missing the exactly-once transcript output router."
     }
-    if (-not (Test-Path -LiteralPath $voiceCommands) -or
+    if (-not (Test-Path -LiteralPath $textSnippets) -or
+        -not (Test-Path -LiteralPath $voiceCommands) -or
         [regex]::Matches($typerSource, "from \.voice_commands import execute_voice_command, resolve_voice_command").Count -ne 1 -or
         [regex]::Matches($typerSource, "command = resolve_voice_command\(text\)").Count -ne 1 -or
         [regex]::Matches($typerSource, "def _send_ctrl_z\(").Count -ne 1 -or

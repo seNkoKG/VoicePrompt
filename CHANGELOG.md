@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.13.0] - 2026-08-12
+
+### Added
+
+- Added up to 50 reusable local text snippets with 4,000 characters per snippet and escaped multi-line content.
+- Added exact English `Insert snippet name` and Slovenian `Vstavi predlogo name` commands.
+- Added a dedicated Reusable text settings card plus parser, storage, command integration, packaging, migration, UI interaction, and scrolled-layout coverage.
+
+### Changed
+
+- Load snippets once at runtime startup so insertion adds no file I/O, AI request, or network delay to dictation.
+- Route snippet content through the same verified paste or Copy-only delivery path while excluding command phrases from Recovery.
+
+### Fixed
+
+- Fail closed on malformed, non-text, oversized, duplicate, or unknown snippets instead of inserting ambiguous content.
+
 ## [1.12.0] - 2026-08-12
 
 ### Added

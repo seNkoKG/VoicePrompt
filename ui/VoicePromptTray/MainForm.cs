@@ -20,6 +20,7 @@ internal sealed class MainForm : Form
     private readonly AppPaths _paths;
     private readonly TranscriptHistoryStore _historyStore;
     private readonly PersonalDictionaryStore _dictionaryStore;
+    private readonly TextSnippetStore _snippetStore;
     private readonly UpdateChecker _updateChecker = new();
     private readonly Dictionary<string, Panel> _pages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FlowLayoutPanel> _pageBodies = new(StringComparer.Ordinal);
@@ -68,6 +69,7 @@ internal sealed class MainForm : Form
     private Label _languageHint = null!;
     private TextBox _promptText = null!;
     private TextBox _correctionsText = null!;
+    private TextBox _snippetsText = null!;
 
     private ComboBox _microphoneCombo = null!;
     private InputLevelMeter _inputLevelMeter = null!;
@@ -135,6 +137,7 @@ internal sealed class MainForm : Form
         _config = new ConfigManager(paths.ConfigPath);
         _historyStore = new TranscriptHistoryStore(paths.HistoryPath, paths.HistorySettingsPath);
         _dictionaryStore = new PersonalDictionaryStore(paths.CorrectionsPath);
+        _snippetStore = new TextSnippetStore(paths.SnippetsPath);
 
         Text = "VoicePrompt Settings";
         BackColor = Theme.Canvas;
@@ -657,6 +660,20 @@ internal sealed class MainForm : Form
         profileActions.Controls.Add(exportProfile);
         language.Add("Language profile", "Share language, context, hotwords, and corrections without sharing secrets or device settings.", LeftControl(profileActions), 64);
         AddPageItem(body, language.Build());
+
+        _snippetsText = new TextBox
+        {
+            AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical,
+            PlaceholderText = "signature => Kind regards,\\nYour name",
+        };
+        _snippetsText.AccessibleName = "Reusable text snippets";
+        var snippetsFrame = new TextFieldFrame(_snippetsText, 116, multiline: true) { Dock = DockStyle.Fill };
+        var reusable = new SectionBuilder(
+            "Reusable text",
+            "With Voice commands enabled, say “Insert snippet name” or “Vstavi predlogo name.”");
+        reusable.Add("Saved snippets", "One per line: name => content. Write \\n for a line break.", snippetsFrame, 136);
+        AddPageItem(body, reusable.Build());
     }
 
     private void BuildAudioPage()
@@ -1040,6 +1057,7 @@ internal sealed class MainForm : Form
         {
             _promptText,
             _correctionsText,
+            _snippetsText,
             _aiEndpointText,
             _aiModelText,
             _aiKeyText,
@@ -1385,6 +1403,7 @@ internal sealed class MainForm : Form
         _historyEnabled.Checked = settings.Enabled;
         _historyLimit.Value = Clamp(settings.Limit, _historyLimit);
         _correctionsText.Text = _dictionaryStore.LoadText();
+        _snippetsText.Text = _snippetStore.LoadText();
         _loading = false;
         LoadHistory();
     }
@@ -1556,6 +1575,19 @@ internal sealed class MainForm : Form
             return;
         }
 
+        string snippets = _snippetsText.Text;
+        try
+        {
+            TextSnippetStore.Parse(snippets);
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowPage(DictationPage);
+            _snippetsText.Focus();
+            ShowFooter(ShortMessage(ex.Message), Theme.Err);
+            return;
+        }
+
         AiSettings aiSettings;
         try
         {
@@ -1636,6 +1668,7 @@ internal sealed class MainForm : Form
                 _config.Save();
                 AiSettingsStore.Save(_paths.AiConfigPath, aiSettings);
                 _dictionaryStore.SaveText(corrections);
+                _snippetStore.SaveText(snippets);
                 _historyStore.SaveSettings(historyEnabled, historyLimit);
                 _daemon.Restart();
             });

@@ -234,6 +234,26 @@ if (form.HasUnsavedChanges || voiceCommands.Checked != originalVoiceCommands)
     failures.AppendLine("BEHAVIOR Discard did not restore the voice-command setting");
 }
 
+var snippetsText = (TextBox)typeof(MainForm)
+    .GetField("_snippetsText", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalSnippets = snippetsText.Text;
+snippetsText.Text = originalSnippets + (originalSnippets.Length == 0 ? "" : Environment.NewLine) + "test => Verified";
+Application.DoEvents();
+if (!form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR editing snippets did not update the unsaved state");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || snippetsText.Text != originalSnippets)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore text snippets");
+}
+
 var aiModeChoice = (ChoiceStrip)typeof(MainForm)
     .GetField("_aiModeChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;
@@ -313,6 +333,14 @@ using (var languageProfileBitmap = new Bitmap(form.Width, form.Height))
 {
     form.DrawToBitmap(languageProfileBitmap, new Rectangle(Point.Empty, form.Size));
     languageProfileBitmap.Save(languageProfilePath);
+}
+pageMap["dictation"].AutoScrollPosition = new Point(0, 980);
+Application.DoEvents();
+string snippetsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_snippets.png");
+using (var snippetsBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(snippetsBitmap, new Rectangle(Point.Empty, form.Size));
+    snippetsBitmap.Save(snippetsPath);
 }
 typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>());
@@ -441,6 +469,7 @@ Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");
+Console.WriteLine($"SCREENSHOT snippets={snippetsPath}");
 
 form.Close();
 return layoutFailures + behaviorFailures;

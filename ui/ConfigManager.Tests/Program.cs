@@ -155,6 +155,22 @@ var dictionary = new VoicePromptTray.PersonalDictionaryStore(correctionsPath);
 dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
 Check("personal corrections round trip", dictionary.LoadText().Contains("žabar => Ljubljančan"));
 
+string snippetsPath = Path.Combine(dir, "local", "snippets.json");
+var snippets = new VoicePromptTray.TextSnippetStore(snippetsPath);
+var parsedSnippets = VoicePromptTray.TextSnippetStore.Parse("signature => Lep pozdrav,\\nŽan\nreply => Thank you!");
+Check("text snippets parse escaped lines", parsedSnippets.Count == 2 && parsedSnippets[0].Content == "Lep pozdrav,\nŽan");
+snippets.SaveText("signature => Lep pozdrav,\\nŽan\nreply => Thank you!");
+Check("text snippets round trip", snippets.LoadText().Contains("Lep pozdrav,\\nŽan") && snippets.LoadText().Contains("reply => Thank you!"));
+try
+{
+    VoicePromptTray.TextSnippetStore.Parse("reply => One\nREPLY => Two");
+    Check("duplicate snippets rejected", false);
+}
+catch (InvalidDataException)
+{
+    Check("duplicate snippets rejected", true);
+}
+
 string historyPath = Path.Combine(dir, "local", "history.json");
 string historySettingsPath = Path.Combine(dir, "local", "history-settings.json");
 var history = new VoicePromptTray.TranscriptHistoryStore(historyPath, historySettingsPath);
