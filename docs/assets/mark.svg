@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">VoicePrompt</title>
+  <desc id="desc">A microphone surrounded by a voice waveform.</desc>
+  <defs>
+    <linearGradient id="surface" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2b3035"/>
+      <stop offset="1" stop-color="#111417"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="14" y1="32" x2="50" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5f7f2"/>
+      <stop offset=".5" stop-color="#d5ff8f"/>
+      <stop offset="1" stop-color="#f5f7f2"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#surface)" stroke="#3d454d" stroke-width="2"/>
+  <path d="M12 32h5l2.2-8 4.4 17 4-27 4.5 36 4.3-26 3.3 17 2.5-9H52" fill="none" stroke="url(#signal)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

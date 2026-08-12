@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.png" width="160" alt="Voice Typing logo" />
+  <a href="https://senkokg.github.io/VoicePrompt/">
+    <img src="docs/assets/readme-hero.svg" width="100%" alt="VoicePrompt. Speak naturally. Type anywhere." />
+  </a>
 </p>
-
-<h1 align="center">VoicePrompt</h1>
 
 <p align="center">
   <strong>Local, private, GPU-accelerated voice-to-text dictation for Windows</strong><br>
@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/seNkoKG/VoicePrompt/releases/latest"><img src="https://img.shields.io/github/v/release/seNkoKG/VoicePrompt?color=343a40" alt="release" /></a>
+  <a href="https://senkokg.github.io/VoicePrompt/"><img src="https://img.shields.io/badge/website-open-d5ff8f?labelColor=212529" alt="website" /></a>
   <img src="https://img.shields.io/badge/engine-faster--whisper--large--v3-343a40" alt="engine" />
   <img src="https://img.shields.io/badge/acceleration-CUDA%20float16-22c55e" alt="cuda" />
   <img src="https://img.shields.io/badge/languages-100%20supported-495057" alt="langs" />
@@ -20,7 +21,7 @@
 
 ---
 
-## ✅ What it does
+## What it does
 
 Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Long recordings pre-transcribe complete speech blocks while you talk, retain the full microphone stream for automatic recovery, and still paste exactly once after release. The default is fast **English + Slovenian Auto**, with dedicated standard and slang Slovenian modes. Users can also search and pin any of Whisper large-v3's 100 languages without downloading another model. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
 
@@ -38,7 +39,7 @@ Measured on an RTX 5080:
 > Both run entirely locally on your GPU through **faster-whisper** (CTranslate2). The driving app is the open-source
 > [`faster-whisper-dictation`](https://github.com/bhargavchippada/faster-whisper-dictation) daemon.
 
-## 🏗️ Architecture
+## Architecture
 
 ```text
  F1 hold
@@ -64,11 +65,11 @@ Measured on an RTX 5080:
 - **Personal corrections**: explicit `misheard => intended` rules fix recurring names and terms locally before optional AI cleanup.
 - **Daemonized**: runs headless via `pythonw`, survives reboot via the Startup shortcut.
 
-## 🚀 Download and install
+## Download and install
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.1-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.2-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -159,7 +160,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 **Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
-If Whisper reports Finnish, Spanish, Latin, or another unsupported language, VoicePrompt uses Whisper's language probabilities to force the most likely English/Slovenian candidate. Cross-language decoder scores are not treated as directly comparable. Low-confidence English receives a Slovenian retry only when the English transcript score is also weak, removing unnecessary retries while preventing real English from being translated. Slovenian retries alone receive the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
+If Whisper reports Finnish, Spanish, Latin, or another unsupported language, VoicePrompt uses Whisper's language probabilities to force the most likely English/Slovenian candidate. A weak English or Slovenian detection receives one verification pass in the other supported language only when its transcript score is also weak. The forced result must show a real decoder-score gain before VoicePrompt changes languages, preventing uncertain English tails from turning into Slovenian while protecting genuine Slovenian speech. Slovenian verification alone receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
 
 ### Additional languages
 
