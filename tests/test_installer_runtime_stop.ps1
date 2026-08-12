@@ -32,10 +32,10 @@ if (-not $resolvedTest.StartsWith($resolvedTemp, [System.StringComparison]::Ordi
 $managedProcess = $null
 $unmanagedProcess = $null
 try {
-    $venvRoot = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) ".voice-typing\venv"
-    $venvPython = Join-Path $venvRoot "Scripts\python.exe"
-    if (-not (Test-Path -LiteralPath $venvPython)) {
-        throw "The VoicePrompt test runtime is unavailable: $venvPython"
+    $testPython = (Get-Command "python.exe" -ErrorAction Stop).Source
+    $managedRoot = Split-Path -Parent $testPython
+    if (-not (Test-Path -LiteralPath $testPython)) {
+        throw "The Python test runtime is unavailable: $testPython"
     }
 
     $fakeLocal = Join-Path $testRoot "local"
@@ -43,13 +43,13 @@ try {
     New-Item -ItemType Directory -Path $configRoot -Force | Out-Null
     $pidFile = Join-Path $configRoot "daemon.pid"
 
-    $managedProcess = Start-Process -FilePath $venvPython `
+    $managedProcess = Start-Process -FilePath $testPython `
         -ArgumentList '-c', '"import time; time.sleep(60)"', 'run_daemon.pyw' `
         -WindowStyle Hidden -PassThru
     [System.IO.File]::WriteAllText($pidFile, [string]$managedProcess.Id)
     Stop-VoicePromptRuntime `
-        -DaemonExe $venvPython `
-        -VenvRoot $venvRoot `
+        -DaemonExe $testPython `
+        -VenvRoot $managedRoot `
         -LocalAppData $fakeLocal
     $managedProcess.Refresh()
     if (-not $managedProcess.HasExited -or (Test-Path -LiteralPath $pidFile)) {
@@ -63,8 +63,8 @@ try {
     $refused = $false
     try {
         Stop-VoicePromptRuntime `
-            -DaemonExe $venvPython `
-            -VenvRoot $venvRoot `
+            -DaemonExe $testPython `
+            -VenvRoot $managedRoot `
             -LocalAppData $fakeLocal
     } catch {
         $refused = $_.Exception.Message -match "does not belong to VoicePrompt"
