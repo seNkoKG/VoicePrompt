@@ -56,6 +56,7 @@ Copy-Item -LiteralPath (Join-Path $root "run_daemon.pyw") -Destination $packageR
 Copy-Item -LiteralPath (Join-Path $root "config.toml") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "assets\logo.png") -Destination (Join-Path $packageRoot "assets")
 Copy-Item -LiteralPath (Join-Path $root "scripts\apply_patches.ps1") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\shortcut_manager.ps1") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\runtime_meter.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\ai_rewriter.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\transcript_history.py") -Destination (Join-Path $packageRoot "scripts")

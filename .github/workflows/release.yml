@@ -42,6 +42,7 @@ jobs:
         run: |
           dotnet run --project ui/ConfigManager.Tests -c Release
           dotnet run --project ui/LayoutCheck -c Release
+          ./tests/test_shortcut_manager.ps1
 
       - name: Build release package
         shell: pwsh

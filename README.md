@@ -68,7 +68,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.1-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -107,7 +107,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 
 - **Setup overview** — confirms runtime, hotkey, microphone, and recognition readiness at a glance, with direct recovery and support actions.
 - **Focused workspaces** — Dictation, Audio, Intelligence, Recovery, and Advanced pages keep everyday setup simple while leaving expert controls available.
-- **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **Voice Typing Settings** shortcut) to open settings. The tray menu can instantly copy the latest saved transcript, start/stop/restart the daemon, and quit the app.
+- **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **VoicePrompt** shortcut) to open settings. The tray menu can instantly copy the latest saved transcript, start/stop/restart the daemon, and quit the app.
 - **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Live input test** — the Audio page shows quiet, good-signal, and very-loud microphone levels while the hotkey is held by reusing the overlay stream, with no second capture or extra GPU work.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
@@ -268,7 +268,7 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 ## 🖥️ Lifecycle
 
 - **Auto-start on login**: `shell:startup` shortcut → `VoicePromptTray.exe --tray` (tray UI; starts the daemon itself)
-- Desktop shortcuts: **Voice Typing Settings** (tray UI), **Start Voice Typing** / **Stop Voice Typing** (daemon only)
+- Shortcuts: one canonical **VoicePrompt** link on the desktop and in the Start Menu; upgrades remove only recognized VoicePrompt-owned legacy links.
 - Logs: `%USERPROFILE%\.voice-typing\daemon.log`
 - State: daemon PID/status via `faster-whisper-dictation.exe status`
 - UI prefs: `%APPDATA%\VoicePrompt\prefs.json`

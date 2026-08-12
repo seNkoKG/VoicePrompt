@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.1] - 2026-08-12
+
+### Fixed
+
+- Remove only recognized VoicePrompt-owned legacy desktop and Start Menu shortcuts during upgrade.
+- Keep one canonical `VoicePrompt` shortcut targeting the installed executable and its embedded icon, instead of leaving development or daemon-only links behind.
+- Preserve unrelated same-name shortcuts and verify repeated shortcut migration is safe and idempotent.
+
 ## [1.18.0] - 2026-08-12
 
 ### Added

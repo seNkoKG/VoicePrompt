@@ -30,6 +30,7 @@ if ($env:OS -ne "Windows_NT" -or -not [Environment]::Is64BitOperatingSystem) {
 $packageRoot = $PSScriptRoot
 $packageExe = Join-Path $packageRoot "VoicePromptTray.exe"
 $packagePatch = Join-Path $packageRoot "scripts\apply_patches.ps1"
+$packageShortcutManager = Join-Path $packageRoot "scripts\shortcut_manager.ps1"
 $packageMeter = Join-Path $packageRoot "scripts\runtime_meter.py"
 $packageAi = Join-Path $packageRoot "scripts\ai_rewriter.py"
 $packageHistory = Join-Path $packageRoot "scripts\transcript_history.py"
@@ -42,7 +43,7 @@ $packageAppProfiles = Join-Path $packageRoot "scripts\app_profiles.py"
 $packageTextSnippets = Join-Path $packageRoot "scripts\text_snippets.py"
 $packageVoiceCommands = Join-Path $packageRoot "scripts\voice_commands.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -149,19 +150,8 @@ Invoke-Checked $hostExe @(
 
 if (-not $NoShortcuts) {
     Write-Step "Creating shortcuts"
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcuts = @(
-        (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)) "VoicePrompt.lnk"),
-        (Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)) "VoicePrompt.lnk")
-    )
-    foreach ($shortcutPath in $shortcuts) {
-        $shortcut = $shell.CreateShortcut($shortcutPath)
-        $shortcut.TargetPath = $installedExe
-        $shortcut.WorkingDirectory = $installRoot
-        $shortcut.IconLocation = "$installedExe,0"
-        $shortcut.Description = "VoicePrompt local voice typing"
-        $shortcut.Save()
-    }
+    . $packageShortcutManager
+    Install-VoicePromptShortcuts -InstalledExe $installedExe -InstallRoot $installRoot
     Start-Process -FilePath "$env:SystemRoot\System32\ie4uinit.exe" -ArgumentList "-show" -WindowStyle Hidden -ErrorAction SilentlyContinue
 }
 
