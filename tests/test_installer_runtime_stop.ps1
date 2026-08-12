@@ -89,3 +89,7 @@ try {
         Remove-Item -LiteralPath $resolvedTest -Recurse -Force
     }
 }
+
+# The fallback intentionally runs a failing native command. PowerShell 7 can
+# otherwise propagate that stale native exit code even after every assertion passes.
+exit 0
