@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.10.0] - 2026-08-12
+
+### Added
+
+- Added an opt-in **Copy only** transcript output mode for applications that block or mishandle synthetic paste.
+- Added deterministic routing, failure-propagation, persisted-setting, clean-install, upgrade, and UI layout coverage for both output modes.
+
+### Changed
+
+- Keep **Paste into app** as the default while making the selected delivery behavior explicit on the Dictation page.
+- Verify the complete Windows Unicode clipboard payload in Copy-only mode and send no paste keystroke.
+- Report paste and clipboard completion separately in privacy-safe performance diagnostics.
+
+### Fixed
+
+- Use delivery-neutral recovery notifications when a transcript was recognized successfully but its selected output route fails.
+
 ## [1.9.0] - 2026-08-12
 
 ### Added

@@ -94,6 +94,9 @@ Write-Output "[SYNCED  ] decoding_options.py -- latency-bounded Whisper decoding
 $bufferedSource = Join-Path $PSScriptRoot "buffered_transcription.py"
 Copy-Item -LiteralPath $bufferedSource -Destination "$site\buffered_transcription.py" -Force
 Write-Output "[SYNCED  ] buffered_transcription.py -- lossless long-recording prefetch"
+$outputModeSource = Join-Path $PSScriptRoot "output_mode.py"
+Copy-Item -LiteralPath $outputModeSource -Destination "$site\output_mode.py" -Force
+Write-Output "[SYNCED  ] output_mode.py -- safe transcript delivery routing"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -568,11 +571,14 @@ $canonicalTranscribeAndType = @'
             return
 
         try:
-            type_text(text + " ")
-            log.info("Paste shortcut sent: %d chars", len(text))
+            delivery = type_text(text + " ")
+            if delivery == "clipboard":
+                log.info("Transcript copied to clipboard: %d chars", len(text))
+            else:
+                log.info("Paste shortcut sent: %d chars", len(text))
         except Exception:
-            log.error("Paste failed after successful transcription", exc_info=True)
-            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+            log.error("Transcript delivery failed after successful transcription", exc_info=True)
+            notify("Transcript delivery failed", "The completed text remains available in Recovery")
 '@
 Replace-Block `
     "$site\daemon.py" `
@@ -852,12 +858,18 @@ from .text_corrections import apply_corrections
 from .transcript_history import remember_transcript
 '@ "typer.py -- local text pipeline imports" 'from .transcript_history import remember_transcript'
 }
+Apply-Patch $typer @'
+from .transcript_history import remember_transcript
+'@ @'
+from .transcript_history import remember_transcript
+from .output_mode import deliver_text
+'@ "typer.py -- transcript output routing" 'from .output_mode import deliver_text'
 
 $canonicalTypeText = @'
-def type_text(text: str) -> None:
-    """Normalize, recover, and type text without risking the transcript."""
+def type_text(text: str) -> str:
+    """Normalize, recover, and deliver text without risking the transcript."""
     if not text:
-        return
+        return "paste"
 
     original_text = text
     text = apply_corrections(text)
@@ -866,7 +878,7 @@ def type_text(text: str) -> None:
     log.debug("Typing %d chars", len(text))
 
     with _clipboard_lock:
-        _type_text_impl(text)
+        return deliver_text(text, _copy_text_impl, _type_text_impl)
 '@
 Replace-Block `
     $typer `
@@ -874,6 +886,26 @@ Replace-Block `
     'def _type_text_impl(' `
     $canonicalTypeText `
     "typer.py -- canonical local text pipeline"
+
+Apply-Patch $typer @'
+def _type_windows(text: str) -> None:
+'@ @'
+def _copy_text_impl(text: str) -> None:
+    """Copy the complete transcript without generating any paste keystroke."""
+    if sys.platform == "win32":
+        _win_clipboard_set(text)
+        if _win_clipboard_get() != text:
+            raise RuntimeError("Clipboard verification failed")
+    elif sys.platform == "darwin":
+        subprocess.run(["pbcopy"], input=text.encode(), check=True)
+    elif _detect_display() == "wayland":
+        subprocess.run(["wl-copy"], input=text.encode(), check=True)
+    else:
+        subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=True)
+
+
+def _type_windows(text: str) -> None:
+'@ "typer.py -- copy-only delivery implementation" 'def _copy_text_impl(text: str) -> None:'
 
 # Canonicalize methods that accumulated duplicate statements across upgrades.
 # The dependency is pinned to 0.2.0, so replacing these small blocks is safer
@@ -1356,11 +1388,14 @@ $canonicalTranscriptionHandlers = @'
             log.info("No speech detected")
             return
         try:
-            type_text(text + " ")
-            log.info("Paste shortcut sent: %d chars", len(text))
+            delivery = type_text(text + " ")
+            if delivery == "clipboard":
+                log.info("Transcript copied to clipboard: %d chars", len(text))
+            else:
+                log.info("Paste shortcut sent: %d chars", len(text))
         except Exception:
-            log.error("Paste failed after buffered transcription", exc_info=True)
-            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+            log.error("Transcript delivery failed after buffered transcription", exc_info=True)
+            notify("Transcript delivery failed", "The completed text remains available in Recovery")
 
     def _transcribe_and_type(self, audio: np.ndarray) -> None:
         """Transcribe audio, then paste it with separate failure reporting."""
@@ -1376,11 +1411,14 @@ $canonicalTranscriptionHandlers = @'
             return
 
         try:
-            type_text(text + " ")
-            log.info("Paste shortcut sent: %d chars", len(text))
+            delivery = type_text(text + " ")
+            if delivery == "clipboard":
+                log.info("Transcript copied to clipboard: %d chars", len(text))
+            else:
+                log.info("Paste shortcut sent: %d chars", len(text))
         except Exception:
-            log.error("Paste failed after successful transcription", exc_info=True)
-            notify("Paste failed", "Try Ctrl+V; the transcript was copied when possible")
+            log.error("Transcript delivery failed after successful transcription", exc_info=True)
+            notify("Transcript delivery failed", "The completed text remains available in Recovery")
 '@
 $daemonTranscriptionSource = [System.IO.File]::ReadAllText("$site\daemon.py")
 $transcriptionHandlerStart = if ($daemonTranscriptionSource.Contains("    def _transcribe_buffered(")) {

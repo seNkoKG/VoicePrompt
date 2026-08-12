@@ -19,6 +19,7 @@ internal sealed class ConfigManager
         [voiceprompt]
         slovenian_slang = false
         buffered_transcription = true
+        output_mode = "paste"
 
         [hotkey]
         binding = "f1"

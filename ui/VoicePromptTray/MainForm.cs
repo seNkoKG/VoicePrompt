@@ -59,6 +59,8 @@ internal sealed class MainForm : Form
     private HotkeyRecorder _hotkeyRecorder = null!;
     private ChoiceStrip _activationChoice = null!;
     private Label _activationHint = null!;
+    private ChoiceStrip _outputChoice = null!;
+    private Label _outputHint = null!;
     private ToggleSwitch _autoStartToggle = null!;
     private ChoiceStrip _languageChoice = null!;
     private ComboBox _additionalLanguageCombo = null!;
@@ -575,11 +577,16 @@ internal sealed class MainForm : Form
         _activationChoice.AccessibleName = "Recording activation mode";
         _activationChoice.SelectedChanged += (_, _) => UpdateActivationHint();
         _activationHint = BuildInlineHint(Theme.Surface);
+        _outputChoice = new ChoiceStrip(new[] { "Paste into app", "Copy only" }, new[] { "paste", "clipboard" }) { Dock = DockStyle.Fill };
+        _outputChoice.AccessibleName = "Transcript output mode";
+        _outputChoice.SelectedChanged += (_, _) => UpdateOutputHint();
+        _outputHint = BuildInlineHint(Theme.Surface);
         _autoStartToggle = new ToggleSwitch("Launch VoicePrompt when I sign in") { Dock = DockStyle.Left };
 
         var shortcut = new SectionBuilder("Shortcut & behavior", "A global key works from browsers, editors, chat apps, and games.");
         shortcut.Add("Global hotkey", "Click the field, press a key or combination, then press Enter.", _hotkeyRecorder, 76);
         shortcut.Add("Activation", "Hold mode is fastest and avoids accidental long recordings.", StackControl(_activationChoice, _activationHint, 64), 82);
+        shortcut.Add("Output", "Copy only is useful when an app blocks synthetic paste or you want manual placement.", StackControl(_outputChoice, _outputHint, 64), 82);
         shortcut.Add("Windows startup", "Start silently in the tray so dictation is always available.", _autoStartToggle, 62);
         AddPageItem(body, shortcut.Build());
 
@@ -1011,6 +1018,7 @@ internal sealed class MainForm : Form
         foreach (ChoiceStrip choice in new[]
         {
             _activationChoice,
+            _outputChoice,
             _languageChoice,
             _sampleRateChoice,
             _aiModeChoice,
@@ -1143,6 +1151,13 @@ internal sealed class MainForm : Form
             "other" => "Choose one supported language below before saving.",
             _ => "Recommended: detects English or Slovenian for every recording.",
         };
+    }
+
+    private void UpdateOutputHint()
+    {
+        _outputHint.Text = _outputChoice.SelectedValue == "clipboard"
+            ? "Leaves the final transcript on the clipboard and sends no paste keystroke."
+            : "Recommended: pastes once into the focused app, then restores your clipboard.";
     }
 
     private void UpdateLanguageControls()
@@ -1293,6 +1308,11 @@ internal sealed class MainForm : Form
         _hotkeyRecorder.Binding = _config.GetString("hotkey", "binding") ?? "f1";
         _activationChoice.SelectValue(_config.GetString("hotkey", "mode") ?? "hold");
         UpdateActivationHint();
+        _outputChoice.SelectValue(string.Equals(
+            _config.GetString("voiceprompt", "output_mode"),
+            "clipboard",
+            StringComparison.OrdinalIgnoreCase) ? "clipboard" : "paste");
+        UpdateOutputHint();
 
         string language = _config.GetString("server", "language") ?? "";
         string? primaryLanguage = LanguageCatalog.PrimaryModeFor(language);
@@ -1576,6 +1596,7 @@ internal sealed class MainForm : Form
         bool historyEnabled = _historyEnabled.Checked;
         int historyLimit = (int)_historyLimit.Value;
         bool bufferedTranscription = _bufferedTranscriptionToggle.Checked;
+        string outputMode = _outputChoice.SelectedValue;
 
         SetBusy(true);
         ShowFooter("Saving settings and restarting the local runtime…", Theme.Accent);
@@ -1594,6 +1615,7 @@ internal sealed class MainForm : Form
                 _config.Set("voiceprompt", "base_prompt", basePrompt);
                 _config.Set("voiceprompt", "base_hotwords", baseHotwords);
                 _config.Set("voiceprompt", "buffered_transcription", bufferedTranscription);
+                _config.Set("voiceprompt", "output_mode", outputMode);
                 _config.Set("vad", "threshold", threshold);
                 _config.Set("vad", "silence_ms", silenceMs);
                 _config.Set("vad", "min_speech_ms", minimumSpeechMs);

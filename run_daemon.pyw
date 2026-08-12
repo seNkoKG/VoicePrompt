@@ -65,9 +65,30 @@ def buffered_transcription_enabled() -> bool:
         )
         return False
 
+
+def transcript_output_mode() -> str:
+    """Read the opt-in delivery route once; runtime restart applies changes."""
+    try:
+        from platformdirs import user_config_dir
+
+        config_path = Path(user_config_dir("faster-whisper-dictation")) / "config.toml"
+        with config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+        value = config.get("voiceprompt", {}).get("output_mode", "paste")
+        return "clipboard" if isinstance(value, str) and value.strip().lower() == "clipboard" else "paste"
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not read transcript output mode; using automatic paste",
+            exc_info=True,
+        )
+        return "paste"
+
 from whisper_dictation.cli import main  # noqa: E402
 
 sys.argv = [sys.argv[0], "start"]
+os.environ["VOICEPROMPT_OUTPUT_MODE"] = transcript_output_mode()
+if os.environ["VOICEPROMPT_OUTPUT_MODE"] == "clipboard":
+    logging.getLogger(__name__).info("Copy-only transcript output enabled")
 if buffered_transcription_enabled():
     os.environ["VOICEPROMPT_BUFFERED_STREAMING"] = "1"
     sys.argv.append("--streaming")

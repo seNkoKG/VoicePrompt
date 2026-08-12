@@ -57,6 +57,7 @@ cfg.Set("audio", "sample_rate", 44100);
 cfg.Set("engine", "device", "cuda");
 cfg.Set("audio", "device", "");
 cfg.Set("voiceprompt", "slovenian_slang", true);
+cfg.Set("voiceprompt", "output_mode", "clipboard");
 cfg.Set("voiceprompt", "base_prompt", "V kodi pišem");
 cfg.Save();
 
@@ -73,6 +74,7 @@ Check("commented key uncommented", Regex.IsMatch(after, @"^temperature = 0\.2$",
 Check("hotwords added + escaped", Regex.IsMatch(after, @"hotwords = \""python, null\"""));
 Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
 Check("VoicePrompt profile section added", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "slovenian_slang") == true);
+Check("copy-only output setting round trips", new VoicePromptTray.ConfigManager(path).GetString("voiceprompt", "output_mode") == "clipboard");
 Check("file still parses after re-read", new VoicePromptTray.ConfigManager(path).GetInt("vad", "silence_ms") == 300);
 
 string savedOnce = File.ReadAllText(path);
@@ -84,6 +86,7 @@ var defaults = new VoicePromptTray.ConfigManager(newPath);
 Check("new config is written immediately", File.Exists(newPath) && File.ReadAllText(newPath).Contains("[hotkey]"));
 Check("new config has working defaults", defaults.GetString("hotkey", "binding") == "f1");
 Check("new config enables lossless long-recording prefetch", defaults.GetBool("voiceprompt", "buffered_transcription") == true);
+Check("new config defaults to automatic paste", defaults.GetString("voiceprompt", "output_mode") == "paste");
 
 string legacyPath = Path.Combine(dir, "legacy.toml");
 const string legacyPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
@@ -240,11 +243,12 @@ string[] performanceLog =
     "2026-08-12 10:02:30 INFO whisper_dictation.daemon: Recording stopped (30.0s)",
     "2026-08-12 10:02:33 INFO whisper_dictation.engine.local: Transcription latency: primary 3.000s, retry 0.000s, total 3.000s",
     "2026-08-12 10:02:33 INFO whisper_dictation.engine.local: Detected language: de (conf 0.88) [4 segments]",
-    "2026-08-12 10:02:33 INFO whisper_dictation.daemon: Paste shortcut sent: 200 chars",
+    "2026-08-12 10:02:33 INFO whisper_dictation.daemon: Transcript copied to clipboard: 200 chars",
 };
 var performance = VoicePromptTray.PerformanceSnapshot.Parse(performanceLog);
 Check("performance parser joins completed recordings",
     performance.Count == 3 && performance.Latest?.Language == "de" && performance.Latest.Segments == 4);
+Check("performance parser accepts copy-only delivery", performance.Latest?.Language == "de");
 Check("performance parser computes stable percentiles",
     performance.MedianTotalSeconds == 1.5 && performance.P95TotalSeconds == 3.0 && performance.MedianMicrophoneMs == 30);
 Check("performance parser reports retries and throughput",

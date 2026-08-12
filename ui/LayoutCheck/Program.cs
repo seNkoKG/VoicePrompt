@@ -180,6 +180,30 @@ if (form.HasUnsavedChanges || threshold.Value != originalThreshold)
     failures.AppendLine("BEHAVIOR Discard did not restore the saved settings state");
 }
 
+var outputChoice = (ChoiceStrip)typeof(MainForm)
+    .GetField("_outputChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var outputHint = (Label)typeof(MainForm)
+    .GetField("_outputHint", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalOutput = outputChoice.SelectedValue;
+outputChoice.SelectValue(originalOutput == "clipboard" ? "paste" : "clipboard");
+Application.DoEvents();
+if (!form.HasUnsavedChanges ||
+    (outputChoice.SelectedValue == "clipboard" && !outputHint.Text.Contains("no paste keystroke", StringComparison.Ordinal)))
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR output mode did not update its unsaved state and delivery guidance");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || outputChoice.SelectedValue != originalOutput)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore the transcript output mode");
+}
+
 var languageChoice = (ChoiceStrip)typeof(MainForm)
     .GetField("_languageChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;

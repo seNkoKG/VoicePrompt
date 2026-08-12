@@ -35,7 +35,8 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $history = Join-Path $Module "transcript_history.py"
     $corrections = Join-Path $Module "text_corrections.py"
     $buffered = Join-Path $Module "buffered_transcription.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered
+    $outputMode = Join-Path $Module "output_mode.py"
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -90,6 +91,11 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not (Test-Path -LiteralPath $history) -or -not (Test-Path -LiteralPath $corrections)) {
         throw "$Name is missing a local text pipeline module."
     }
+    if (-not (Test-Path -LiteralPath $outputMode) -or
+        [regex]::Matches($typerSource, "deliver_text\(text, _copy_text_impl, _type_text_impl\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "def _copy_text_impl\(").Count -ne 1) {
+        throw "$Name is missing the exactly-once transcript output router."
+    }
 
     $daemonSource = [System.IO.File]::ReadAllText($daemon)
     if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
@@ -107,8 +113,11 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not $daemonSource.Contains("Paste shortcut sent: %d chars")) {
         throw "$Name does not expose a privacy-safe successful-paste signal."
     }
-    if (-not $daemonSource.Contains('notify("Paste failed"')) {
-        throw "$Name does not report a failed paste to the user."
+    if (-not $daemonSource.Contains("Transcript copied to clipboard: %d chars")) {
+        throw "$Name does not expose a privacy-safe copy-only success signal."
+    }
+    if (-not $daemonSource.Contains('notify("Transcript delivery failed"')) {
+        throw "$Name does not report failed transcript delivery to the user."
     }
     $activateStart = $daemonSource.IndexOf("    def _on_activate(")
     $audioStart = $daemonSource.IndexOf("        audio = AudioStream(", $activateStart)

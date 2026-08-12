@@ -146,7 +146,9 @@ internal sealed class PerformanceSnapshot
                 pending.HasLatency = true;
             }
 
-            if (!line.Contains("Paste shortcut sent:", StringComparison.Ordinal) ||
+            bool delivered = line.Contains("Paste shortcut sent:", StringComparison.Ordinal) ||
+                line.Contains("Transcript copied to clipboard:", StringComparison.Ordinal);
+            if (!delivered ||
                 !pending.Released ||
                 !pending.HasLatency ||
                 string.IsNullOrEmpty(pending.Language))
