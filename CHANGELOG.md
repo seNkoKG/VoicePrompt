@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.18.2] - 2026-08-12
+
+### Added
+
+- Added a responsive GitHub Pages product site and matching repository hero with a charcoal, accessible design, interactive installation helper, and clear local-first data flow.
+- Added regression coverage for weak Slovenian detections that are actually English and for genuine Slovenian that must not be replaced by a marginal English decode.
+
+### Changed
+
+- Restore faster-whisper's neutral repetition defaults while retaining independent-window decoding, improving legitimate repeated wording without reintroducing the previous-window failure loop.
+- Present the project, installation path, bilingual behavior, performance context, and privacy choices consistently across GitHub and the product website.
+
+### Fixed
+
+- Verify weak Slovenian detections against English instead of trusting every Slovenian top guess unconditionally. This prevents a low-confidence tail of an English recording from being emitted as Slovenian.
+- Require a real decoder-score gain before switching either supported language, protecting genuine English and genuine Slovenian in Auto mode.
+- Correct mobile website overflow and keep the complete EN, Auto, and SL language visual aligned on narrow screens.
+
 ## [1.18.1] - 2026-08-12
 
 ### Fixed
