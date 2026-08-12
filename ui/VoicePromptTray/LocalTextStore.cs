@@ -74,6 +74,9 @@ internal sealed class TranscriptHistoryStore
         }
     }
 
+    public TranscriptEntry? Latest() =>
+        Load().FirstOrDefault(entry => entry is not null && !string.IsNullOrWhiteSpace(entry.Text));
+
     public void Delete(string id)
     {
         var items = Load().Where(item => item.Id != id).ToList();

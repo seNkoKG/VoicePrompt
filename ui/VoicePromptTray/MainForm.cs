@@ -1679,7 +1679,7 @@ internal sealed class MainForm : Form
         }
         try
         {
-            Clipboard.SetText(selected.Entry.Text);
+            Clipboard.SetDataObject(selected.Entry.Text, true, 5, 40);
             ShowFooter("Transcript copied to clipboard", Theme.Ok);
         }
         catch (Exception ex)
@@ -1765,7 +1765,7 @@ internal sealed class MainForm : Form
                 .AppendLine($"Config: {_paths.ConfigPath}")
                 .AppendLine($"Log: {_paths.LogPath}")
                 .ToString();
-            Clipboard.SetText(report);
+            Clipboard.SetDataObject(report, true, 5, 40);
             ShowFooter("Diagnostics copied · no audio or transcript text included", Theme.Ok);
         }
         catch (Exception ex)

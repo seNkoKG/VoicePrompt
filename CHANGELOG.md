@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0] - 2026-08-12
+
+### Added
+
+- Added **Copy last transcript** directly to the tray menu so a missed or blocked paste can be recovered without opening Settings.
+- Added deterministic latest-entry coverage that skips malformed empty items and fails closed when recovery history is unavailable.
+
+### Changed
+
+- Use Windows clipboard retry support for tray recovery, Recovery-page copying, and copied diagnostics so another application briefly owning the clipboard is less likely to interrupt the action.
+- Keep clipboard balloons privacy-safe: they confirm success without showing transcript contents.
+
 ## [1.7.0] - 2026-08-12
 
 ### Added

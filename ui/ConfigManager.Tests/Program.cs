@@ -153,11 +153,13 @@ history.SaveSettings(false, 500);
 var historySettings = history.LoadSettings();
 Check("history settings clamp and round trip", !historySettings.Enabled && historySettings.Limit == 100);
 File.WriteAllText(historyPath, """
-{"version":1,"items":[{"id":"one","createdAt":"2026-08-12T12:00:00Z","text":"Pozdravljen svet","originalText":""}]}
+{"version":1,"items":[{"id":"empty","createdAt":"2026-08-12T12:01:00Z","text":"","originalText":""},{"id":"one","createdAt":"2026-08-12T12:00:00Z","text":"Pozdravljen svet","originalText":""}]}
 """);
-Check("history reads Unicode transcript", history.Load().Single().Text == "Pozdravljen svet");
+Check("history reads Unicode transcript", history.Load().Last().Text == "Pozdravljen svet");
+Check("history finds latest usable transcript", history.Latest()?.Text == "Pozdravljen svet");
+history.Delete("empty");
 history.Delete("one");
-Check("history deletes selected transcript", history.Load().Count == 0);
+Check("history deletes selected transcript", history.Load().Count == 0 && history.Latest() is null);
 
 Check("Whisper catalog has 100 unique languages",
     VoicePromptTray.LanguageCatalog.All.Count == 100 &&
