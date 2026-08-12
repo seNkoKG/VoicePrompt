@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Local, private, GPU-accelerated voice-to-text dictation for Windows</strong><br>
-  Speak Slovenian or English — text lands in whatever app you're typing in.<br>
+  Speak Slovenian or English by default — or pin any Whisper language.<br>
   Local by default. No audio leaves your machine. Optional text-only AI cleanup.
 </p>
 
@@ -14,7 +14,7 @@
   <a href="https://github.com/seNkoKG/VoicePrompt/releases/latest"><img src="https://img.shields.io/github/v/release/seNkoKG/VoicePrompt?color=343a40" alt="release" /></a>
   <img src="https://img.shields.io/badge/engine-faster--whisper--large--v3-343a40" alt="engine" />
   <img src="https://img.shields.io/badge/acceleration-CUDA%20float16-22c55e" alt="cuda" />
-  <img src="https://img.shields.io/badge/languages-sl%20%2F%20en-495057" alt="langs" />
+  <img src="https://img.shields.io/badge/languages-100%20supported-495057" alt="langs" />
   <img src="https://img.shields.io/badge/platform-Windows%2011-212529" alt="platform" />
 </p>
 
@@ -22,7 +22,7 @@
 
 ## ✅ What it does
 
-Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Multi-minute recordings are retained in full and decoded after release. Works with **Slovenian and English**, with per-utterance auto-detection plus dedicated standard and slang Slovenian modes. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
+Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Multi-minute recordings are retained in full and decoded after release. The default is fast **English + Slovenian Auto**, with dedicated standard and slang Slovenian modes. Users can also search and pin any of Whisper large-v3's 100 languages without downloading another model. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
 
 Optionally, VoicePrompt can fix spoken grammar or turn a rough transcript into a cleaner AI prompt before pasting it. This is disabled by default and never changes the local audio pipeline.
 
@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.3.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.4.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -104,15 +104,15 @@ First start downloads the model (~1.6 GB turbo / ~3.1 GB full) into `~/.cache/hu
 A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the whole setup:
 
 - **Setup overview** — confirms runtime, hotkey, microphone, and recognition readiness at a glance, with direct recovery and support actions.
-- **Focused workspaces** — Dictation, Audio, Intelligence, and Advanced pages keep everyday setup simple while leaving expert controls available.
+- **Focused workspaces** — Dictation, Audio, Intelligence, Recovery, and Advanced pages keep everyday setup simple while leaving expert controls available.
 - **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **Voice Typing Settings** shortcut) to open settings. The tray menu starts/stops/restarts the daemon and quits the app.
 - **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **AI text cleanup** — optionally fixes grammar or restructures rough speech into a clean AI prompt, with a strict deadline and original-text fallback.
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
-- **All settings** — language (auto / Slovenian / Slovenian slang / English), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
-- **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe copied diagnostics, and one-click log/config access.
+- **All settings** — language (English + Slovenian Auto, dedicated defaults, or any pinned Whisper language), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
+- **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe performance statistics and copied diagnostics, and one-click log/config access.
 - **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+6` for page navigation.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
 - **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.
@@ -129,7 +129,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[hotkey] binding` | Global hotkey (single key or combo) | `"f1"`, `"ctrl+shift+f1"`, `"alt+space"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
-| `[server] language` | `""` = fast English/Slovenian Auto; `"sl-slang"` = visible slang profile | `"sl"`, `"en"` to pin |
+| `[server] language` | `""` = fast English/Slovenian Auto; otherwise pins one supported language | `"sl-slang"`, `"sl"`, `"en"`, `"de"`, `"ja"` |
 | `[server] prompt` | Optional personal names / exact vocabulary bias | empty (language-neutral) |
 | `[voiceprompt] slovenian_slang` | Saves the visible colloquial vocabulary profile | `true` / `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
@@ -142,6 +142,10 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 **Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
 If Whisper reports Finnish, Spanish, Latin, or another unsupported language, VoicePrompt uses Whisper's language probabilities to force the most likely English/Slovenian candidate. Cross-language decoder scores are not treated as directly comparable. Low-confidence English receives a Slovenian retry only when the English transcript score is also weak, removing unnecessary retries while preventing real English from being translated. Slovenian retries alone receive the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
+
+### Additional languages
+
+The Dictation page includes a searchable catalog of all 100 language codes supported by the installed Whisper large-v3 model. Choosing a result switches from bilingual Auto to a pinned recognition profile. Pinning bypasses language detection, keeps transcription in the spoken language, and does not invoke Whisper's separate translation task. The language profile is only a small setting: the existing multilingual model is reused, so there is no extra model download, network call, or GPU memory cost. Returning to **Auto** restores the tested English + Slovenian behavior.
 
 ### Optional AI cleanup
 

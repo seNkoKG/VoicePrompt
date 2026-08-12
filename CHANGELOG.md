@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.0] - 2026-08-12
+
+### Added
+
+- Added searchable opt-in recognition profiles for all 100 languages supported by Whisper large-v3 while keeping English + Slovenian Auto as the default.
+- Added a privacy-safe Recent performance panel with latest recognition time, median, p95, microphone readiness, fallback frequency, and real-time decoding speed.
+- Added bounded log-tail parsing and automated catalog, percentile, throughput, large-log, pinned-language, and Windows UI behavior tests.
+
+### Changed
+
+- Selecting an additional language automatically pins recognition to that language, bypassing auto-detection without downloading another model or adding GPU overhead.
+- Copied diagnostics now include aggregate timing metadata but continue to exclude audio and transcript text.
+- Run the Windows layout checker on an STA thread so searchable native controls are tested under the same contract as the shipped app.
+
+### Fixed
+
+- Reject unsupported hand-entered language codes before restarting the runtime instead of allowing a delayed faster-whisper failure.
+- Kept the multilingual selector visually consistent with the dark interface and clarified that the installed multilingual model already contains every language profile.
+
 ## [1.3.0] - 2026-08-12
 
 ### Added

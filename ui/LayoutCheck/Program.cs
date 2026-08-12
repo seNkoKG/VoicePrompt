@@ -3,6 +3,11 @@ using System.IO.MemoryMappedFiles;
 using System.Text;
 using VoicePromptTray;
 
+internal static class Program
+{
+    [STAThread]
+    private static int Main()
+    {
 Application.EnableVisualStyles();
 Application.SetCompatibleTextRenderingDefault(false);
 
@@ -150,6 +155,27 @@ if (form.HasUnsavedChanges || threshold.Value != originalThreshold)
     failures.AppendLine("BEHAVIOR Discard did not restore the saved settings state");
 }
 
+var languageChoice = (ChoiceStrip)typeof(MainForm)
+    .GetField("_languageChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var additionalLanguage = (ComboBox)typeof(MainForm)
+    .GetField("_additionalLanguageCombo", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+languageChoice.SelectValue("other");
+additionalLanguage.SelectedItem = additionalLanguage.Items.Cast<object>()
+    .Single(item => item.ToString() == "German (de)");
+string selectedLanguage = (string)typeof(MainForm)
+    .GetMethod("SelectedLanguageCode", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>())!;
+if (!additionalLanguage.Enabled || selectedLanguage != "de")
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR additional language profile did not resolve to pinned German");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+
 string overlayPath = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
 long overlayActivationMs;
 using (var overlay = new RecordingOverlay
@@ -234,3 +260,5 @@ Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 
 form.Close();
 return layoutFailures + behaviorFailures;
+    }
+}

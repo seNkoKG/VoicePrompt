@@ -60,6 +60,7 @@ internal sealed class MainForm : Form
     private Label _activationHint = null!;
     private ToggleSwitch _autoStartToggle = null!;
     private ChoiceStrip _languageChoice = null!;
+    private ComboBox _additionalLanguageCombo = null!;
     private Label _languageHint = null!;
     private TextBox _promptText = null!;
     private TextBox _correctionsText = null!;
@@ -97,6 +98,10 @@ internal sealed class MainForm : Form
     private Label _diagnosticRuntime = null!;
     private Label _diagnosticConfig = null!;
     private Label _diagnosticVersion = null!;
+    private Label _performanceLatest = null!;
+    private Label _performanceTypical = null!;
+    private Label _performanceMicrophone = null!;
+    private Label _performanceRecovery = null!;
 
     private bool _loading = true;
     private bool _dirty;
@@ -573,12 +578,29 @@ internal sealed class MainForm : Form
         AddPageItem(body, shortcut.Build());
 
         _languageChoice = new ChoiceStrip(
-            new[] { "Auto", "Slovenian", "Slovenian slang", "English" },
-            new[] { "", "sl", "sl-slang", "en" })
+            new[] { "Auto", "Slovenian", "Slang", "English", "More" },
+            new[] { "", "sl", "sl-slang", "en", "other" })
         { Dock = DockStyle.Fill };
         _languageChoice.AccessibleName = "Spoken language";
-        _languageChoice.SelectedChanged += (_, _) => UpdateLanguageHint();
+        _languageChoice.SelectedChanged += (_, _) =>
+        {
+            UpdateLanguageControls();
+            UpdateOverview();
+        };
         _languageHint = BuildInlineHint(Theme.Surface);
+        _additionalLanguageCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDown,
+            AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+            AutoCompleteSource = AutoCompleteSource.ListItems,
+            Dock = DockStyle.Fill,
+            MaxDropDownItems = 14,
+        };
+        _additionalLanguageCombo.AccessibleName = "Additional spoken language";
+        Theme.StyleCombo(_additionalLanguageCombo);
+        foreach (LanguageOption option in LanguageCatalog.All.Where(option => option.Code is not "en" and not "sl"))
+            _additionalLanguageCombo.Items.Add(option);
+        _additionalLanguageCombo.SelectedIndex = -1;
         _promptText = new TextBox
         {
             AcceptsReturn = true,
@@ -596,8 +618,9 @@ internal sealed class MainForm : Form
         _correctionsText.AccessibleName = "Personal corrections";
         var correctionsFrame = new TextFieldFrame(_correctionsText, 116, multiline: true) { Dock = DockStyle.Fill };
 
-        var language = new SectionBuilder("Language & vocabulary", "Auto is optimized for fast English and Slovenian switching.");
-        language.Add("Spoken language", "Choose Auto unless every recording will use one language.", StackControl(_languageChoice, _languageHint, 64), 84);
+        var language = new SectionBuilder("Language & vocabulary", "English + Slovenian Auto stays the fast default; other languages are optional.");
+        language.Add("Spoken language", "Choose Auto for mixed English and Slovenian, or pin one language.", StackControl(_languageChoice, _languageHint, 64), 84);
+        language.Add("Additional language", "Search the 98 other languages already built into the installed model; no model download needed.", _additionalLanguageCombo, 64);
         language.Add("Recognition context", "Give Whisper examples of names and technical terms; this is not sent to an AI service.", promptFrame, 136);
         language.Add("Personal corrections", "One local replacement per line: misheard => intended. Applied before optional AI cleanup.", correctionsFrame, 136);
         AddPageItem(body, language.Build());
@@ -775,6 +798,19 @@ internal sealed class MainForm : Form
     private void BuildAdvancedPage()
     {
         var body = CreatePage(AdvancedPage);
+        var performance = new SectionBuilder("Recent performance", "Timing metadata from the local runtime log. No audio or transcript text is read.");
+        _performanceLatest = BuildValueLabel();
+        _performanceTypical = BuildValueLabel();
+        _performanceMicrophone = BuildValueLabel();
+        _performanceRecovery = BuildValueLabel();
+        var refreshPerformance = new ActionButton("Refresh", ActionButtonStyle.Secondary) { Width = 88, BackColor = Theme.Surface };
+        refreshPerformance.Click += (_, _) => RefreshPerformanceSnapshot();
+        performance.Add("Latest result", "Language, confidence, and recognition time after key release.", HorizontalControl(_performanceLatest, refreshPerformance), 58);
+        performance.Add("Typical latency", "Median and p95 recognition time across up to 50 recent recordings.", _performanceTypical, 58);
+        performance.Add("Microphone response", "Median time from hotkey activation until audio capture is ready.", _performanceMicrophone, 58);
+        performance.Add("Safety recovery", "How often the bilingual fallback was needed, plus median decoding speed.", _performanceRecovery, 58);
+        AddPageItem(body, performance.Build());
+
         var diagnostics = new SectionBuilder("System diagnostics", "Read-only signals from the installed application and runtime.");
         _diagnosticDaemon = BuildValueLabel();
         _diagnosticRuntime = BuildValueLabel();
@@ -952,6 +988,22 @@ internal sealed class MainForm : Form
             text.TextChanged += (_, _) => MarkDirty();
 
         _recognitionModelCombo.TextChanged += (_, _) => MarkDirty();
+        _additionalLanguageCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_loading && _additionalLanguageCombo.SelectedItem is LanguageOption && _languageChoice.SelectedValue != "other")
+                _languageChoice.SelectValue("other");
+            MarkDirty();
+            UpdateLanguageHint();
+            UpdateOverview();
+        };
+        _additionalLanguageCombo.TextChanged += (_, _) =>
+        {
+            if (!_loading && ResolveAdditionalLanguage() != null && _languageChoice.SelectedValue != "other")
+                _languageChoice.SelectValue("other");
+            MarkDirty();
+            UpdateLanguageHint();
+            UpdateOverview();
+        };
         _microphoneCombo.SelectedIndexChanged += (_, _) =>
         {
             if (!_loading)
@@ -1018,6 +1070,8 @@ internal sealed class MainForm : Form
         _pageDescription.Text = _pageCopy[key].Description;
         if (key == HistoryPage)
             LoadHistory();
+        if (key == AdvancedPage)
+            RefreshPerformanceSnapshot();
         if (persist)
             SavePreferences();
     }
@@ -1038,9 +1092,31 @@ internal sealed class MainForm : Form
             "sl" => "Pins Slovenian for short Slovenian-only recordings.",
             "sl-slang" => "Automatic English detection with visible colloquial Slovenian hints.",
             "en" => "Pins English and skips language detection.",
+            "other" when ResolveAdditionalLanguage() is { } option => $"Pins {option.Name}; recognition stays in {option.Name} and never translates it.",
+            "other" => "Choose one supported language below before saving.",
             _ => "Recommended: detects English or Slovenian for every recording.",
         };
     }
+
+    private void UpdateLanguageControls()
+    {
+        UpdateLanguageHint();
+    }
+
+    private LanguageOption? ResolveAdditionalLanguage()
+    {
+        if (_additionalLanguageCombo.SelectedItem is LanguageOption selected)
+            return selected;
+        string value = _additionalLanguageCombo.Text.Trim();
+        return LanguageCatalog.All.FirstOrDefault(option =>
+            string.Equals(option.Code, value, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(option.Name, value, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(option.ToString(), value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string SelectedLanguageCode() => _languageChoice.SelectedValue == "other"
+        ? ResolveAdditionalLanguage()?.Code ?? ""
+        : _languageChoice.SelectedValue;
 
     private void UpdateOverview()
     {
@@ -1055,6 +1131,8 @@ internal sealed class MainForm : Form
             "sl" => "Slovenian only",
             "sl-slang" => "Auto + Slovenian slang",
             "en" => "English only",
+            "other" when ResolveAdditionalLanguage() is { } option => option.Name + " only",
+            "other" => "Choose a language",
             _ => "English + Slovenian Auto",
         };
         _microphoneSummary.Text = (_microphoneCombo.SelectedItem as ComboItem)?.Label ?? "System default";
@@ -1090,9 +1168,23 @@ internal sealed class MainForm : Form
         UpdateActivationHint();
 
         string language = _config.GetString("server", "language") ?? "";
-        bool slang = language == "sl-slang";
-        _languageChoice.SelectValue(language);
-        UpdateLanguageHint();
+        string? primaryLanguage = LanguageCatalog.PrimaryModeFor(language);
+        bool slang = primaryLanguage == "sl-slang";
+        if (primaryLanguage != null)
+        {
+            _languageChoice.SelectValue(primaryLanguage);
+            _additionalLanguageCombo.SelectedIndex = -1;
+            _additionalLanguageCombo.Text = "";
+        }
+        else
+        {
+            _languageChoice.SelectValue("other");
+            LanguageOption? option = LanguageCatalog.Find(language);
+            _additionalLanguageCombo.SelectedItem = option;
+            if (option == null)
+                _additionalLanguageCombo.Text = language;
+        }
+        UpdateLanguageControls();
         _promptText.Text = slang
             ? _config.GetString("voiceprompt", "base_prompt") ?? _config.GetString("server", "prompt") ?? ""
             : _config.GetString("server", "prompt") ?? "";
@@ -1330,7 +1422,14 @@ internal sealed class MainForm : Form
         }
 
         string activation = _activationChoice.SelectedValue;
-        string language = _languageChoice.SelectedValue;
+        string language = SelectedLanguageCode();
+        if (_languageChoice.SelectedValue == "other" && !LanguageCatalog.IsSupported(language))
+        {
+            ShowPage(DictationPage);
+            _additionalLanguageCombo.Focus();
+            ShowFooter("Choose a supported additional language before saving.", Theme.Err);
+            return;
+        }
         bool slangProfile = language == "sl-slang";
         string basePrompt = _promptText.Text.Trim();
         string prompt = slangProfile ? SlovenianSlangProfile.ApplyPrompt(basePrompt) : basePrompt;
@@ -1590,6 +1689,8 @@ internal sealed class MainForm : Form
             return;
 
         _languageChoice.SelectValue("");
+        _additionalLanguageCombo.SelectedIndex = -1;
+        _additionalLanguageCombo.Text = "";
         _sampleRateChoice.SelectValue("16000");
         _threshold.Value = 0.60m;
         _silenceMs.Value = 250;
@@ -1608,6 +1709,7 @@ internal sealed class MainForm : Form
         try
         {
             DaemonInfo info = _daemon.Refresh(true);
+            PerformanceSnapshot performance = PerformanceSnapshot.Read(_paths.LogPath);
             string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? Application.ProductVersion;
             var report = new StringBuilder()
                 .AppendLine($"VoicePrompt {version}")
@@ -1617,6 +1719,14 @@ internal sealed class MainForm : Form
                 .AppendLine($"Engine: {info.Engine}")
                 .AppendLine($"Config exists: {File.Exists(_paths.ConfigPath)}")
                 .AppendLine($"Runtime installed: {_paths.Installed}")
+                .AppendLine($"Performance samples: {performance.Count}")
+                .AppendLine(performance.Count > 0
+                    ? $"Recognition median/p95: {performance.MedianTotalSeconds:0.000}s / {performance.P95TotalSeconds:0.000}s"
+                    : "Recognition median/p95: unavailable")
+                .AppendLine(performance.MedianMicrophoneMs is { } microphoneMs
+                    ? $"Microphone-ready median: {microphoneMs:0}ms"
+                    : "Microphone-ready median: unavailable")
+                .AppendLine($"Bilingual retries: {performance.RetryCount}")
                 .AppendLine($"Config: {_paths.ConfigPath}")
                 .AppendLine($"Log: {_paths.LogPath}")
                 .ToString();
@@ -1627,6 +1737,31 @@ internal sealed class MainForm : Form
         {
             ShowFooter("Could not copy diagnostics · " + ShortMessage(ex.Message), Theme.Err);
         }
+    }
+
+    private void RefreshPerformanceSnapshot()
+    {
+        if (_performanceLatest == null)
+            return;
+
+        PerformanceSnapshot snapshot = PerformanceSnapshot.Read(_paths.LogPath);
+        if (snapshot.Latest is not { } latest)
+        {
+            _performanceLatest.Text = "No completed recordings yet";
+            _performanceTypical.Text = "Waiting for local timing data";
+            _performanceMicrophone.Text = "Not measured yet";
+            _performanceRecovery.Text = "No recovery passes measured";
+            return;
+        }
+
+        string language = LanguageCatalog.Find(latest.Language)?.Name ?? latest.Language.ToUpperInvariant();
+        _performanceLatest.Text = $"{language} · {latest.Confidence:P0} confidence · {latest.TotalSeconds:0.000} s";
+        _performanceTypical.Text = $"{snapshot.MedianTotalSeconds:0.000} s median · {snapshot.P95TotalSeconds:0.000} s p95 · {snapshot.Count} samples";
+        _performanceMicrophone.Text = snapshot.MedianMicrophoneMs is { } microphoneMs
+            ? $"{microphoneMs:0} ms median"
+            : "Not available in recent samples";
+        string speed = snapshot.MedianRealtimeSpeed is { } realtimeSpeed ? $" · {realtimeSpeed:0.0}× real-time" : "";
+        _performanceRecovery.Text = $"{snapshot.RetryCount} of {snapshot.Count} recordings ({(double)snapshot.RetryCount / snapshot.Count:P0}){speed}";
     }
 
     private void OpenLog()

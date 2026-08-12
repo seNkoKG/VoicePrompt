@@ -32,6 +32,8 @@ class SlangRetryTests(unittest.TestCase):
         self.assertIsNone(recognition_language("auto"))
         self.assertEqual(recognition_language("en"), "en")
         self.assertEqual(recognition_language("sl"), "sl")
+        self.assertEqual(recognition_language("de"), "de")
+        self.assertEqual(recognition_language("yue"), "yue")
 
     def test_confident_english_and_slovenian_stay_single_pass(self) -> None:
         self.assertFalse(should_retry_as_slovenian("", "en", 0.75))

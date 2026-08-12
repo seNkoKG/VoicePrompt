@@ -157,6 +157,50 @@ Check("history reads Unicode transcript", history.Load().Single().Text == "Pozdr
 history.Delete("one");
 Check("history deletes selected transcript", history.Load().Count == 0);
 
+Check("Whisper catalog has 100 unique languages",
+    VoicePromptTray.LanguageCatalog.All.Count == 100 &&
+    VoicePromptTray.LanguageCatalog.All.Select(option => option.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 100);
+Check("default languages are catalogued",
+    VoicePromptTray.LanguageCatalog.Find("en")?.Name == "English" &&
+    VoicePromptTray.LanguageCatalog.Find("SL")?.Name == "Slovenian");
+Check("primary language modes normalize safely",
+    VoicePromptTray.LanguageCatalog.PrimaryModeFor("AUTO") == "" &&
+    VoicePromptTray.LanguageCatalog.PrimaryModeFor("EN") == "en" &&
+    VoicePromptTray.LanguageCatalog.PrimaryModeFor("sl-SLANG") == "sl-slang");
+Check("unsupported language is rejected", !VoicePromptTray.LanguageCatalog.IsSupported("xx"));
+
+string[] performanceLog =
+{
+    "2026-08-12 10:00:00 INFO whisper_dictation.daemon: Recording started (use_ws=False, streaming=False, engine=local)",
+    "2026-08-12 10:00:00 INFO whisper_dictation.daemon: Audio capture ready in 20 ms",
+    "2026-08-12 10:00:05 INFO whisper_dictation.daemon: Recording stopped (5.0s)",
+    "2026-08-12 10:00:06 INFO whisper_dictation.engine.local: Transcription latency: primary 0.500s, retry 0.000s, total 0.500s",
+    "2026-08-12 10:00:06 INFO whisper_dictation.engine.local: Detected language: en (conf 0.91) [1 segments]",
+    "2026-08-12 10:01:00 INFO whisper_dictation.daemon: Recording started (use_ws=False, streaming=False, engine=local)",
+    "2026-08-12 10:01:00 INFO whisper_dictation.daemon: Audio capture ready in 30 ms",
+    "2026-08-12 10:01:15 INFO whisper_dictation.daemon: Recording stopped (15.0s)",
+    "2026-08-12 10:01:16 INFO whisper_dictation.engine.local: Transcription latency: primary 1.000s, retry 0.500s, total 1.500s",
+    "2026-08-12 10:01:16 INFO whisper_dictation.engine.local: Detected language: sl (conf 1.00) [2 segments]",
+    "2026-08-12 10:02:00 INFO whisper_dictation.daemon: Recording started (use_ws=False, streaming=False, engine=local)",
+    "2026-08-12 10:02:00 INFO whisper_dictation.daemon: Audio capture ready in 40 ms",
+    "2026-08-12 10:02:30 INFO whisper_dictation.daemon: Recording stopped (30.0s)",
+    "2026-08-12 10:02:33 INFO whisper_dictation.engine.local: Transcription latency: primary 3.000s, retry 0.000s, total 3.000s",
+    "2026-08-12 10:02:33 INFO whisper_dictation.engine.local: Detected language: de (conf 0.88) [4 segments]",
+};
+var performance = VoicePromptTray.PerformanceSnapshot.Parse(performanceLog);
+Check("performance parser joins completed recordings",
+    performance.Count == 3 && performance.Latest?.Language == "de" && performance.Latest.Segments == 4);
+Check("performance parser computes stable percentiles",
+    performance.MedianTotalSeconds == 1.5 && performance.P95TotalSeconds == 3.0 && performance.MedianMicrophoneMs == 30);
+Check("performance parser reports retries and throughput",
+    performance.RetryCount == 1 && performance.MedianRealtimeSpeed == 10.0);
+
+string performancePath = Path.Combine(dir, "daemon.log");
+File.WriteAllText(performancePath, new string('x', 6000) + "\n" + string.Join("\n", performanceLog));
+Check("performance reader bounds large logs", VoicePromptTray.PerformanceSnapshot.Read(performancePath, maxBytes: 4096).Count == 3);
+File.WriteAllText(performancePath, string.Join("\n", performanceLog).Replace("primary 0.500s", "primary broken"));
+Check("malformed performance log fails closed", VoicePromptTray.PerformanceSnapshot.Read(performancePath).Count == 2);
+
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures;

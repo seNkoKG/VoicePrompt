@@ -18,7 +18,9 @@
     <Compile Include="..\VoicePromptTray\DaemonManager.cs" />
     <Compile Include="..\VoicePromptTray\HotkeyRecorder.cs" />
     <Compile Include="..\VoicePromptTray\LocalTextStore.cs" />
+    <Compile Include="..\VoicePromptTray\LanguageCatalog.cs" />
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
+    <Compile Include="..\VoicePromptTray\PerformanceSnapshot.cs" />
     <Compile Include="..\VoicePromptTray\RecordingOverlay.cs" />
     <Compile Include="..\VoicePromptTray\SlovenianSlangProfile.cs" />
     <Compile Include="..\VoicePromptTray\Theme.cs" />
