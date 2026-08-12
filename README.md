@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Local, private, GPU-accelerated voice-to-text dictation for Windows</strong><br>
   Speak Slovenian or English by default — or pin any Whisper language.<br>
-  Local by default. No audio leaves your machine. Optional text-only AI cleanup.
+  Local by default. Optional self-hosted recognition server and text-only AI cleanup.
 </p>
 
 <p align="center">
@@ -25,6 +25,8 @@
 Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Long recordings pre-transcribe complete speech blocks while you talk, retain the full microphone stream for automatic recovery, and still paste exactly once after release. The default is fast **English + Slovenian Auto**, with dedicated standard and slang Slovenian modes. Users can also search and pin any of Whisper large-v3's 100 languages without downloading another model. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
 
 Optionally, VoicePrompt can remove speech clutter, fix spoken grammar, or turn a rough transcript into a cleaner AI prompt before delivery. This is disabled by default and never changes the local audio pipeline.
+
+Advanced users can explicitly switch recognition to a self-hosted OpenAI-compatible speech server. Local remains the default; the UI clearly warns when recorded audio would leave the PC and whether the connection is encrypted.
 
 Measured on an RTX 5080:
 
@@ -66,7 +68,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.17.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.18.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -114,6 +116,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Reusable snippets** — save up to 50 local text templates and insert one by its exact English or Slovenian spoken name, including multi-line content without AI or network delay.
 - **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
 - **Application profiles** — optionally override writing and output mode for an exact running-app executable; unmatched apps inherit global settings with no process lookup or added delay.
+- **Recognition location** — keep the recommended local GPU engine, or explicitly use a self-hosted OpenAI-compatible transcription server with a no-audio health check and clear transport privacy status.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, compares the delivered result with the untouched original, and lets you copy either version. Audio is never stored.
 - **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
@@ -137,6 +140,8 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 |---|---|---|
 | `[hotkey] binding` | Global hotkey (single key or combo) | `"f1"`, `"ctrl+shift+f1"`, `"alt+space"` |
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
+| `[server] url` | Compatible transcription server base URL; used only when engine type is `server` | `"http://localhost:8000"` |
+| `[server] timeout` | Maximum server wait after releasing the hotkey | `60` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
 | `[server] language` | `""` = fast English/Slovenian Auto; otherwise pins one supported language | `"sl-slang"`, `"sl"`, `"en"`, `"de"`, `"ja"` |
 | `[server] prompt` | Optional personal names / exact vocabulary bias | empty (language-neutral) |
@@ -146,6 +151,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[voiceprompt] voice_commands` | Enables exact whole-utterance English and Slovenian commands | `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
 | `[vad] max_speech_s` | Internal VAD segment size; not a recording cutoff | `180.0` |
+| `[engine] type` | Private local engine or explicit compatible server | `"local"`, `"server"` |
 | `[engine] compute_type` | `float16` GPU / `int8` CPU | `"float16"` |
 | `[audio] device` | `""` = Windows default input (HyperX Quadcast) | `""` |
 
@@ -158,6 +164,12 @@ If Whisper reports Finnish, Spanish, Latin, or another unsupported language, Voi
 ### Additional languages
 
 The Dictation page includes a searchable catalog of all 100 language codes supported by the installed Whisper large-v3 model. Choosing a result switches from bilingual Auto to a pinned recognition profile. Pinning bypasses language detection, keeps transcription in the spoken language, and does not invoke Whisper's separate translation task. The language profile is only a small setting: the existing multilingual model is reused, so there is no extra model download, network call, or GPU memory cost. Returning to **Auto** restores the tested English + Slovenian behavior.
+
+### Compatible recognition server
+
+Under **Intelligence → Recognition engine**, choose **Compatible server**, enter the server base URL, set a bounded wait, and click **Test server**. The test performs only `GET /health`; it sends no audio, transcript, credentials, or request body. Actual dictation sends one completed WAV recording to `POST /v1/audio/transcriptions`, following the upstream OpenAI-compatible REST contract. Local processor, precision, and background pre-transcription controls are disabled because inference occurs on the server.
+
+The default `http://localhost:8000` keeps audio on the same PC. Remote HTTPS is supported with a clear notice that completed recordings leave the computer. Remote unencrypted HTTP is allowed for deliberate trusted-network setups but receives a prominent warning. VoicePrompt does not add an authorization header, so use a server that is already protected by its own trusted network or reverse proxy. [WhisperLiveKit](https://github.com/QuentinFuxa/WhisperLiveKit) is the upstream-recommended compatible server; the base daemon documentation covers its [server mode](https://github.com/bhargavchippada/faster-whisper-dictation#engine-modes).
 
 ### Optional AI cleanup
 
@@ -189,7 +201,7 @@ Snippets are edited under **Dictation → Reusable text**, one per line as `name
 
 ### Settings and vocabulary backup
 
-Use **Advanced → Data portability** to export or import one validated JSON backup. Import is review-first: it fills the settings pages but changes neither the running daemon nor saved files until **Save & restart** is clicked. The backup includes the global hotkey, language and vocabulary, output behavior, recognition and VAD tuning, AI mode/provider settings, recovery preferences, corrections, and snippets.
+Use **Advanced → Data portability** to export or import one validated JSON backup. Import is review-first: it fills the settings pages but changes neither the running daemon nor saved files until **Save & restart** is clicked. The backup includes the global hotkey, language and vocabulary, output behavior, recognition engine/server settings and VAD tuning, AI mode/provider settings, recovery preferences, corrections, snippets, and application profiles.
 
 The encrypted API key, transcript history, microphone identity, Windows startup state, window preferences, logs, and machine-specific paths are never exported. Endpoint URLs containing embedded credentials, query strings, or fragments are rejected to prevent accidental token leakage.
 
@@ -199,7 +211,7 @@ Use **Intelligence → Application profiles** to select a running app and add an
 
 ## 🔧 Patches (required on Windows)
 
-Fifteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Sixteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures, retry bounded clipboard contention, verify the full Unicode payload, and fail visibly instead of dropping text.
@@ -216,6 +228,7 @@ Fifteen Windows integration fixes ship in this repo — apply them **after every
 13. **`typer.py` / `output_mode.py`** — routes the final transcript exactly once to automatic paste or verified clipboard-only delivery, without emitting paste keystrokes in Copy-only mode.
 14. **`typer.py` / `voice_commands.py` / `text_snippets.py`** — recognizes only enabled whole-utterance English/Slovenian commands and saved snippets, skips AI and history for them, and marks Undo input so the global hotkey listener ignores VoicePrompt's own shortcut.
 15. **`typer.py` / `app_profiles.py` / `ai_rewriter.py`** — resolves an optional exact focused-app rule once after transcription, overrides only writing/output behavior, and inherits global settings after any missing, inaccessible, unmatched, or invalid rule.
+16. **`engine/server.py`** — maps the internal Slovenian slang profile to the standard `sl` API code and omits an empty language field so compatible servers can auto-detect safely.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -233,6 +246,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_buffered_transcription.py` — verifies speech-block ordering, one-result assembly, short-recording compatibility, and complete-audio fallback triggers.
 - `tests/test_output_mode.py` — verifies safe defaults and proves Copy-only delivery cannot call the synthetic-paste route.
 - `tests/test_voice_commands.py` — verifies default-off behavior, exact English/Slovenian recognition, Unicode output, and substring false-positive protection.
+- `tests/test_server_engine.py` — verifies bounded OpenAI-compatible WAV requests, Slovenian/Auto language routing, and empty-result fallback on timeouts or malformed responses.
 - `tests/test_text_snippets.py` — verifies bounded Unicode snippet loading, bilingual exact resolution, malformed-data fallback, and false-positive protection.
 - `tests/test_patch_migrations.ps1` — verifies clean and legacy upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.

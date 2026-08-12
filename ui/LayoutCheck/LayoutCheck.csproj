@@ -27,6 +27,7 @@
     <Compile Include="..\VoicePromptTray\MainForm.cs" />
     <Compile Include="..\VoicePromptTray\PerformanceSnapshot.cs" />
     <Compile Include="..\VoicePromptTray\RecordingOverlay.cs" />
+    <Compile Include="..\VoicePromptTray\RecognitionServer.cs" />
     <Compile Include="..\VoicePromptTray\SlovenianSlangProfile.cs" />
     <Compile Include="..\VoicePromptTray\Theme.cs" />
     <Compile Include="..\VoicePromptTray\TrayApp.cs" />

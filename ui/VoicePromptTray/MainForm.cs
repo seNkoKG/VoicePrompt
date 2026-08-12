@@ -102,6 +102,11 @@ internal sealed class MainForm : Form
     private Label _historyStatus = null!;
 
     private ComboBox _recognitionModelCombo = null!;
+    private ChoiceStrip _recognitionEngineChoice = null!;
+    private TextBox _recognitionServerUrl = null!;
+    private NumericUpDown _recognitionServerTimeout = null!;
+    private ActionButton _recognitionServerTestButton = null!;
+    private Label _recognitionServerResult = null!;
     private ChoiceStrip _computeChoice = null!;
     private ChoiceStrip _processorChoice = null!;
     private NumericUpDown _temperature = null!;
@@ -739,6 +744,31 @@ internal sealed class MainForm : Form
     private void BuildIntelligencePage()
     {
         var body = CreatePage(IntelligencePage);
+        _recognitionEngineChoice = new ChoiceStrip(
+            new[] { "Local on this PC", "Compatible server" },
+            new[] { "local", "server" }) { Dock = DockStyle.Fill };
+        _recognitionEngineChoice.AccessibleName = "Recognition engine location";
+        _recognitionEngineChoice.SelectedChanged += (_, _) => UpdateRecognitionEngineAvailability();
+        _recognitionServerUrl = new TextBox { PlaceholderText = "http://localhost:8000" };
+        _recognitionServerUrl.AccessibleName = "Recognition server base URL";
+        _recognitionServerUrl.TextChanged += (_, _) => UpdateRecognitionEngineAvailability();
+        _recognitionServerTimeout = MakeNumber(
+            RecognitionServer.MinimumTimeoutSeconds,
+            RecognitionServer.MaximumTimeoutSeconds,
+            5,
+            0,
+            148);
+        _recognitionServerTimeout.AccessibleName = "Recognition server maximum wait in seconds";
+        _recognitionServerTestButton = new ActionButton("Test server", ActionButtonStyle.Secondary)
+        {
+            Width = 104,
+            BackColor = Theme.Surface,
+        };
+        _recognitionServerTestButton.Click += async (_, _) => await TestRecognitionServerAsync();
+        _recognitionServerResult = BuildInlineHint(Theme.Surface);
+        var recognitionServerRow = HorizontalControl(
+            new TextFieldFrame(_recognitionServerUrl) { Dock = DockStyle.Fill },
+            _recognitionServerTestButton);
         _recognitionModelCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Dock = DockStyle.Fill };
         _recognitionModelCombo.AccessibleName = "Recognition model";
         Theme.StyleCombo(_recognitionModelCombo);
@@ -759,7 +789,12 @@ internal sealed class MainForm : Form
         _bufferedTranscriptionToggle.AccessibleName = "Fast long recordings";
         var hotwordsFrame = new TextFieldFrame(_hotwordsText) { Dock = DockStyle.Fill };
 
-        var engine = new SectionBuilder("Recognition engine", "Local Whisper settings balance accuracy, latency, and memory usage.");
+        var engine = new SectionBuilder(
+            "Recognition engine",
+            "Local remains private and recommended. A compatible server is an explicit opt-in for shared or separate hardware.");
+        engine.Add("Location", "Local runs on this PC. Server uses the upstream OpenAI-compatible transcription API.", _recognitionEngineChoice, 64);
+        engine.Add("Server address", "Used only in Server mode. Test checks /health and never sends microphone audio.", StackControl(recognitionServerRow, _recognitionServerResult, 64), 84);
+        engine.Add("Server wait", "Maximum time after release for a server transcription; longer recordings may need more time.", LeftControl(_recognitionServerTimeout), 62);
         engine.Add("Model", "large-v3 gives the best Slovenian accuracy; Turbo trades some accuracy for speed.", _recognitionModelCombo, 64);
         engine.Add("Processor", "Use NVIDIA GPU for the fastest local transcription.", _processorChoice, 64);
         engine.Add("Precision", "FP16 is recommended on modern NVIDIA GPUs; INT8 is useful on CPU.", _computeChoice, 64);
@@ -767,6 +802,7 @@ internal sealed class MainForm : Form
         engine.Add("Hotwords", "Extra words to boost. Built-in English/Slovenian vocabulary is added automatically in Auto.", hotwordsFrame, 64);
         engine.Add("Fast long recordings", "Decodes complete speech blocks in the background, pastes once on release, and keeps full audio for automatic fallback.", _bufferedTranscriptionToggle, 64);
         AddPageItem(body, engine.Build());
+        UpdateRecognitionEngineAvailability();
 
         _aiModeChoice = new ChoiceStrip(
             new[] { "Verbatim", "Clean", "Grammar", "Prompt" },
@@ -1248,6 +1284,7 @@ internal sealed class MainForm : Form
             _languageChoice,
             _sampleRateChoice,
             _aiModeChoice,
+            _recognitionEngineChoice,
             _computeChoice,
             _processorChoice,
         })
@@ -1265,6 +1302,7 @@ internal sealed class MainForm : Form
             _aiEndpointText,
             _aiModelText,
             _aiKeyText,
+            _recognitionServerUrl,
             _hotwordsText,
         })
             text.TextChanged += (_, _) => MarkDirty();
@@ -1304,6 +1342,7 @@ internal sealed class MainForm : Form
             _minimumSpeechMs,
             _maximumSpeechSeconds,
             _temperature,
+            _recognitionServerTimeout,
             _aiTimeoutMs,
             _historyLimit,
         })
@@ -1560,6 +1599,9 @@ internal sealed class MainForm : Form
             },
             Recognition = new BackupRecognitionSettings
             {
+                EngineType = _recognitionEngineChoice.SelectedValue,
+                ServerUrl = _recognitionServerUrl.Text,
+                ServerTimeoutSeconds = (int)_recognitionServerTimeout.Value,
                 Model = _recognitionModelCombo.Text,
                 Processor = _processorChoice.SelectedValue,
                 ComputeType = _computeChoice.SelectedValue,
@@ -1611,6 +1653,9 @@ internal sealed class MainForm : Form
             _snippetsText.Text = TextSnippetStore.Format(backup.Snippets);
             _appProfilesText.Text = AppProfileStore.Format(backup.AppProfiles);
 
+            _recognitionEngineChoice.SelectValue(backup.Recognition.EngineType);
+            _recognitionServerUrl.Text = backup.Recognition.ServerUrl;
+            _recognitionServerTimeout.Value = backup.Recognition.ServerTimeoutSeconds;
             _recognitionModelCombo.Text = backup.Recognition.Model;
             _processorChoice.SelectValue(backup.Recognition.Processor);
             _computeChoice.SelectValue(backup.Recognition.ComputeType);
@@ -1633,6 +1678,7 @@ internal sealed class MainForm : Form
             UpdateActivationHint();
             UpdateOutputHint();
             UpdateLanguageControls();
+            UpdateRecognitionEngineAvailability();
             UpdateAiAvailability();
             UpdateOverview();
         }
@@ -1661,9 +1707,18 @@ internal sealed class MainForm : Form
             _ => "English + Slovenian Auto",
         };
         _microphoneSummary.Text = (_microphoneCombo.SelectedItem as ComboItem)?.Label ?? "System default";
-        _engineSummary.Text = _processorChoice.SelectedValue == "cuda"
-            ? "large-v3 · NVIDIA GPU"
-            : (_recognitionModelCombo.Text.Contains("turbo", StringComparison.OrdinalIgnoreCase) ? "large-v3-turbo" : "large-v3") + " · " + _processorChoice.SelectedValue;
+        if (_recognitionEngineChoice.SelectedValue == "server")
+        {
+            _engineSummary.Text = Uri.TryCreate(_recognitionServerUrl.Text.Trim(), UriKind.Absolute, out Uri? serverUri)
+                ? "Compatible server · " + serverUri.Authority
+                : "Compatible server";
+        }
+        else
+        {
+            _engineSummary.Text = _processorChoice.SelectedValue == "cuda"
+                ? "large-v3 · NVIDIA GPU"
+                : (_recognitionModelCombo.Text.Contains("turbo", StringComparison.OrdinalIgnoreCase) ? "large-v3-turbo" : "large-v3") + " · " + _processorChoice.SelectedValue;
+        }
 
         bool runtimeReady = _paths.Installed;
         bool hotkeyReady = !string.IsNullOrWhiteSpace(_hotkeyRecorder.Binding);
@@ -1720,6 +1775,12 @@ internal sealed class MainForm : Form
             ? _config.GetString("voiceprompt", "base_prompt") ?? _config.GetString("server", "prompt") ?? ""
             : _config.GetString("server", "prompt") ?? "";
 
+        _recognitionEngineChoice.SelectValue(string.Equals(
+            _config.GetString("engine", "type"),
+            "server",
+            StringComparison.OrdinalIgnoreCase) ? "server" : "local");
+        _recognitionServerUrl.Text = _config.GetString("server", "url") ?? "http://localhost:8000";
+        _recognitionServerTimeout.Value = Clamp(_config.GetInt("server", "timeout") ?? 60, _recognitionServerTimeout);
         _recognitionModelCombo.Text = _config.GetString("server", "model") ?? "Systran/faster-whisper-large-v3";
         _temperature.Value = Clamp((decimal)(_config.GetDouble("server", "temperature") ?? 0), _temperature);
         _hotwordsText.Text = slang
@@ -1740,6 +1801,7 @@ internal sealed class MainForm : Form
         _computeChoice.SelectValue(_config.GetString("engine", "compute_type") ?? "float16");
         _processorChoice.SelectValue(_config.GetString("engine", "device") ?? "auto");
         _loading = false;
+        UpdateRecognitionEngineAvailability();
     }
 
     private void LoadAiConfiguration()
@@ -1816,6 +1878,53 @@ internal sealed class MainForm : Form
                 : "Verbatim adds zero delay and sends no transcript anywhere.";
             _aiResult.ForeColor = Theme.Muted;
         }
+    }
+
+    private void UpdateRecognitionEngineAvailability()
+    {
+        if (_recognitionEngineChoice == null)
+            return;
+        bool server = _recognitionEngineChoice.SelectedValue == "server";
+        _recognitionServerUrl.Enabled = server;
+        _recognitionServerTimeout.Enabled = server;
+        _recognitionServerTestButton.Enabled = server && !_busy;
+        _processorChoice.Enabled = !server;
+        _computeChoice.Enabled = !server;
+        _bufferedTranscriptionToggle.Enabled = !server;
+
+        if (!server)
+        {
+            _recognitionServerResult.Text = "Recommended · audio stays on this PC and uses the selected local processor.";
+            _recognitionServerResult.ForeColor = Theme.Muted;
+            return;
+        }
+
+        _recognitionServerResult.Text = RecognitionServer.PrivacyMessage(_recognitionServerUrl.Text);
+        bool unsafeRemote = !RecognitionServer.IsLoopback(_recognitionServerUrl.Text) &&
+            _recognitionServerUrl.Text.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+        _recognitionServerResult.ForeColor = unsafeRemote ? Theme.Warn : Theme.TextSecondary;
+    }
+
+    private async Task TestRecognitionServerAsync()
+    {
+        if (_busy || _recognitionEngineChoice.SelectedValue != "server")
+            return;
+        _recognitionServerTestButton.Enabled = false;
+        _recognitionServerResult.Text = "Checking server health…";
+        _recognitionServerResult.ForeColor = Theme.TextSecondary;
+        string testedUrl = _recognitionServerUrl.Text;
+        RecognitionServerProbeResult result = await RecognitionServer.ProbeAsync(testedUrl);
+        if (IsDisposed)
+            return;
+        if (_recognitionEngineChoice.SelectedValue != "server" ||
+            !string.Equals(_recognitionServerUrl.Text, testedUrl, StringComparison.Ordinal))
+        {
+            UpdateRecognitionEngineAvailability();
+            return;
+        }
+        _recognitionServerResult.Text = result.Message;
+        _recognitionServerResult.ForeColor = result.Success ? Theme.Ok : Theme.Warn;
+        _recognitionServerTestButton.Enabled = !_busy && _recognitionEngineChoice.SelectedValue == "server";
     }
 
     private async Task RefreshMicrophonesAsync()
@@ -2006,6 +2115,21 @@ internal sealed class MainForm : Form
             return;
         }
 
+        string recognitionEngine = _recognitionEngineChoice.SelectedValue;
+        string recognitionServerUrl = _recognitionServerUrl.Text.Trim();
+        int recognitionServerTimeout = (int)_recognitionServerTimeout.Value;
+        string? recognitionServerValidation = RecognitionServer.Validate(
+            recognitionServerUrl,
+            recognitionServerTimeout);
+        if (recognitionServerValidation != null)
+        {
+            ShowPage(IntelligencePage);
+            _recognitionServerUrl.Focus();
+            ShowFooter(recognitionServerValidation, Theme.Err);
+            return;
+        }
+        recognitionServerUrl = RecognitionServer.NormalizeUrl(recognitionServerUrl);
+
         string activation = _activationChoice.SelectedValue;
         string language = SelectedLanguageCode();
         if (_languageChoice.SelectedValue == "other" && !LanguageCatalog.IsSupported(language))
@@ -2037,7 +2161,7 @@ internal sealed class MainForm : Form
         bool voiceCommands = _voiceCommandsToggle.Checked;
 
         SetBusy(true);
-        ShowFooter("Saving settings and restarting the local runtime…", Theme.Accent);
+        ShowFooter("Saving settings and restarting the dictation runtime…", Theme.Accent);
         try
         {
             await Task.Run(() =>
@@ -2045,6 +2169,8 @@ internal sealed class MainForm : Form
                 _config.Set("hotkey", "binding", hotkey);
                 _config.Set("hotkey", "mode", activation);
                 _config.Set("server", "language", language);
+                _config.Set("server", "url", recognitionServerUrl);
+                _config.Set("server", "timeout", recognitionServerTimeout);
                 _config.Set("server", "prompt", prompt);
                 _config.Set("server", "model", model);
                 _config.Set("server", "temperature", temperature);
@@ -2061,6 +2187,7 @@ internal sealed class MainForm : Form
                 _config.Set("vad", "max_speech_s", maximumSpeechSeconds);
                 _config.Set("audio", "device", microphone);
                 _config.Set("audio", "sample_rate", sampleRate);
+                _config.Set("engine", "type", recognitionEngine);
                 _config.Set("engine", "compute_type", computeType);
                 _config.Set("engine", "device", processor);
                 _config.Save();
@@ -2155,6 +2282,7 @@ internal sealed class MainForm : Form
         _discardButton.Enabled = !busy && _dirty;
         _daemonToggleButton.Enabled = !busy;
         _daemonRestartButton.Enabled = !busy && _daemon.Info.State == DaemonState.Running;
+        UpdateRecognitionEngineAvailability();
         UpdateAiAvailability();
     }
 
@@ -2302,6 +2430,7 @@ internal sealed class MainForm : Form
         _silenceMs.Value = 250;
         _minimumSpeechMs.Value = 250;
         _maximumSpeechSeconds.Value = 180;
+        _recognitionEngineChoice.SelectValue("local");
         _recognitionModelCombo.Text = "Systran/faster-whisper-large-v3";
         _processorChoice.SelectValue("cuda");
         _computeChoice.SelectValue("float16");

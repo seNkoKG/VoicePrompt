@@ -30,6 +30,7 @@ function Invoke-RuntimePatch([string]$Patch, [string]$Module, [string]$Name) {
 
 function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $localEngine = Join-Path $Module "engine\local.py"
+    $serverEngine = Join-Path $Module "engine\server.py"
     $typer = Join-Path $Module "typer.py"
     $daemon = Join-Path $Module "daemon.py"
     $history = Join-Path $Module "transcript_history.py"
@@ -39,7 +40,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
+    & $Python -m py_compile $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -67,6 +68,12 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if ([regex]::Matches($source, "Transcription latency:").Count -ne 1) {
         throw "$Name does not have exactly one latency instrumentation block."
+    }
+
+    $serverSource = [System.IO.File]::ReadAllText($serverEngine)
+    if ([regex]::Matches($serverSource, '"sl" if self\.config\.language == "sl-slang"').Count -ne 1 -or
+        [regex]::Matches($serverSource, '"language": \(').Count -ne 1) {
+        throw "$Name does not map the local Slovenian slang profile safely for compatible servers."
     }
 
     $typerSource = [System.IO.File]::ReadAllText($typer)

@@ -25,6 +25,12 @@ internal sealed record BackupDictationSettings
 
 internal sealed record BackupRecognitionSettings
 {
+    [JsonPropertyName("engine_type")]
+    public string EngineType { get; init; } = "local";
+    [JsonPropertyName("server_url")]
+    public string ServerUrl { get; init; } = "http://localhost:8000";
+    [JsonPropertyName("server_timeout_seconds")]
+    public int ServerTimeoutSeconds { get; init; } = 60;
     [JsonPropertyName("model")]
     public string Model { get; init; } = "Systran/faster-whisper-large-v3";
     [JsonPropertyName("processor")]
@@ -184,6 +190,11 @@ internal static class AppBackupStore
             AppProfileStore.Format(document.AppProfiles ?? []));
 
         string recognitionModel = recognition.Model?.Trim() ?? "";
+        string engineType = recognition.EngineType?.Trim().ToLowerInvariant() ?? "";
+        string recognitionServerUrl = recognition.ServerUrl?.Trim() ?? "";
+        if (engineType is not ("local" or "server") ||
+            RecognitionServer.Validate(recognitionServerUrl, recognition.ServerTimeoutSeconds) != null)
+            throw new InvalidDataException("The backup contains invalid recognition-engine settings.");
         if (recognitionModel.Length is 0 or > 200)
             throw new InvalidDataException("The backup contains an invalid recognition model.");
         string processor = recognition.Processor?.Trim().ToLowerInvariant() ?? "";
@@ -230,6 +241,8 @@ internal static class AppBackupStore
             },
             Recognition = recognition with
             {
+                EngineType = engineType,
+                ServerUrl = RecognitionServer.NormalizeUrl(recognitionServerUrl),
                 Model = recognitionModel,
                 Processor = processor,
                 ComputeType = computeType,

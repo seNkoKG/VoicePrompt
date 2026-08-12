@@ -524,7 +524,7 @@ internal sealed class ChoiceStrip : Control
         {
             Rectangle item = ItemBounds(i);
             bool selected = i == _selectedIndex;
-            if (selected || i == _hoverIndex)
+            if (Enabled && (selected || i == _hoverIndex))
             {
                 using var path = Theme.RoundedRect(Rectangle.Inflate(item, -3, -4), 7);
                 using var fill = new SolidBrush(selected ? Theme.SurfaceRaised : Theme.ControlHover);
@@ -541,7 +541,7 @@ internal sealed class ChoiceStrip : Control
                 _labels[i],
                 selected ? selectedFont : Font,
                 item,
-                selected ? Theme.Text : Theme.TextSecondary,
+                !Enabled ? Theme.Muted : selected ? Theme.Text : Theme.TextSecondary,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
     }

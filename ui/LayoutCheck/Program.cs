@@ -372,6 +372,54 @@ if (form.HasUnsavedChanges || appProfilesText.Text != originalAppProfiles || aiM
     failures.AppendLine("BEHAVIOR Discard did not restore application profiles");
 }
 
+var recognitionEngine = (ChoiceStrip)typeof(MainForm)
+    .GetField("_recognitionEngineChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var recognitionServerUrl = (TextBox)typeof(MainForm)
+    .GetField("_recognitionServerUrl", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var recognitionServerTimeout = (NumericUpDown)typeof(MainForm)
+    .GetField("_recognitionServerTimeout", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var processorChoice = (ChoiceStrip)typeof(MainForm)
+    .GetField("_processorChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var bufferedTranscription = (ToggleSwitch)typeof(MainForm)
+    .GetField("_bufferedTranscriptionToggle", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var recognitionServerResult = (Label)typeof(MainForm)
+    .GetField("_recognitionServerResult", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalRecognitionEngine = recognitionEngine.SelectedValue;
+recognitionEngine.SelectValue("server");
+recognitionServerUrl.Text = "http://speech.example.test";
+recognitionServerTimeout.Value = 90;
+Application.DoEvents();
+if (!form.HasUnsavedChanges || !recognitionServerUrl.Enabled || !recognitionServerTimeout.Enabled ||
+    processorChoice.Enabled || bufferedTranscription.Enabled ||
+    !recognitionServerResult.Text.StartsWith("Warning ·", StringComparison.Ordinal))
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR recognition server mode did not expose safe remote controls and privacy guidance");
+}
+form.ShowPageForDiagnostics("intelligence");
+pageMap["intelligence"].AutoScrollPosition = Point.Empty;
+Application.DoEvents();
+string recognitionServerPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_recognition_server.png");
+using (var recognitionServerBitmap = new Bitmap(form.Width, form.Height))
+{
+    form.DrawToBitmap(recognitionServerBitmap, new Rectangle(Point.Empty, form.Size));
+    recognitionServerBitmap.Save(recognitionServerPath);
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || recognitionEngine.SelectedValue != originalRecognitionEngine)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore the recognition engine");
+}
+
 var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
     VoicePromptTray.AppBackupStore.Serialize(new VoicePromptBackupDocument
     {
@@ -385,7 +433,12 @@ var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
             Prompt = "Product: VoicePrompt",
             Hotwords = "Codex",
         },
-        Recognition = new BackupRecognitionSettings(),
+        Recognition = new BackupRecognitionSettings
+        {
+            EngineType = "server",
+            ServerUrl = "https://speech.example.test",
+            ServerTimeoutSeconds = 75,
+        },
         Audio = new BackupAudioSettings(),
         Writing = new BackupWritingSettings { Mode = "clean" },
         Recovery = new BackupRecoverySettings { Limit = 30 },
@@ -401,7 +454,8 @@ string backupLanguage = (string)typeof(MainForm)
     .Invoke(form, Array.Empty<object>())!;
 if (!form.HasUnsavedChanges || backupLanguage != "en" || outputChoice.SelectedValue != "clipboard" ||
     !voiceCommands.Checked || aiModeChoice.SelectedValue != "clean" || !snippetsText.Text.Contains("reply => Thank you") ||
-    !appProfilesText.Text.Contains("Code.exe => prompt, inherit"))
+    !appProfilesText.Text.Contains("Code.exe => prompt, inherit") || recognitionEngine.SelectedValue != "server" ||
+    recognitionServerUrl.Text != "https://speech.example.test" || recognitionServerTimeout.Value != 75)
 {
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR imported settings backup did not populate reviewable portable fields");
@@ -602,6 +656,7 @@ Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT application-profiles={applicationProfilesPath}");
+Console.WriteLine($"SCREENSHOT recognition-server={recognitionServerPath}");
 Console.WriteLine($"SCREENSHOT input-test={inputTestPath}");
 Console.WriteLine($"SCREENSHOT history-comparison={historyComparisonPath}");
 Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");

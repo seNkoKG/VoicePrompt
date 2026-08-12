@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.18.0] - 2026-08-12
+
+### Added
+
+- Added an opt-in OpenAI-compatible recognition-server mode for shared, separate, or self-hosted speech hardware.
+- Added a bounded `/health` connection test that sends no microphone audio, credentials, transcript text, or request body.
+- Added server URL, timeout, privacy, portable-backup, transport, UI, accessibility, and migration coverage.
+
+### Changed
+
+- Keep the private local GPU engine as the default and visually disable local-only processor, precision, and long-recording controls in server mode.
+- Show explicit local, remote HTTPS, and unencrypted remote HTTP privacy guidance before settings are saved.
+- Route the internal Slovenian slang profile as standard `sl` to compatible servers and omit the language field for Auto detection.
+
+### Fixed
+
+- Expose the tested upstream REST engine without requiring users to hand-edit TOML, while preserving exact local behavior for existing installs.
+
 ## [1.17.0] - 2026-08-12
 
 ### Added

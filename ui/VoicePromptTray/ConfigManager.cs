@@ -13,7 +13,7 @@ internal sealed class ConfigManager
         url = "http://localhost:8000"
         model = "Systran/faster-whisper-large-v3"
         language = ""
-        timeout = 10
+        timeout = 60
         prompt = ""
 
         [voiceprompt]

@@ -87,6 +87,8 @@ string newPath = Path.Combine(dir, "new", "config.toml");
 var defaults = new VoicePromptTray.ConfigManager(newPath);
 Check("new config is written immediately", File.Exists(newPath) && File.ReadAllText(newPath).Contains("[hotkey]"));
 Check("new config has working defaults", defaults.GetString("hotkey", "binding") == "f1");
+Check("new config keeps recognition local with bounded server fallback",
+    defaults.GetString("engine", "type") == "local" && defaults.GetInt("server", "timeout") == 60);
 Check("new config enables lossless long-recording prefetch", defaults.GetBool("voiceprompt", "buffered_transcription") == true);
 Check("new config defaults to automatic paste", defaults.GetString("voiceprompt", "output_mode") == "paste");
 Check("new config keeps voice commands opt-in", defaults.GetBool("voiceprompt", "voice_commands") == false);
@@ -218,6 +220,9 @@ var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
     },
     Recognition = new VoicePromptTray.BackupRecognitionSettings
     {
+        EngineType = "server",
+        ServerUrl = "https://speech.example.test/",
+        ServerTimeoutSeconds = 90,
         Model = "Systran/faster-whisper-large-v3",
         Processor = "cuda",
         ComputeType = "float16",
@@ -242,6 +247,9 @@ Check("settings backup preserves portable Unicode values",
     restoredBackup.Dictation.Prompt.Contains("Žan") &&
     restoredBackup.Snippets[0].Content.Contains("Žan") &&
     restoredBackup.AppProfiles[0].Executable == "Code.exe" &&
+    restoredBackup.Recognition.EngineType == "server" &&
+    restoredBackup.Recognition.ServerUrl == "https://speech.example.test" &&
+    restoredBackup.Recognition.ServerTimeoutSeconds == 90 &&
     restoredBackup.Dictation.OutputMode == "clipboard");
 Check("settings backup excludes API keys", !backupJson.Contains("api_key", StringComparison.OrdinalIgnoreCase));
 Check("settings backup excludes transcript history", !backupJson.Contains("\"history\"", StringComparison.OrdinalIgnoreCase));
@@ -272,6 +280,18 @@ try
 catch (InvalidDataException)
 {
     Check("settings backup rejects endpoint credentials", true);
+}
+try
+{
+    VoicePromptTray.AppBackupStore.Serialize(portableBackup with
+    {
+        Recognition = portableBackup.Recognition with { ServerUrl = "ftp://speech.example.test" },
+    });
+    Check("settings backup rejects invalid recognition server", false);
+}
+catch (InvalidDataException)
+{
+    Check("settings backup rejects invalid recognition server", true);
 }
 
 string historyPath = Path.Combine(dir, "local", "history.json");
@@ -512,6 +532,41 @@ var oversizedUpdate = await new VoicePromptTray.UpdateChecker(oversizedClient)
     .CheckAsync("1.5.1");
 Check("update checker rejects oversized responses",
     oversizedUpdate.State == VoicePromptTray.UpdateState.Unavailable);
+
+Check("recognition server validates and normalizes safe base URLs",
+    VoicePromptTray.RecognitionServer.Validate("http://localhost:8000/", 60) is null &&
+    VoicePromptTray.RecognitionServer.NormalizeUrl(" http://localhost:8000/ ") == "http://localhost:8000" &&
+    VoicePromptTray.RecognitionServer.Validate("ftp://localhost:8000", 60) != null &&
+    VoicePromptTray.RecognitionServer.Validate("https://user@example.test", 60) != null &&
+    VoicePromptTray.RecognitionServer.Validate("https://example.test?token=secret", 60) != null &&
+    VoicePromptTray.RecognitionServer.Validate("https://example.test", 4) != null);
+Check("recognition server privacy guidance distinguishes transport",
+    VoicePromptTray.RecognitionServer.IsLoopback("http://127.0.0.1:8000") &&
+    VoicePromptTray.RecognitionServer.IsLoopback("http://[::1]:8000") &&
+    VoicePromptTray.RecognitionServer.PrivacyMessage("http://localhost:8000").Contains("stays on this PC") &&
+    VoicePromptTray.RecognitionServer.PrivacyMessage("https://speech.example.test").Contains("over HTTPS") &&
+    VoicePromptTray.RecognitionServer.PrivacyMessage("http://speech.example.test").StartsWith("Warning ·"));
+
+bool safeRecognitionProbe = false;
+var recognitionProbe = await VoicePromptTray.RecognitionServer.ProbeAsync(
+    "http://localhost:8000/",
+    default,
+    new StubHttpMessageHandler(request =>
+    {
+        safeRecognitionProbe = request.Method == HttpMethod.Get &&
+            request.RequestUri?.ToString() == "http://localhost:8000/health" &&
+            request.Headers.Authorization is null && request.Content is null;
+        return new HttpResponseMessage(HttpStatusCode.NoContent);
+    }));
+Check("recognition server health probe sends no audio or credentials",
+    safeRecognitionProbe && recognitionProbe.Success && recognitionProbe.Message.Contains("204"));
+
+var failedRecognitionProbe = await VoicePromptTray.RecognitionServer.ProbeAsync(
+    "https://speech.example.test",
+    default,
+    new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+Check("recognition server health probe reports failure without throwing",
+    !failedRecognitionProbe.Success && failedRecognitionProbe.Message.Contains("503"));
 
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");

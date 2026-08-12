@@ -110,6 +110,13 @@ $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
 
+$serverEngine = "$site\engine\server.py"
+Apply-Patch $serverEngine '                    "language": self.config.language,' @'
+                    "language": (
+                        "sl" if self.config.language == "sl-slang" else self.config.language
+                    ) or None,
+'@ "engine/server.py -- safe language routing" '"sl" if self.config.language == "sl-slang"'
+
 # 1. cli.py - Windows-safe _pid_alive() (os.kill(pid, 0) raises WinError 87 on Win32)
 $cli = "$site\cli.py"
 $cliContent = [System.IO.File]::ReadAllText($cli)

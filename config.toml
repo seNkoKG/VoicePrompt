@@ -2,10 +2,10 @@
 # See: https://github.com/bhargavchippada/faster-whisper-dictation
 
 [server]
-url = "http://localhost:8000"         # WhisperLiveKit server URL (unused in local engine)
+url = "http://localhost:8000"         # OpenAI-compatible transcription server (used only in server mode)
 model = "Systran/faster-whisper-large-v3"
 language = ""                         # empty = auto-detect per utterance (Slovenian/English)
-timeout = 10                          # Request timeout in seconds
+timeout = 60                          # Maximum server transcription wait in seconds
 prompt = ""                              # Keep Auto language detection neutral; add only personal names or exact terms
 # temperature = 0.0                    # 0.0 = deterministic, latency-bounded beam search
 # hotwords = ""                        # Comma-separated words to boost
@@ -32,7 +32,7 @@ channels = 1                          # Number of audio channels (1 = mono)
 # device = ""                        # "" = Windows default input device (HyperX Quadcast)
 
 [engine]
-type = "local"                        # "server" (WhisperLiveKit/remote) or "local" (local)
+type = "local"                        # "local" (default/private) or "server" (explicit audio upload)
 compute_type = "float16"              # "auto", "float16" (GPU), "int8" (CPU)
 device = "cuda"                       # "auto", "cuda", "cpu"
 
