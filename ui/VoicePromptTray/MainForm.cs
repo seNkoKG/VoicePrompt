@@ -114,6 +114,7 @@ internal sealed class MainForm : Form
     private Label _performanceMicrophone = null!;
     private Label _performanceRecovery = null!;
     private Label _updateStatus = null!;
+    private ChoiceStrip _updateChannelChoice = null!;
     private ActionButton _updateButton = null!;
     private string _updateReleaseUrl = "";
 
@@ -976,8 +977,15 @@ internal sealed class MainForm : Form
         config.Click += (_, _) => OpenConfigFolder();
         var release = new ActionButton("Latest release", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
         release.Click += (_, _) => OpenExternal("https://github.com/seNkoKG/VoicePrompt/releases/latest");
+        _updateChannelChoice = new ChoiceStrip(new[] { "Stable", "Preview" }, new[] { "stable", "preview" }) { Dock = DockStyle.Fill };
+        _updateChannelChoice.AccessibleName = "Application update channel";
+        _updateChannelChoice.SelectedChanged += (_, _) =>
+        {
+            ResetUpdateCheck();
+            if (!_loading)
+                SavePreferences();
+        };
         _updateStatus = BuildValueLabel();
-        _updateStatus.Text = "Not checked · contacts GitHub only when you click";
         _updateButton = new ActionButton("Check now", ActionButtonStyle.Secondary) { Width = 100, BackColor = Theme.Surface };
         _updateButton.Click += async (_, _) =>
         {
@@ -989,9 +997,11 @@ internal sealed class MainForm : Form
             await CheckForUpdatesAsync();
         };
         tools.Add("Support bundle", "No audio or transcript text is included in copied diagnostics.", HorizontalControl(copy, log), 62);
-        tools.Add("Application updates", "Makes one short request to GitHub's public latest-release endpoint; no identifier or usage data is sent.", HorizontalControl(_updateStatus, _updateButton), 62);
+        tools.Add("Update channel", "Stable is recommended. Preview also checks explicit prereleases and never installs automatically.", _updateChannelChoice, 62);
+        tools.Add("Application updates", "Makes one short request to GitHub only when clicked; no identifier or usage data is sent.", HorizontalControl(_updateStatus, _updateButton), 62);
         tools.Add("Files & updates", "Open the live config directory or the public download page.", HorizontalControl(config, release), 62);
         AddPageItem(body, tools.Build());
+        ResetUpdateCheck();
 
         var portability = new SectionBuilder("Data portability", "Move your setup without exposing API keys or transcript history.");
         var exportBackup = new ActionButton("Export backup", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
@@ -2222,22 +2232,27 @@ internal sealed class MainForm : Form
         _updateReleaseUrl = "";
         _updateButton.Enabled = false;
         _updateButton.Text = "Checking…";
-        _updateStatus.Text = "Checking the latest stable release…";
+        UpdateChannel channel = SelectedUpdateChannel();
+        _updateStatus.Text = channel == UpdateChannel.Preview
+            ? "Checking stable and preview releases…"
+            : "Checking the latest stable release…";
         try
         {
-            Version current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
-            UpdateResult result = await _updateChecker.CheckAsync(current);
+            string current = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
+                (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0");
+            UpdateResult result = await _updateChecker.CheckAsync(current, channel);
             if (result.State == UpdateState.Available && result.LatestVersion is not null)
             {
                 _updateReleaseUrl = result.ReleaseUrl;
-                _updateStatus.Text = $"Update available · {result.CurrentVersion.ToString(3)} → {result.LatestVersion.ToString(3)}";
+                _updateStatus.Text = $"Update available · {result.CurrentVersion.Display} → {result.LatestVersion.Display}";
                 _updateStatus.ForeColor = Theme.Accent;
                 _updateButton.Text = "Open release";
-                ShowFooter($"VoicePrompt {result.LatestVersion.ToString(3)} is available", Theme.Accent);
+                ShowFooter($"VoicePrompt {result.LatestVersion.Display} is available", Theme.Accent);
             }
             else if (result.State == UpdateState.UpToDate)
             {
-                _updateStatus.Text = $"Up to date · VoicePrompt {result.CurrentVersion.ToString(3)}";
+                _updateStatus.Text = $"Up to date · VoicePrompt {result.CurrentVersion.Display}";
                 _updateStatus.ForeColor = Theme.Ok;
                 _updateButton.Text = "Check again";
                 ShowFooter("VoicePrompt is up to date", Theme.Ok);
@@ -2254,6 +2269,23 @@ internal sealed class MainForm : Form
         {
             _updateButton.Enabled = true;
         }
+    }
+
+    private UpdateChannel SelectedUpdateChannel() =>
+        _updateChannelChoice.SelectedValue == "preview" ? UpdateChannel.Preview : UpdateChannel.Stable;
+
+    private void ResetUpdateCheck()
+    {
+        _updateReleaseUrl = "";
+        if (_updateButton is not null)
+            _updateButton.Text = "Check now";
+        if (_updateStatus is null || _updateChannelChoice is null)
+            return;
+        bool preview = SelectedUpdateChannel() == UpdateChannel.Preview;
+        _updateStatus.Text = preview
+            ? "Not checked · Preview includes prereleases"
+            : "Not checked · Stable releases only";
+        _updateStatus.ForeColor = Theme.Text;
     }
 
     private void OpenLog()
@@ -2364,6 +2396,8 @@ internal sealed class MainForm : Form
             }
             if (root.TryGetProperty("page", out JsonElement page))
                 _selectedPage = page.GetString() ?? OverviewPage;
+            if (root.TryGetProperty("updateChannel", out JsonElement updateChannel))
+                _updateChannelChoice.SelectValue(updateChannel.GetString() == "preview" ? "preview" : "stable");
         }
         catch
         {
@@ -2379,6 +2413,7 @@ internal sealed class MainForm : Form
             {
                 bounds = new { x = Bounds.X, y = Bounds.Y, w = Bounds.Width, h = Bounds.Height },
                 page = _selectedPage,
+                updateChannel = _updateChannelChoice.SelectedValue,
             });
             File.WriteAllText(PreferencesPath, json);
         }

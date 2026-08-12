@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.15.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.16.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -120,7 +120,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, and snippet settings without API keys, transcripts, microphone identity, startup state, or machine paths.
 - **All settings** — language (English + Slovenian Auto, dedicated defaults, or any pinned Whisper language), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe performance statistics and copied diagnostics, and one-click log/config access.
-- **Private update check** — manually checks GitHub's public latest stable release with a three-second timeout, then shows the current/latest version and opens only the official release page. It never checks in the background or installs silently.
+- **Private update check** — manually checks GitHub with a three-second timeout. Stable is the default; Preview is explicit opt-in and also considers prereleases. It never checks in the background or installs silently.
 - **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+6` for page navigation.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
 - **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.

@@ -395,6 +395,15 @@ Check("update tags parse stable semantic versions",
 Check("update tags reject prereleases and malformed values",
     VoicePromptTray.UpdateChecker.ParseVersionTag("v1.6.0-beta.1") is null &&
     VoicePromptTray.UpdateChecker.ParseVersionTag("latest") is null);
+var previewBeta1 = VoicePromptTray.UpdateChecker.ParseReleaseTag("v1.7.0-beta.1", allowPrerelease: true);
+var previewBeta2 = VoicePromptTray.UpdateChecker.ParseReleaseTag("v1.7.0-beta.2", allowPrerelease: true);
+var previewStable = VoicePromptTray.UpdateChecker.ParseReleaseTag("v1.7.0", allowPrerelease: true);
+Check("preview tags follow semantic precedence",
+    previewBeta1 is not null && previewBeta2 is not null && previewStable is not null &&
+    previewBeta2.CompareTo(previewBeta1) > 0 && previewStable.CompareTo(previewBeta2) > 0);
+Check("preview tags reject malformed identifiers",
+    VoicePromptTray.UpdateChecker.ParseReleaseTag("v1.7.0-beta..1", allowPrerelease: true) is null &&
+    VoicePromptTray.UpdateChecker.ParseReleaseTag("v1.7.0-beta_1", allowPrerelease: true) is null);
 
 bool safeUpdateRequest = false;
 var availableClient = new HttpClient(new StubHttpMessageHandler(request =>
@@ -410,26 +419,52 @@ var availableClient = new HttpClient(new StubHttpMessageHandler(request =>
     };
 }));
 var availableUpdate = await new VoicePromptTray.UpdateChecker(availableClient)
-    .CheckAsync(new Version(1, 5, 1, 0));
+    .CheckAsync("1.5.1", VoicePromptTray.UpdateChannel.Stable);
 Check("update checker reports newer official stable release",
     safeUpdateRequest &&
     availableUpdate.State == VoicePromptTray.UpdateState.Available &&
-    availableUpdate.LatestVersion == new Version(1, 6, 0) &&
+    availableUpdate.LatestVersion?.Number == new Version(1, 6, 0) &&
     availableUpdate.ReleaseUrl == "https://github.com/seNkoKG/VoicePrompt/releases/tag/v1.6.0");
+
+bool safePreviewRequest = false;
+var previewClient = new HttpClient(new StubHttpMessageHandler(request =>
+{
+    safePreviewRequest =
+        request.RequestUri?.ToString() == VoicePromptTray.UpdateChecker.PreviewReleaseEndpoint &&
+        request.Headers.Authorization is null &&
+        request.Headers.UserAgent.ToString() == "VoicePrompt/1.6.0";
+    return new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent("""
+        [
+          {"tag_name":"v9.0.0-alpha.1","draft":true,"prerelease":true},
+          {"tag_name":"v1.7.0-beta.2","draft":false,"prerelease":true},
+          {"tag_name":"v1.6.1","draft":false,"prerelease":false}
+        ]
+        """),
+    };
+}));
+var previewUpdate = await new VoicePromptTray.UpdateChecker(previewClient)
+    .CheckAsync("1.6.0", VoicePromptTray.UpdateChannel.Preview);
+Check("preview checker includes prereleases and excludes drafts",
+    safePreviewRequest &&
+    previewUpdate.State == VoicePromptTray.UpdateState.Available &&
+    previewUpdate.LatestVersion?.Display == "1.7.0-beta.2" &&
+    previewUpdate.ReleaseUrl.EndsWith("/v1.7.0-beta.2", StringComparison.Ordinal));
 
 var currentClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
 {
     Content = new StringContent("""{"tag_name":"v1.5.1"}"""),
 }));
 var currentUpdate = await new VoicePromptTray.UpdateChecker(currentClient)
-    .CheckAsync(new Version(1, 5, 1));
+    .CheckAsync("1.5.1");
 Check("update checker recognizes the current release",
     currentUpdate.State == VoicePromptTray.UpdateState.UpToDate);
 
 var failedClient = new HttpClient(new StubHttpMessageHandler(_ =>
     new HttpResponseMessage(HttpStatusCode.Forbidden)));
 var failedUpdate = await new VoicePromptTray.UpdateChecker(failedClient)
-    .CheckAsync(new Version(1, 5, 1));
+    .CheckAsync("1.5.1");
 Check("update checker fails closed without throwing",
     failedUpdate.State == VoicePromptTray.UpdateState.Unavailable &&
     failedUpdate.ReleaseUrl == "");
@@ -439,7 +474,7 @@ var oversizedClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpRes
     Content = new StringContent("{\"tag_name\":\"v1.6.0\",\"body\":\"" + new string('x', 600_000) + "\"}"),
 }));
 var oversizedUpdate = await new VoicePromptTray.UpdateChecker(oversizedClient)
-    .CheckAsync(new Version(1, 5, 1));
+    .CheckAsync("1.5.1");
 Check("update checker rejects oversized responses",
     oversizedUpdate.State == VoicePromptTray.UpdateState.Unavailable);
 

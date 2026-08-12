@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.16.0] - 2026-08-12
+
+### Added
+
+- Added Stable and Preview update channels, with Stable retained as the default.
+- Added semantic prerelease ordering, draft exclusion, preference persistence, and UI behavior coverage.
+
+### Changed
+
+- Keep update checks manual-only and construct every destination from the official VoicePrompt GitHub release path.
+- Preserve the user's UI preference file byte-for-byte while automated layout tests run.
+
+### Fixed
+
+- Prevent preview builds from being invisible to users who explicitly opt into prerelease checks, while never exposing them to Stable users.
+
 ## [1.15.0] - 2026-08-12
 
 ### Added

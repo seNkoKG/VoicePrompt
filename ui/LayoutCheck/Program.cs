@@ -12,6 +12,8 @@ Application.EnableVisualStyles();
 Application.SetCompatibleTextRenderingDefault(false);
 
 var paths = AppPaths.Default;
+string preferencesPath = Path.Combine(paths.AppDataDir, "prefs.json");
+byte[]? preferencesBackup = File.Exists(preferencesPath) ? File.ReadAllBytes(preferencesPath) : null;
 using var form = new MainForm(new DaemonManager(paths), paths)
 {
     StartPosition = FormStartPosition.Manual,
@@ -158,6 +160,24 @@ if (!updateButton.Visible || updateButton.Parent is null ||
     layoutFailures++;
     failures.AppendLine("LAYOUT update action is hidden or covered in its shared row");
 }
+var updateChannel = (ChoiceStrip)typeof(MainForm)
+    .GetField("_updateChannelChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var updateStatus = (Label)typeof(MainForm)
+    .GetField("_updateStatus", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalUpdateChannel = updateChannel.SelectedValue;
+updateChannel.SelectValue(originalUpdateChannel == "stable" ? "preview" : "stable");
+Application.DoEvents();
+if (form.HasUnsavedChanges || !updateStatus.Text.Contains(
+        updateChannel.SelectedValue == "preview" ? "Preview" : "Stable",
+        StringComparison.Ordinal))
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR update channel did not change independently of runtime settings");
+}
+updateChannel.SelectValue(originalUpdateChannel);
+Application.DoEvents();
 pageMap["advanced"].AutoScrollPosition = new Point(0, 460);
 Application.DoEvents();
 string advancedToolsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_advanced_tools.png");
@@ -548,6 +568,10 @@ Console.WriteLine($"SCREENSHOT language-profile={languageProfilePath}");
 Console.WriteLine($"SCREENSHOT snippets={snippetsPath}");
 
 form.Close();
+if (preferencesBackup is null)
+    File.Delete(preferencesPath);
+else
+    File.WriteAllBytes(preferencesPath, preferencesBackup);
 return layoutFailures + behaviorFailures;
     }
 }
