@@ -42,10 +42,11 @@ jobs:
             --pattern "$RELEASE_ZIP" \
             --pattern "$RELEASE_SUMS" \
             --dir _site/downloads
-          expected="$(awk -v file="$RELEASE_ZIP" '$2 == file { print $1 }' "_site/downloads/$RELEASE_SUMS")"
+          expected="$(tr -d '\r' < "_site/downloads/$RELEASE_SUMS" | awk -v file="$RELEASE_ZIP" '$2 == file { print $1 }')"
           actual="$(sha256sum "_site/downloads/$RELEASE_ZIP" | awk '{ print $1 }')"
           test -n "$expected"
           test "$actual" = "$expected"
+          echo "Verified $RELEASE_ZIP ($actual)"
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
         with:
