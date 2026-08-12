@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] - 2026-08-12
+
+### Added
+
+- Added bounded local transcript recovery with inspection, copy, delete, clear, enable, and retention controls.
+- Added explicit personal corrections using `misheard => intended` rules, applied locally before optional AI cleanup.
+- Added a dedicated Recovery workspace and automated Unicode, corruption, disabled-retention, and bounded-history tests.
+
+### Changed
+
+- Store the final completed text before automatic paste so a target-application or clipboard failure cannot erase the prompt.
+- Keep only the newest configured 5 to 100 entries, with 20 as the default, and never store microphone audio.
+- Expanded settings navigation and keyboard shortcuts to six focused workspaces while preserving minimum-window layout support.
+
+### Fixed
+
+- Made clean installs and upgrades deploy the same recovery and correction modules through the idempotent runtime patcher.
+- Corrected sidebar docking order after adding the Recovery workspace.
+
 ## [1.2.4] - 2026-08-12
 
 ### Changed

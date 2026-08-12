@@ -22,13 +22,14 @@ Application.DoEvents();
 var failures = new StringBuilder();
 int layoutFailures = 0;
 int behaviorFailures = 0;
-var pages = new[] { "overview", "dictation", "audio", "intelligence", "advanced" };
+var pages = new[] { "overview", "dictation", "audio", "intelligence", "history", "advanced" };
 var screenshotNames = new Dictionary<string, string>
 {
     ["overview"] = "voiceprompt_ui.png",
     ["dictation"] = "voiceprompt_ui_dictation.png",
     ["audio"] = "voiceprompt_ui_audio.png",
     ["intelligence"] = "voiceprompt_ai_settings.png",
+    ["history"] = "voiceprompt_ui_history.png",
     ["advanced"] = "voiceprompt_ui_advanced.png",
 };
 

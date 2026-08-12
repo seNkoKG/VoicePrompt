@@ -79,6 +79,12 @@ Write-Output "[SYNCED  ] meter.py -- recording state and audio levels"
 $aiSource = Join-Path $PSScriptRoot "ai_rewriter.py"
 Copy-Item -LiteralPath $aiSource -Destination "$site\ai_rewriter.py" -Force
 Write-Output "[SYNCED  ] ai_rewriter.py -- optional transcript cleanup"
+$historySource = Join-Path $PSScriptRoot "transcript_history.py"
+Copy-Item -LiteralPath $historySource -Destination "$site\transcript_history.py" -Force
+Write-Output "[SYNCED  ] transcript_history.py -- bounded local recovery"
+$correctionsSource = Join-Path $PSScriptRoot "text_corrections.py"
+Copy-Item -LiteralPath $correctionsSource -Destination "$site\text_corrections.py" -Force
+Write-Output "[SYNCED  ] text_corrections.py -- personal corrections"
 $slangRetrySource = Join-Path $PSScriptRoot "slang_retry.py"
 Copy-Item -LiteralPath $slangRetrySource -Destination "$site\slang_retry.py" -Force
 Write-Output "[SYNCED  ] slang_retry.py -- mixed English/Slovenian routing"
@@ -822,26 +828,49 @@ Apply-Patch $typer @'
     user32.keybd_event(_VK_CONTROL, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
 '@ "typer.py -- mark injected paste events"
 
-# 9. Typer - optionally clean the transcript before touching the clipboard
-Apply-Patch $typer @'
+# 9. Typer - normalize, recover, and optionally clean before touching the clipboard
+$typerContent = [System.IO.File]::ReadAllText($typer)
+if ($typerContent.Contains('from .ai_rewriter import rewrite_text')) {
+    Apply-Patch $typer @'
+from .ai_rewriter import rewrite_text
+'@ @'
+from .ai_rewriter import rewrite_text
+from .text_corrections import apply_corrections
+from .transcript_history import remember_transcript
+'@ "typer.py -- local text pipeline imports" 'from .transcript_history import remember_transcript'
+} else {
+    Apply-Patch $typer @'
 import time
 '@ @'
 import time
 
 from .ai_rewriter import rewrite_text
-'@ "typer.py -- AI cleanup import" 'from .ai_rewriter import rewrite_text'
-Apply-Patch $typer @'
+from .text_corrections import apply_corrections
+from .transcript_history import remember_transcript
+'@ "typer.py -- local text pipeline imports" 'from .transcript_history import remember_transcript'
+}
+
+$canonicalTypeText = @'
+def type_text(text: str) -> None:
+    """Normalize, recover, and type text without risking the transcript."""
     if not text:
         return
 
-    log.debug("Typing %d chars", len(text))
-'@ @'
-    if not text:
-        return
-
+    original_text = text
+    text = apply_corrections(text)
     text = rewrite_text(text)
+    remember_transcript(original_text, text)
     log.debug("Typing %d chars", len(text))
-'@ "typer.py -- AI cleanup before clipboard" 'text = rewrite_text(text)'
+
+    with _clipboard_lock:
+        _type_text_impl(text)
+'@
+Replace-Block `
+    $typer `
+    'def type_text(' `
+    'def _type_text_impl(' `
+    $canonicalTypeText `
+    "typer.py -- canonical local text pipeline"
 
 # Canonicalize methods that accumulated duplicate statements across upgrades.
 # The dependency is pinned to 0.2.0, so replacing these small blocks is safer

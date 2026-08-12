@@ -181,6 +181,7 @@ internal enum NavigationGlyph
     Dictation,
     Audio,
     Intelligence,
+    History,
     Advanced,
 }
 
@@ -295,6 +296,13 @@ internal sealed class NavigationButton : Control
                 graphics.DrawLine(pen, r.X + 10, r.Y + 16, r.X + 10, r.Y + 20);
                 graphics.DrawLine(pen, r.X, r.Y + 10, r.X + 4, r.Y + 10);
                 graphics.DrawLine(pen, r.X + 16, r.Y + 10, r.X + 20, r.Y + 10);
+                break;
+            case NavigationGlyph.History:
+                graphics.DrawArc(pen, r.X + 2, r.Y + 2, 16, 16, -55, 300);
+                graphics.DrawLine(pen, r.X + 2, r.Y + 2, r.X + 2, r.Y + 8);
+                graphics.DrawLine(pen, r.X + 2, r.Y + 2, r.X + 8, r.Y + 2);
+                graphics.DrawLine(pen, r.X + 10, r.Y + 5, r.X + 10, r.Y + 10);
+                graphics.DrawLine(pen, r.X + 10, r.Y + 10, r.X + 14, r.Y + 12);
                 break;
             case NavigationGlyph.Advanced:
                 using (var brush = new SolidBrush(color))

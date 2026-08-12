@@ -32,10 +32,12 @@ $packageExe = Join-Path $packageRoot "VoicePromptTray.exe"
 $packagePatch = Join-Path $packageRoot "scripts\apply_patches.ps1"
 $packageMeter = Join-Path $packageRoot "scripts\runtime_meter.py"
 $packageAi = Join-Path $packageRoot "scripts\ai_rewriter.py"
+$packageHistory = Join-Path $packageRoot "scripts\transcript_history.py"
+$packageCorrections = Join-Path $packageRoot "scripts\text_corrections.py"
 $packageSlangRetry = Join-Path $packageRoot "scripts\slang_retry.py"
 $packageDecodingOptions = Join-Path $packageRoot "scripts\decoding_options.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
-foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageSlangRetry, $packageDecodingOptions, $packageRunner)) {
+foreach ($required in @($packageExe, $packagePatch, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageRunner)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -91,6 +93,8 @@ Copy-Item -LiteralPath $packageExe -Destination $installedExe -Force
 Copy-Item -LiteralPath $packagePatch -Destination (Join-Path $installScripts "apply_patches.ps1") -Force
 Copy-Item -LiteralPath $packageMeter -Destination (Join-Path $installScripts "runtime_meter.py") -Force
 Copy-Item -LiteralPath $packageAi -Destination (Join-Path $installScripts "ai_rewriter.py") -Force
+Copy-Item -LiteralPath $packageHistory -Destination (Join-Path $installScripts "transcript_history.py") -Force
+Copy-Item -LiteralPath $packageCorrections -Destination (Join-Path $installScripts "text_corrections.py") -Force
 Copy-Item -LiteralPath $packageSlangRetry -Destination (Join-Path $installScripts "slang_retry.py") -Force
 Copy-Item -LiteralPath $packageDecodingOptions -Destination (Join-Path $installScripts "decoding_options.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force

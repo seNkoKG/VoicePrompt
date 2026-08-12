@@ -12,11 +12,14 @@ internal sealed class MainForm : Form
     private const string DictationPage = "dictation";
     private const string AudioPage = "audio";
     private const string IntelligencePage = "intelligence";
+    private const string HistoryPage = "history";
     private const string AdvancedPage = "advanced";
 
     private readonly DaemonManager _daemon;
     private readonly ConfigManager _config;
     private readonly AppPaths _paths;
+    private readonly TranscriptHistoryStore _historyStore;
+    private readonly PersonalDictionaryStore _dictionaryStore;
     private readonly Dictionary<string, Panel> _pages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FlowLayoutPanel> _pageBodies = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NavigationButton> _navigation = new(StringComparer.Ordinal);
@@ -26,6 +29,7 @@ internal sealed class MainForm : Form
         [DictationPage] = ("Dictation", "Choose how recording starts and how your speech is interpreted."),
         [AudioPage] = ("Audio", "Select the microphone and tune speech detection without guesswork."),
         [IntelligencePage] = ("Intelligence", "Control recognition performance and optional AI text cleanup."),
+        [HistoryPage] = ("Recovery", "Recover, copy, or remove recent transcripts stored only on this computer."),
         [AdvancedPage] = ("Advanced", "Diagnostics, application paths, maintenance, and recovery tools."),
     };
 
@@ -58,6 +62,7 @@ internal sealed class MainForm : Form
     private ChoiceStrip _languageChoice = null!;
     private Label _languageHint = null!;
     private TextBox _promptText = null!;
+    private TextBox _correctionsText = null!;
 
     private ComboBox _microphoneCombo = null!;
     private ChoiceStrip _sampleRateChoice = null!;
@@ -75,6 +80,12 @@ internal sealed class MainForm : Form
     private ActionButton _aiTestButton = null!;
     private Label _aiResult = null!;
     private AiSettings _aiSettings = new();
+
+    private ToggleSwitch _historyEnabled = null!;
+    private NumericUpDown _historyLimit = null!;
+    private ListBox _historyList = null!;
+    private TextBox _historyPreview = null!;
+    private Label _historyStatus = null!;
 
     private ComboBox _recognitionModelCombo = null!;
     private ChoiceStrip _computeChoice = null!;
@@ -108,6 +119,8 @@ internal sealed class MainForm : Form
         _daemon = daemon;
         _paths = paths;
         _config = new ConfigManager(paths.ConfigPath);
+        _historyStore = new TranscriptHistoryStore(paths.HistoryPath, paths.HistorySettingsPath);
+        _dictionaryStore = new PersonalDictionaryStore(paths.CorrectionsPath);
 
         Text = "VoicePrompt Settings";
         BackColor = Theme.Canvas;
@@ -132,6 +145,7 @@ internal sealed class MainForm : Form
         AttachChangeTracking();
         LoadPreferences();
         LoadConfiguration();
+        LoadLocalTextSettings();
         LoadAiConfiguration();
         LoadAutoStartState();
         _loading = false;
@@ -192,12 +206,10 @@ internal sealed class MainForm : Form
         var caption = Theme.Label("Local voice to text", Theme.Muted, 8.4f, FontStyle.Regular, Theme.Sidebar);
         caption.Location = new Point(54, 33);
         brand.Controls.Add(caption);
-        sidebar.Controls.Add(brand);
-
         var nav = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 250,
+            Height = 294,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = Theme.Sidebar,
@@ -207,8 +219,10 @@ internal sealed class MainForm : Form
         AddNavigation(nav, DictationPage, "Dictation", NavigationGlyph.Dictation);
         AddNavigation(nav, AudioPage, "Audio", NavigationGlyph.Audio);
         AddNavigation(nav, IntelligencePage, "Intelligence", NavigationGlyph.Intelligence);
+        AddNavigation(nav, HistoryPage, "Recovery", NavigationGlyph.History);
         AddNavigation(nav, AdvancedPage, "Advanced", NavigationGlyph.Advanced);
         sidebar.Controls.Add(nav);
+        sidebar.Controls.Add(brand);
 
         var sidebarBottom = new Panel
         {
@@ -335,6 +349,7 @@ internal sealed class MainForm : Form
         BuildDictationPage();
         BuildAudioPage();
         BuildIntelligencePage();
+        BuildHistoryPage();
         BuildAdvancedPage();
     }
 
@@ -572,10 +587,19 @@ internal sealed class MainForm : Form
         };
         _promptText.AccessibleName = "Recognition context";
         var promptFrame = new TextFieldFrame(_promptText, 116, multiline: true) { Dock = DockStyle.Fill };
+        _correctionsText = new TextBox
+        {
+            AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical,
+            PlaceholderText = "polly market => Polymarket\ncodecs => Codex",
+        };
+        _correctionsText.AccessibleName = "Personal corrections";
+        var correctionsFrame = new TextFieldFrame(_correctionsText, 116, multiline: true) { Dock = DockStyle.Fill };
 
         var language = new SectionBuilder("Language & vocabulary", "Auto is optimized for fast English and Slovenian switching.");
         language.Add("Spoken language", "Choose Auto unless every recording will use one language.", StackControl(_languageChoice, _languageHint, 64), 84);
         language.Add("Recognition context", "Give Whisper examples of names and technical terms; this is not sent to an AI service.", promptFrame, 136);
+        language.Add("Personal corrections", "One local replacement per line: misheard => intended. Applied before optional AI cleanup.", correctionsFrame, 136);
         AddPageItem(body, language.Build());
     }
 
@@ -693,6 +717,59 @@ internal sealed class MainForm : Form
         ai.Add("Maximum wait", "Strict live deadline in milliseconds; raw local text is pasted after a timeout.", LeftControl(_aiTimeoutMs), 62);
         ai.Add("API key", "Encrypted for your Windows account. Leave blank to keep an existing saved key.", keyRow, 68);
         AddPageItem(body, ai.Build());
+    }
+
+    private void BuildHistoryPage()
+    {
+        var body = CreatePage(HistoryPage);
+        _historyEnabled = new ToggleSwitch("Keep recent transcripts for recovery") { Dock = DockStyle.Left };
+        _historyLimit = MakeNumber(5, 100, 5, 0, 148);
+        _historyEnabled.AccessibleName = "Local transcript recovery";
+        _historyLimit.AccessibleName = "Maximum retained transcripts";
+
+        var privacy = new SectionBuilder("Local recovery", "Completed text is stored only in your Windows profile. Audio is never stored.");
+        privacy.Add("Recovery history", "Disable this to stop saving new transcripts. Existing entries remain until cleared.", _historyEnabled, 64);
+        privacy.Add("Retention", "Keep only the newest 5 to 100 transcripts.", LeftControl(_historyLimit), 62);
+        AddPageItem(body, privacy.Build());
+
+        _historyList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            IntegralHeight = false,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Theme.Control,
+            ForeColor = Theme.Text,
+            Font = Theme.Font(9f),
+            AccessibleName = "Recent transcripts",
+        };
+        _historyList.SelectedIndexChanged += (_, _) => UpdateHistorySelection();
+        _historyPreview = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            BackColor = Theme.Control,
+            ForeColor = Theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            AccessibleName = "Selected transcript text",
+        };
+        var copy = new ActionButton("Copy transcript", ActionButtonStyle.Primary) { BackColor = Theme.Surface };
+        copy.Click += (_, _) => CopySelectedHistory();
+        var delete = new ActionButton("Delete", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        delete.Click += (_, _) => DeleteSelectedHistory();
+        var refresh = new ActionButton("Refresh", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        refresh.Click += (_, _) => LoadHistory();
+        var clear = new ActionButton("Clear all", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
+        clear.Click += (_, _) => ClearHistory();
+        _historyStatus = BuildInlineHint(Theme.Surface);
+        _historyStatus.Text = "No transcripts saved yet.";
+
+        var recovery = new SectionBuilder("Recent transcripts", "Newest first. Select an entry to inspect or copy it.");
+        recovery.Add("Saved entries", "Timestamp and a short preview. Transcript text stays out of logs and diagnostics.", _historyList, 176);
+        recovery.Add("Selected text", "If AI cleanup changed the text, recovery keeps the pasted result.", _historyPreview, 148);
+        recovery.Add("Actions", "Copy returns the exact saved text to your clipboard.", StackControl(HorizontalControl(copy, delete, refresh, clear), _historyStatus, 58), 80);
+        AddPageItem(body, recovery.Build());
     }
 
     private void BuildAdvancedPage()
@@ -862,9 +939,11 @@ internal sealed class MainForm : Form
             choice.SelectedChanged += (_, _) => MarkDirty();
 
         _autoStartToggle.CheckedChanged += (_, _) => MarkDirty();
+        _historyEnabled.CheckedChanged += (_, _) => MarkDirty();
         foreach (TextBox text in new[]
         {
             _promptText,
+            _correctionsText,
             _aiEndpointText,
             _aiModelText,
             _aiKeyText,
@@ -887,6 +966,7 @@ internal sealed class MainForm : Form
             _maximumSpeechSeconds,
             _temperature,
             _aiTimeoutMs,
+            _historyLimit,
         })
             number.ValueChanged += (_, _) => MarkDirty();
     }
@@ -936,6 +1016,8 @@ internal sealed class MainForm : Form
 
         _pageTitle.Text = _pageCopy[key].Title;
         _pageDescription.Text = _pageCopy[key].Description;
+        if (key == HistoryPage)
+            LoadHistory();
         if (persist)
             SavePreferences();
     }
@@ -1047,6 +1129,17 @@ internal sealed class MainForm : Form
         ResetAiKeyField();
         _loading = false;
         UpdateAiAvailability();
+    }
+
+    private void LoadLocalTextSettings()
+    {
+        _loading = true;
+        HistorySettings settings = _historyStore.LoadSettings();
+        _historyEnabled.Checked = settings.Enabled;
+        _historyLimit.Value = Clamp(settings.Limit, _historyLimit);
+        _correctionsText.Text = _dictionaryStore.LoadText();
+        _loading = false;
+        LoadHistory();
     }
 
     private void ResetAiKeyField()
@@ -1203,6 +1296,19 @@ internal sealed class MainForm : Form
             return;
         }
 
+        string corrections = _correctionsText.Text;
+        try
+        {
+            PersonalDictionaryStore.Parse(corrections);
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowPage(DictationPage);
+            _correctionsText.Focus();
+            ShowFooter(ShortMessage(ex.Message), Theme.Err);
+            return;
+        }
+
         AiSettings aiSettings;
         try
         {
@@ -1240,6 +1346,8 @@ internal sealed class MainForm : Form
         double maximumSpeechSeconds = (double)_maximumSpeechSeconds.Value;
         string computeType = _computeChoice.SelectedValue;
         string processor = _processorChoice.SelectedValue;
+        bool historyEnabled = _historyEnabled.Checked;
+        int historyLimit = (int)_historyLimit.Value;
 
         SetBusy(true);
         ShowFooter("Saving settings and restarting the local runtime…", Theme.Accent);
@@ -1267,6 +1375,8 @@ internal sealed class MainForm : Form
                 _config.Set("engine", "device", processor);
                 _config.Save();
                 AiSettingsStore.Save(_paths.AiConfigPath, aiSettings);
+                _dictionaryStore.SaveText(corrections);
+                _historyStore.SaveSettings(historyEnabled, historyLimit);
                 _daemon.Restart();
             });
 
@@ -1298,6 +1408,7 @@ internal sealed class MainForm : Form
         if (_busy || !_dirty)
             return;
         LoadConfiguration();
+        LoadLocalTextSettings();
         LoadAiConfiguration();
         LoadAutoStartState();
         SetDirty(false);
@@ -1391,6 +1502,80 @@ internal sealed class MainForm : Form
         string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? Application.ProductVersion;
         _diagnosticVersion.Text = $"VoicePrompt {version} · Windows x64";
         UpdateOverview();
+    }
+
+    private void LoadHistory()
+    {
+        if (_historyList == null)
+            return;
+        string? selectedId = (_historyList.SelectedItem as HistoryListItem)?.Entry.Id;
+        IReadOnlyList<TranscriptEntry> entries = _historyStore.Load();
+        _historyList.BeginUpdate();
+        _historyList.Items.Clear();
+        foreach (TranscriptEntry entry in entries)
+            _historyList.Items.Add(new HistoryListItem(entry));
+        _historyList.EndUpdate();
+        int selectedIndex = entries.ToList().FindIndex(entry => entry.Id == selectedId);
+        if (_historyList.Items.Count > 0)
+            _historyList.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        else
+            _historyPreview.Clear();
+        _historyStatus.Text = entries.Count == 0
+            ? "No transcripts saved yet."
+            : $"{entries.Count} local transcript{(entries.Count == 1 ? "" : "s")} available.";
+        _historyStatus.ForeColor = entries.Count == 0 ? Theme.Muted : Theme.Ok;
+    }
+
+    private void UpdateHistorySelection()
+    {
+        if (_historyList.SelectedItem is not HistoryListItem selected)
+        {
+            _historyPreview.Clear();
+            return;
+        }
+        _historyPreview.Text = string.IsNullOrWhiteSpace(selected.Entry.OriginalText)
+            ? selected.Entry.Text
+            : selected.Entry.Text + Environment.NewLine + Environment.NewLine + "Original transcript:" + Environment.NewLine + selected.Entry.OriginalText;
+    }
+
+    private void CopySelectedHistory()
+    {
+        if (_historyList.SelectedItem is not HistoryListItem selected)
+        {
+            ShowFooter("Select a transcript first.", Theme.Warn);
+            return;
+        }
+        try
+        {
+            Clipboard.SetText(selected.Entry.Text);
+            ShowFooter("Transcript copied to clipboard", Theme.Ok);
+        }
+        catch (Exception ex)
+        {
+            ShowFooter("Could not copy transcript · " + ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
+    private void DeleteSelectedHistory()
+    {
+        if (_historyList.SelectedItem is not HistoryListItem selected)
+            return;
+        if (MessageBox.Show(this, "Delete the selected local transcript?", "Delete transcript", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+        _historyStore.Delete(selected.Entry.Id);
+        LoadHistory();
+        ShowFooter("Transcript deleted", Theme.Muted);
+    }
+
+    private void ClearHistory()
+    {
+        if (_historyList.Items.Count == 0)
+            return;
+        if (MessageBox.Show(this, "Delete every locally saved transcript? This cannot be undone.", "Clear recovery history", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return;
+        _historyStore.Clear();
+        LoadHistory();
+        ShowFooter("Recovery history cleared", Theme.Muted);
     }
 
     private void RestoreRecommendedSetup()
@@ -1496,7 +1681,8 @@ internal sealed class MainForm : Form
                 Keys.D2 => DictationPage,
                 Keys.D3 => AudioPage,
                 Keys.D4 => IntelligencePage,
-                Keys.D5 => AdvancedPage,
+                Keys.D5 => HistoryPage,
+                Keys.D6 => AdvancedPage,
                 _ => null,
             };
             if (page != null)
@@ -1627,6 +1813,17 @@ internal sealed class MainForm : Form
     private sealed record ComboItem(string Label, string Value)
     {
         public override string ToString() => Label;
+    }
+
+    private sealed record HistoryListItem(TranscriptEntry Entry)
+    {
+        public override string ToString()
+        {
+            string preview = Entry.Text.ReplaceLineEndings(" ").Trim();
+            if (preview.Length > 62)
+                preview = preview[..59] + "…";
+            return $"{Entry.CreatedAt.ToLocalTime():g}  ·  {preview}";
+        }
     }
 
     private sealed class SectionBuilder

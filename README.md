@@ -22,7 +22,7 @@
 
 ## ✅ What it does
 
-Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Multi-minute recordings are retained in full and decoded after release. Works with **Slovenian and English**, with per-utterance auto-detection plus dedicated standard and slang Slovenian modes.
+Hold **`F1`**, talk, release. Short transcription usually lands in the focused window in ~0.5–1 second — Notepad, Discord, browser chat, IDE, game chat. Multi-minute recordings are retained in full and decoded after release. Works with **Slovenian and English**, with per-utterance auto-detection plus dedicated standard and slang Slovenian modes. Completed text can be kept in a bounded local recovery history, so a failed target application never costs the whole prompt.
 
 Optionally, VoicePrompt can fix spoken grammar or turn a rough transcript into a cleaner AI prompt before pasting it. This is disabled by default and never changes the local audio pipeline.
 
@@ -59,13 +59,14 @@ Measured on an RTX 5080:
 - **Hold mode**: recording only while you hold the key → no accidental captures.
 - **VAD filtering**: silence/speech detection chops dead air before decoding.
 - **Personal vocabulary**: optional prompt and hotword fields can bias decoding toward names and exact technical terms without favoring one language by default.
+- **Personal corrections**: explicit `misheard => intended` rules fix recurring names and terms locally before optional AI cleanup.
 - **Daemonized**: runs headless via `pythonw`, survives reboot via the Startup shortcut.
 
 ## 🚀 Download and install
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.4-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.3.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -108,9 +109,11 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **AI text cleanup** — optionally fixes grammar or restructures rough speech into a clean AI prompt, with a strict deadline and original-text fallback.
+- **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
+- **Personal corrections** — applies approved phrase replacements deterministically with no model call or added network delay.
 - **All settings** — language (auto / Slovenian / Slovenian slang / English), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe copied diagnostics, and one-click log/config access.
-- **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+5` for page navigation.
+- **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+6` for page navigation.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
 - **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.
 
@@ -165,7 +168,7 @@ Eleven Windows integration fixes ship in this repo — apply them **after every 
 7. **`daemon.py` / `meter.py`** — publishes recording state immediately on hotkey activation, then streams microphone levels and waveform samples through named shared memory without a second audio capture or disk polling.
 8. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
 9. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
-10. **`typer.py` / `ai_rewriter.py`** — optionally cleans completed transcript text before the clipboard is opened, with a strict deadline and raw-text fallback.
+10. **`typer.py` / local text tools** — applies approved corrections, stores bounded local recovery, and optionally cleans completed text before the clipboard is opened, with a strict deadline and raw-text fallback.
 11. **`daemon.py`** — retains every held-recording audio chunk instead of silently discarding everything after 90 seconds; VAD segmentation remains bounded without limiting the complete recording.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
@@ -180,6 +183,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
 - `tests/test_slang_retry.py` — verifies language-neutral primary decoding, bilingual recovery, transcript confidence gates, and safeguards against translating real English.
 - `tests/test_decoding_options.py` — verifies latency-bounded temperature handling and native repetition-loop protection on both English and Slovenian decoding passes.
+- `tests/test_local_text.py` — verifies personal corrections and bounded, optional, Unicode-safe local recovery.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
 
@@ -204,6 +208,8 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 - State: daemon PID/status via `faster-whisper-dictation.exe status`
 - UI prefs: `%APPDATA%\VoicePrompt\prefs.json`
 - AI settings: `%APPDATA%\VoicePrompt\ai.json` (API key protected with Windows account encryption)
+- Recovery history: `%APPDATA%\VoicePrompt\history.json` (bounded text only; optional; no audio)
+- Personal corrections: `%APPDATA%\VoicePrompt\corrections.json`
 
 ## 📜 Credits
 

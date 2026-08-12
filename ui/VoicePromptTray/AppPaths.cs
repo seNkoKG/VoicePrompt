@@ -37,6 +37,12 @@ internal sealed class AppPaths
 
     public string AiConfigPath => Path.Combine(AppDataDir, "ai.json");
 
+    public string HistoryPath => Path.Combine(AppDataDir, "history.json");
+
+    public string HistorySettingsPath => Path.Combine(AppDataDir, "history-settings.json");
+
+    public string CorrectionsPath => Path.Combine(AppDataDir, "corrections.json");
+
     public string AiRewriterPath => Path.Combine(
         Home,
         "venv",

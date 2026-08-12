@@ -11,6 +11,7 @@
   <ItemGroup>
     <Compile Include="..\VoicePromptTray\AiSettings.cs" Link="AiSettings.cs" />
     <Compile Include="..\VoicePromptTray\ConfigManager.cs" Link="ConfigManager.cs" />
+    <Compile Include="..\VoicePromptTray\LocalTextStore.cs" Link="LocalTextStore.cs" />
     <Compile Include="..\VoicePromptTray\SlovenianSlangProfile.cs" Link="SlovenianSlangProfile.cs" />
   </ItemGroup>
 

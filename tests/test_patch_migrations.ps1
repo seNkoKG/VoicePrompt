@@ -32,7 +32,9 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $localEngine = Join-Path $Module "engine\local.py"
     $typer = Join-Path $Module "typer.py"
     $daemon = Join-Path $Module "daemon.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py")
+    $history = Join-Path $Module "transcript_history.py"
+    $corrections = Join-Path $Module "text_corrections.py"
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -77,6 +79,15 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if (-not $typerSource.Contains("Clipboard verification failed")) {
         throw "$Name does not verify the complete transcript before paste."
+    }
+    if ([regex]::Matches($typerSource, "remember_transcript\(original_text, text\)").Count -ne 1) {
+        throw "$Name does not save exactly one recovery entry before paste."
+    }
+    if ([regex]::Matches($typerSource, "apply_corrections\(text\)").Count -ne 1) {
+        throw "$Name does not apply personal corrections exactly once."
+    }
+    if (-not (Test-Path -LiteralPath $history) -or -not (Test-Path -LiteralPath $corrections)) {
+        throw "$Name is missing a local text pipeline module."
     }
 
     $daemonSource = [System.IO.File]::ReadAllText($daemon)

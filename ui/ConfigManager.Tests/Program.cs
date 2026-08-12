@@ -128,6 +128,35 @@ Check("Slovenian slang prompt is idempotent", VoicePromptTray.SlovenianSlangProf
 string slangHotwords = VoicePromptTray.SlovenianSlangProfile.ApplyHotwords("Python, dej");
 Check("Slovenian slang hotwords merge without duplicates", slangHotwords.StartsWith("Python, dej") && slangHotwords.Split(',').Count(x => x.Trim() == "dej") == 1);
 
+var corrections = VoicePromptTray.PersonalDictionaryStore.Parse("polly market => Polymarket\ncodecs => Codex");
+Check("personal corrections parse", corrections.Count == 2 && corrections[0].Replacement == "Polymarket");
+try
+{
+    VoicePromptTray.PersonalDictionaryStore.Parse("same => first\nSAME => second");
+    Check("duplicate corrections rejected", false);
+}
+catch (InvalidDataException)
+{
+    Check("duplicate corrections rejected", true);
+}
+string correctionsPath = Path.Combine(dir, "local", "corrections.json");
+var dictionary = new VoicePromptTray.PersonalDictionaryStore(correctionsPath);
+dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
+Check("personal corrections round trip", dictionary.LoadText().Contains("žabar => Ljubljančan"));
+
+string historyPath = Path.Combine(dir, "local", "history.json");
+string historySettingsPath = Path.Combine(dir, "local", "history-settings.json");
+var history = new VoicePromptTray.TranscriptHistoryStore(historyPath, historySettingsPath);
+history.SaveSettings(false, 500);
+var historySettings = history.LoadSettings();
+Check("history settings clamp and round trip", !historySettings.Enabled && historySettings.Limit == 100);
+File.WriteAllText(historyPath, """
+{"version":1,"items":[{"id":"one","createdAt":"2026-08-12T12:00:00Z","text":"Pozdravljen svet","originalText":""}]}
+""");
+Check("history reads Unicode transcript", history.Load().Single().Text == "Pozdravljen svet");
+history.Delete("one");
+Check("history deletes selected transcript", history.Load().Count == 0);
+
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");
 return failures;
