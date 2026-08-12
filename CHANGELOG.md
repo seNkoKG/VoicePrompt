@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.19.1] - 2026-08-12
+
+### Changed
+
+- Keep the zero-extra-pass path for normal English and Slovenian recordings while preserving supported-language recovery for genuinely unsupported detections.
+- Refresh the product site's interface gallery with clean captures of the current Overview, Dictation, Engine & AI, and System workspaces.
+
+### Fixed
+
+- Never replace a detected English recording with a Slovenian decode, or detected Slovenian with English, based on incomparable transcript decoder scores.
+- Recover unsupported language guesses using the English/Slovenian language probabilities with recent-language smoothing, without allowing that recovery to override a supported detection.
+- Reject physically implausible transcript expansion and repetitive hallucinations; attempt one same-language recovery before refusing to paste unsafe output.
+- Lock the canonical runtime patch, installed migration, and exact low-confidence English and repetition regressions to the same tested behavior.
+
 ## [1.19.0] - 2026-08-12
 
 ### Added
