@@ -68,9 +68,9 @@ Console.WriteLine("---------------");
 
 Check("binding updated", Regex.IsMatch(after, @"binding = \""ctrl\+shift\+f1\"""));
 Check("hybrid slang language saved", Regex.IsMatch(after, @"language = \""sl-slang\"""));
-Check("threshold updated", Regex.IsMatch(after, @"threshold = 0\.55$", RegexOptions.Multiline));
+Check("threshold updated", Regex.IsMatch(after, @"threshold = 0\.55\r?$", RegexOptions.Multiline));
 Check("silence updated", Regex.IsMatch(after, @"silence_ms = 300"));
-Check("commented key uncommented", Regex.IsMatch(after, @"^temperature = 0\.2$", RegexOptions.Multiline));
+Check("commented key uncommented", Regex.IsMatch(after, @"^temperature = 0\.2\r?$", RegexOptions.Multiline));
 Check("hotwords added + escaped", Regex.IsMatch(after, @"hotwords = \""python, null\"""));
 Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
 Check("VoicePrompt profile section added", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "slovenian_slang") == true);
