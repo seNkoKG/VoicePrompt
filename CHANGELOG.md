@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.1] - 2026-08-12
+
+### Fixed
+
+- Install NumPy in the clean GitHub release test environment so buffered-transcription tests run before any downloadable assets are published.
+
 ## [1.5.0] - 2026-08-12
 
 ### Added
