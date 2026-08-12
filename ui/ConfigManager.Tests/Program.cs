@@ -83,6 +83,20 @@ var defaults = new VoicePromptTray.ConfigManager(newPath);
 Check("new config is written immediately", File.Exists(newPath) && File.ReadAllText(newPath).Contains("[hotkey]"));
 Check("new config has working defaults", defaults.GetString("hotkey", "binding") == "f1");
 
+string legacyPath = Path.Combine(dir, "legacy.toml");
+const string legacyPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
+File.WriteAllText(legacyPath, $"""
+    [server]
+    prompt = "{legacyPrompt}"
+
+    [voiceprompt]
+    base_prompt = "{legacyPrompt}"
+    """);
+var migrated = new VoicePromptTray.ConfigManager(legacyPath);
+Check("legacy biased server prompt is cleared", migrated.GetString("server", "prompt") == "");
+Check("legacy biased base prompt is cleared", migrated.GetString("voiceprompt", "base_prompt") == "");
+Check("legacy prompt migration is persisted", !File.ReadAllText(legacyPath).Contains(legacyPrompt, StringComparison.Ordinal));
+
 string aiPath = Path.Combine(dir, "ai.json");
 const string secret = "vp-test-secret";
 var ai = new VoicePromptTray.AiSettings

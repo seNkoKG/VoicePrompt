@@ -282,9 +282,11 @@ Apply-Patch "$site\engine\local.py" @'
         self._device = engine_config.device
 '@ @'
         self._device = engine_config.device
-        self._prompt = recognition_prompt(server_config.language, server_config.prompt)
+        self._base_prompt = server_config.prompt
+        self._prompt = recognition_prompt(server_config.language, self._base_prompt)
         self._temperature = server_config.temperature
-        self._hotwords = recognition_hotwords(server_config.language, server_config.hotwords)
+        self._base_hotwords = server_config.hotwords
+        self._hotwords = recognition_hotwords(server_config.language, self._base_hotwords)
         self._vad_parameters = {
             "threshold": vad_config.threshold,
             "min_silence_duration_ms": vad_config.silence_ms,
@@ -415,8 +417,8 @@ Apply-Patch "$site\engine\local.py" @'
             retry_segments, retry_info = self._model.transcribe(
                 audio,
                 language=retry_language,
-                initial_prompt=bilingual_retry_prompt(retry_language, self._prompt) or None,
-                hotwords=bilingual_retry_hotwords(retry_language, self._hotwords) or None,
+                initial_prompt=bilingual_retry_prompt(retry_language, self._base_prompt) or None,
+                hotwords=bilingual_retry_hotwords(retry_language, self._base_hotwords) or None,
                 vad_filter=True,
                 vad_parameters=self._vad_parameters,
                 **decoding_options(self._temperature),
@@ -432,7 +434,7 @@ Apply-Patch "$site\engine\local.py" @'
                 segments = retry_segments
                 info = retry_info
                 log.info(
-                    "Bilingual retry accepted: %s score %.3f > primary %.3f",
+                    "Bilingual retry accepted: %s score %.3f vs primary %.3f",
                     retry_language,
                     retry_score,
                     primary_score,
@@ -858,9 +860,11 @@ $canonicalLocalInit = @'
         self._language = recognition_language(server_config.language)
         self._compute_type = engine_config.compute_type
         self._device = engine_config.device
-        self._prompt = recognition_prompt(server_config.language, server_config.prompt)
+        self._base_prompt = server_config.prompt
+        self._prompt = recognition_prompt(server_config.language, self._base_prompt)
         self._temperature = server_config.temperature
-        self._hotwords = recognition_hotwords(server_config.language, server_config.hotwords)
+        self._base_hotwords = server_config.hotwords
+        self._hotwords = recognition_hotwords(server_config.language, self._base_hotwords)
         self._vad_parameters = {
             "threshold": vad_config.threshold,
             "min_silence_duration_ms": vad_config.silence_ms,
@@ -918,8 +922,8 @@ $canonicalLocalTranscribe = @'
             retry_segments, retry_info = self._model.transcribe(
                 audio,
                 language=retry_language,
-                initial_prompt=bilingual_retry_prompt(retry_language, self._prompt) or None,
-                hotwords=bilingual_retry_hotwords(retry_language, self._hotwords) or None,
+                initial_prompt=bilingual_retry_prompt(retry_language, self._base_prompt) or None,
+                hotwords=bilingual_retry_hotwords(retry_language, self._base_hotwords) or None,
                 vad_filter=True,
                 vad_parameters=self._vad_parameters,
                 **decoding_options(self._temperature),
@@ -936,7 +940,7 @@ $canonicalLocalTranscribe = @'
                 segments = retry_segments
                 info = retry_info
                 log.info(
-                    "Bilingual retry accepted: %s score %.3f > primary %.3f",
+                    "Bilingual retry accepted: %s score %.3f vs primary %.3f",
                     retry_language,
                     retry_score,
                     primary_score,

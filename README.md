@@ -58,14 +58,14 @@ Measured on an RTX 5080:
 
 - **Hold mode**: recording only while you hold the key → no accidental captures.
 - **VAD filtering**: silence/speech detection chops dead air before decoding.
-- **Prompt injection**: a Slovenian + English programming vocabulary biases decoding toward code terms (`pull request`, `null`, `async`, …).
+- **Personal vocabulary**: optional prompt and hotword fields can bias decoding toward names and exact technical terms without favoring one language by default.
 - **Daemonized**: runs headless via `pythonw`, survives reboot via the Startup shortcut.
 
 ## 🚀 Download and install
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.3-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.2.4-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -127,7 +127,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[hotkey] mode` | `hold` = press & hold; `toggle` = press once | `"hold"` |
 | `[server] model` | Whisper model | `"Systran/faster-whisper-large-v3"` |
 | `[server] language` | `""` = fast English/Slovenian Auto; `"sl-slang"` = visible slang profile | `"sl"`, `"en"` to pin |
-| `[server] prompt` | Decoding context / vocabulary bias | mixed SI/EN code terms |
+| `[server] prompt` | Optional personal names / exact vocabulary bias | empty (language-neutral) |
 | `[voiceprompt] slovenian_slang` | Saves the visible colloquial vocabulary profile | `true` / `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
 | `[vad] max_speech_s` | Internal VAD segment size; not a recording cutoff | `180.0` |
@@ -136,9 +136,9 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 ### English + Slovenian Auto
 
-**Auto** is intentionally optimized for the two languages this app targets. Whisper still detects English or Slovenian independently for every held utterance, while the primary decode receives a compact Slovenian vocabulary profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`. This is a single-pass path for confident English and Slovenian, so normal dictation stays fast.
+**Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
-If Whisper reports low-confidence English or an unrelated language, VoicePrompt compares a forced English/Slovenian candidate using faster-whisper's token-weighted decoder probability. It switches only when the candidate is better, preventing real English from being translated into Slovenian. The **Slovenian slang** selection keeps the same automatic English detection while also saving the slang vocabulary into the editable prompt and hotword fields.
+If Whisper reports Finnish, Spanish, Latin, or another unsupported language, VoicePrompt uses Whisper's language probabilities to force the most likely English/Slovenian candidate. Cross-language decoder scores are not treated as directly comparable. Low-confidence English receives a Slovenian retry only when the English transcript score is also weak, removing unnecessary retries while preventing real English from being translated. Slovenian retries alone receive the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
 
 ### Optional AI cleanup
 
@@ -158,7 +158,7 @@ Eleven Windows integration fixes ship in this repo — apply them **after every 
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures, retry bounded clipboard contention, verify the full Unicode payload, and fail visibly instead of dropping text.
-3. **`engine/local.py` / `slang_retry.py`** — runs fast English/Slovenian Auto with colloquial vocabulary, then score-gates retries for low-confidence or unrelated-language mistakes.
+3. **`engine/local.py` / `slang_retry.py`** — runs a language-neutral English/Slovenian Auto pass, skips retries for strong English transcripts, and constrains unrelated-language mistakes to the supported bilingual route.
 4. **`engine/local.py`** — logs detected language + confidence per utterance (auto-detect diagnostics).
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
 6. **`engine/local.py` / `decoding_options.py`** — keeps beam-5 accuracy while bounding every language pass to one decode, with independent 30-second windows, repetition penalty, and native no-repeat protection.
@@ -178,7 +178,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/bench_one.py` — model load time, VRAM delta, decode time per utterance.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
-- `tests/test_slang_retry.py` — verifies bilingual routing, vocabulary injection, decoder scoring, and safeguards against translating real English.
+- `tests/test_slang_retry.py` — verifies language-neutral primary decoding, bilingual recovery, transcript confidence gates, and safeguards against translating real English.
 - `tests/test_decoding_options.py` — verifies latency-bounded temperature handling and native repetition-loop protection on both English and Slovenian decoding passes.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).
@@ -192,7 +192,7 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → install the `nvidia-*cu12` pip packages (Step 2); `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
 | Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run Voice Typing at the same privilege level, or choose a binding the app does not reserve |
-| Bad or slangy Slovenian accuracy | Leave language on **Auto** for automatic English/Slovenian routing and built-in colloquial vocabulary; keep `large-v3` for best accuracy |
+| Bad or slangy Slovenian accuracy | Leave language on **Auto** for English/Slovenian routing; Slovenian recovery adds colloquial vocabulary automatically. Keep `large-v3` for best accuracy and add only personal names or exact terms to Prompt/Hotwords |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 | AI test fails or times out | Confirm the endpoint and model, start the provider, then click **Test** again; live dictation will paste the original transcript whenever cleanup is unavailable |
 

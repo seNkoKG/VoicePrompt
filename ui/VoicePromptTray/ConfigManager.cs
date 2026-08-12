@@ -6,6 +6,8 @@ namespace VoicePromptTray;
 
 internal sealed class ConfigManager
 {
+    private const string LegacyBiasedPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
+
     private const string DefaultToml = """
         [server]
         url = "http://localhost:8000"
@@ -90,6 +92,27 @@ internal sealed class ConfigManager
             _lines.RemoveAt(_lines.Count - 1);
 
         Parse();
+        MigrateLegacyDefaults();
+    }
+
+    private void MigrateLegacyDefaults()
+    {
+        bool changed = false;
+        foreach ((string section, string key) in new[]
+        {
+            ("server", "prompt"),
+            ("voiceprompt", "base_prompt"),
+        })
+        {
+            if (string.Equals(GetString(section, key), LegacyBiasedPrompt, StringComparison.Ordinal))
+            {
+                Set(section, key, "");
+                changed = true;
+            }
+        }
+
+        if (changed)
+            Save();
     }
 
     private void Parse()

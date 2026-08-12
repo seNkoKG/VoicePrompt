@@ -8,6 +8,7 @@ from typing import Any
 
 
 _LOW_CONFIDENCE_ENGLISH = 0.75
+_STRONG_TRANSCRIPT_SCORE = -0.35
 _AUTO_MODES = {"", "auto", "sl-slang"}
 
 SLOVENIAN_SLANG_PROMPT = (
@@ -26,20 +27,20 @@ def recognition_language(configured: str) -> str | None:
 
 
 def recognition_prompt(configured: str, base_prompt: str) -> str:
-    """Add bilingual vocabulary to Auto without pinning the decoded language."""
-    return slovenian_retry_prompt(base_prompt) if configured in _AUTO_MODES else base_prompt
+    """Keep the primary Auto pass language-neutral."""
+    return base_prompt
 
 
 def recognition_hotwords(configured: str, base_hotwords: str) -> str:
-    """Boost colloquial Slovenian words in Auto while language ID stays automatic."""
-    return slovenian_retry_hotwords(base_hotwords) if configured in _AUTO_MODES else base_hotwords
+    """Keep the primary Auto pass language-neutral."""
+    return base_hotwords
 
 
 def bilingual_retry_language(
     configured: str,
     detected: str,
     confidence: float = 1.0,
-    primary_score: float = 0.0,
+    primary_score: float = float("-inf"),
     language_probabilities: Iterable[tuple[str, float]] | None = None,
 ) -> str | None:
     """Choose an English/Slovenian retry for ambiguous Auto-mode speech."""
@@ -50,7 +51,9 @@ def bilingual_retry_language(
         # Repeating the same deterministic decode would only add latency.
         return None
     if detected == "en":
-        return "sl" if confidence < _LOW_CONFIDENCE_ENGLISH else None
+        if confidence >= _LOW_CONFIDENCE_ENGLISH or primary_score >= _STRONG_TRANSCRIPT_SCORE:
+            return None
+        return "sl"
 
     # VoicePrompt Auto is intentionally bilingual. This mirrors established
     # dictation apps that constrain automatic detection to the languages the
@@ -63,7 +66,7 @@ def should_retry_as_slovenian(
     configured: str,
     detected: str,
     confidence: float = 1.0,
-    primary_score: float = 0.0,
+    primary_score: float = float("-inf"),
 ) -> bool:
     """Backward-compatible predicate for callers interested in Slovenian only."""
     return (
@@ -138,16 +141,21 @@ def prefer_bilingual_retry(
     if not math.isfinite(original_score):
         return True
 
+    # Auto intentionally supports English and Slovenian. Decoder log-probability
+    # is not calibrated across forced languages, so an unsupported Finnish,
+    # Spanish, or similar primary guess must not survive a valid bilingual pass.
+    if detected not in {"en", "sl"}:
+        return True
+
     # Requiring a real gain when switching away from English prevents a short
     # genuine English phrase from being translated. Same-language Slovenian
-    # retries need a small improvement; unrelated detections slightly favor the
-    # best supported bilingual candidate over an unsupported-language output.
+    # retries need a small improvement.
     if detected == "en" and retry_language == "sl":
         required_gain = 0.03
     elif detected == retry_language:
         required_gain = 0.01
     else:
-        required_gain = -0.05
+        required_gain = 0.0
     return retry_score >= original_score + required_gain
 
 

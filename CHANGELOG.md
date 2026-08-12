@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.4] - 2026-08-12
+
+### Changed
+
+- Made the primary Auto decode language-neutral and apply colloquial Slovenian hints only to a Slovenian recovery pass.
+- Skip a low-confidence English retry when Whisper's transcript score is already strong, removing unnecessary second-pass latency.
+- Start new installations with an empty recognition prompt so personal vocabulary remains useful without biasing English/Slovenian detection.
+
+### Fixed
+
+- Replace unsupported Finnish, Spanish, Latin, and similar Auto detections with Whisper's most likely English/Slovenian candidate instead of comparing uncalibrated cross-language decoder scores.
+- Keep English recovery prompts and hotwords isolated from Slovenian slang hints, preventing English dictation from drifting or translating into Slovenian.
+- Migrate the exact older Slovenian-heavy default prompt to the neutral default while preserving every custom user prompt.
+
 ## [1.2.3] - 2026-08-12
 
 ### Changed

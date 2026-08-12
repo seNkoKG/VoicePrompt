@@ -45,10 +45,18 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         throw "$Name has an invalid bilingual retry block count."
     }
     if ([regex]::Matches($source, "recognition_prompt\(server_config\.language").Count -ne 1) {
-        throw "$Name does not apply Auto vocabulary to the primary pass."
+        throw "$Name does not configure the language-neutral primary pass exactly once."
     }
     if ($source.Contains("self._prompt = server_config.prompt")) {
         throw "$Name retained recognition settings that override Auto vocabulary."
+    }
+    if ([regex]::Matches($source, "self\._base_prompt = server_config\.prompt").Count -ne 1 -or
+        [regex]::Matches($source, "self\._base_hotwords = server_config\.hotwords").Count -ne 1) {
+        throw "$Name does not preserve unbiased base recognition hints."
+    }
+    if ($source.Contains("bilingual_retry_prompt(retry_language, self._prompt)") -or
+        $source.Contains("bilingual_retry_hotwords(retry_language, self._hotwords)")) {
+        throw "$Name leaks primary-pass language hints into a forced retry."
     }
     if ([regex]::Matches($source, "Transcription latency:").Count -ne 1) {
         throw "$Name does not have exactly one latency instrumentation block."

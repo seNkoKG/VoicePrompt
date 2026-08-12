@@ -43,13 +43,18 @@ class SlangRetryTests(unittest.TestCase):
         self.assertTrue(should_retry_as_slovenian("auto", "en", 0.20))
         self.assertFalse(should_retry_as_slovenian("en", "en", 0.20))
 
-    def test_auto_primary_pass_gets_slang_hints_without_pinning_language(self) -> None:
+    def test_strong_english_transcript_skips_an_unnecessary_retry(self) -> None:
+        self.assertIsNone(bilingual_retry_language("", "en", 0.60, -0.20))
+        self.assertEqual(bilingual_retry_language("", "en", 0.60, -0.70), "sl")
+
+    def test_auto_primary_pass_stays_language_neutral(self) -> None:
         prompt = recognition_prompt("", "Python in API.")
-        self.assertIn("Dej, a lohk", prompt)
-        self.assertEqual(recognition_prompt("auto", prompt), prompt)
+        self.assertEqual(prompt, "Python in API.")
+        self.assertNotIn("Dej, a lohk", prompt)
+        self.assertEqual(recognition_prompt("auto", prompt), "Python in API.")
         self.assertEqual(recognition_prompt("en", "English prompt"), "English prompt")
         hotwords = recognition_hotwords("auto", "OpenAI, dej")
-        self.assertIn("OpenAI", hotwords)
+        self.assertEqual(hotwords, "OpenAI, dej")
         self.assertEqual([word.strip() for word in hotwords.split(",")].count("dej"), 1)
         self.assertEqual(recognition_hotwords("en", "OpenAI"), "OpenAI")
 
@@ -101,6 +106,11 @@ class SlangRetryTests(unittest.TestCase):
         unrelated = [Segment("Guten Tag", -0.50, [1, 2])]
         english = [Segment("Good day", -0.53, [1, 2])]
         self.assertTrue(prefer_bilingual_retry("en", "de", unrelated, english))
+
+    def test_supported_retry_replaces_a_higher_scoring_unrelated_language(self) -> None:
+        finnish_guess = [Segment("Avaa tiedosto.", -0.20, [1, 2, 3])]
+        accented_english = [Segment("Open the file.", -0.62, [1, 2, 3])]
+        self.assertTrue(prefer_bilingual_retry("en", "fi", finnish_guess, accented_english))
 
     def test_empty_retry_is_never_selected(self) -> None:
         original = [Segment("nekaj", -0.7, [1])]
