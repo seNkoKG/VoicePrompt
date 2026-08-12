@@ -14,6 +14,7 @@ prompt = ""                              # Keep Auto language detection neutral;
 slovenian_slang = false                # mixed English/Slovenian slang retry profile
 buffered_transcription = true          # pre-transcribe long speech blocks; paste once on release
 output_mode = "paste"                  # "paste" into focused app or leave text on "clipboard"
+voice_commands = false                 # exact whole-utterance commands; disabled by default
 
 [hotkey]
 binding = "f1"                        # Hotkey: modifiers + key (e.g. "alt+v", "ctrl+shift+d", "f1")

@@ -64,6 +64,7 @@ Copy-Item -LiteralPath (Join-Path $root "scripts\slang_retry.py") -Destination (
 Copy-Item -LiteralPath (Join-Path $root "scripts\decoding_options.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\buffered_transcription.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\output_mode.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\voice_commands.py") -Destination (Join-Path $packageRoot "scripts")
 [System.IO.File]::WriteAllText((Join-Path $packageRoot "version.txt"), "$Version`r`n", [System.Text.UTF8Encoding]::new($false))
 
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zip -CompressionLevel Optimal

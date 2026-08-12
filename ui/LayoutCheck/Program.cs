@@ -214,6 +214,26 @@ if (form.HasUnsavedChanges || outputChoice.SelectedValue != originalOutput)
     failures.AppendLine("BEHAVIOR Discard did not restore the transcript output mode");
 }
 
+var voiceCommands = (ToggleSwitch)typeof(MainForm)
+    .GetField("_voiceCommandsToggle", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+bool originalVoiceCommands = voiceCommands.Checked;
+voiceCommands.Checked = !originalVoiceCommands;
+Application.DoEvents();
+if (!form.HasUnsavedChanges)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR voice commands did not update the unsaved state");
+}
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
+if (form.HasUnsavedChanges || voiceCommands.Checked != originalVoiceCommands)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR Discard did not restore the voice-command setting");
+}
+
 var aiModeChoice = (ChoiceStrip)typeof(MainForm)
     .GetField("_aiModeChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;

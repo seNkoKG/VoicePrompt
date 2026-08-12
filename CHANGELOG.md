@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.0] - 2026-08-12
+
+### Added
+
+- Added opt-in exact whole-utterance voice commands in English and Slovenian for new line, new paragraph, bullet point, Undo, and Cancel.
+- Added a clear Dictation-page switch plus command resolver, config, packaging, clean-install, upgrade, accessibility, interaction, and layout coverage.
+
+### Changed
+
+- Run commands locally before optional AI cleanup and exclude them from transcript Recovery.
+- Mark the injected Undo shortcut so VoicePrompt's global hotkey filter ignores its own input.
+
+### Fixed
+
+- Require an exact normalized utterance, preventing command phrases embedded in normal dictated sentences from firing accidentally.
+
 ## [1.11.0] - 2026-08-12
 
 ### Added

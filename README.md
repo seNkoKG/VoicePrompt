@@ -66,7 +66,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.10+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.11.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.12.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -110,6 +110,7 @@ A responsive charcoal Windows tray app (C# / .NET 10 WinForms) that manages the 
 - **Live input test** — the Audio page shows quiet, good-signal, and very-loud microphone levels while the hotkey is held by reusing the overlay stream, with no second capture or extra GPU work.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **Flexible output** — paste directly into the focused app by default, or use **Copy only** when a target blocks synthetic paste and place the completed transcript manually.
+- **Exact voice commands** — optionally speak a complete English or Slovenian command for a new line, new paragraph, bullet, undo, or cancel; normal sentences never trigger commands by substring.
 - **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
 - **Recovery** — keeps a configurable 5–100 recent transcripts locally, with copy, delete, and clear controls. Audio is never stored.
@@ -139,6 +140,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[voiceprompt] slovenian_slang` | Saves the visible colloquial vocabulary profile | `true` / `false` |
 | `[voiceprompt] buffered_transcription` | Pre-transcribes long speech blocks; full-audio fallback and one final paste | `true` |
 | `[voiceprompt] output_mode` | `"paste"` types into the focused app; `"clipboard"` sends no paste shortcut | `"paste"` |
+| `[voiceprompt] voice_commands` | Enables exact whole-utterance English and Slovenian commands | `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
 | `[vad] max_speech_s` | Internal VAD segment size; not a recording cutoff | `180.0` |
 | `[engine] compute_type` | `float16` GPU / `int8` CPU | `"float16"` |
@@ -167,9 +169,21 @@ The endpoint can be any OpenAI-compatible `/v1/chat/completions` service. For a 
 
 Only the completed transcript text is sent when cleanup is enabled; microphone audio stays local. Saved API keys are encrypted for the current Windows account. Live requests reuse one connection, cap the response size, wait at most 400–3000 ms (900 ms by default), and paste the untouched local transcript after any timeout or invalid response. The **Test** button can take up to six seconds because it also wakes a sleeping local model; this longer test allowance does not apply to live dictation.
 
+### Optional voice commands
+
+Enable **Voice commands** on the Dictation page. A command runs only when the entire recognized utterance matches one phrase (terminal punctuation and quotation marks are ignored), so phrases inside ordinary dictation stay ordinary text. Commands run locally before AI cleanup and are not added to Recovery.
+
+| Action | English | Slovenian |
+|---|---|---|
+| New line | `New line` | `Nova vrstica` |
+| New paragraph | `New paragraph` | `Nov odstavek` |
+| Bullet | `Bullet point` | `Alineja` |
+| Undo in focused app | `Undo` | `Razveljavi` |
+| Discard this transcript | `Cancel` | `Prekliči` or `Preklici` |
+
 ## 🔧 Patches (required on Windows)
 
-Thirteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
+Fourteen Windows integration fixes ship in this repo — apply them **after every reinstall/upgrade**:
 
 1. **`cli.py`** — `_pid_alive()` used `os.kill(pid, 0)`, which raises `OSError` (WinError 87) on Windows and broke `status` / `stop`. Now uses `OpenProcess` via ctypes.
 2. **`typer.py`** — clipboard calls had no `argtypes`/`restype`, so 64-bit HANDLEs were truncated to 32 bits → access violations when pasting. All Win32 calls now declare their signatures, retry bounded clipboard contention, verify the full Unicode payload, and fail visibly instead of dropping text.
@@ -184,6 +198,7 @@ Thirteen Windows integration fixes ship in this repo — apply them **after ever
 11. **`daemon.py`** — retains every held-recording audio chunk instead of silently discarding everything after 90 seconds; VAD segmentation remains bounded without limiting the complete recording.
 12. **`daemon.py` / `buffered_transcription.py`** — serially pre-transcribes complete long-recording speech blocks without typing partial text, preserves block order, and retries the retained full audio after any empty, failed, or incomplete background result.
 13. **`typer.py` / `output_mode.py`** — routes the final transcript exactly once to automatic paste or verified clipboard-only delivery, without emitting paste keystrokes in Copy-only mode.
+14. **`typer.py` / `voice_commands.py`** — recognizes only enabled whole-utterance English/Slovenian commands, skips AI and history for them, and marks Undo input so the global hotkey listener ignores VoicePrompt's own shortcut.
 
 Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 
@@ -200,6 +215,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_local_text.py` — verifies personal corrections and bounded, optional, Unicode-safe local recovery.
 - `tests/test_buffered_transcription.py` — verifies speech-block ordering, one-result assembly, short-recording compatibility, and complete-audio fallback triggers.
 - `tests/test_output_mode.py` — verifies safe defaults and proves Copy-only delivery cannot call the synthetic-paste route.
+- `tests/test_voice_commands.py` — verifies default-off behavior, exact English/Slovenian recognition, Unicode output, and substring false-positive protection.
 - `tests/test_patch_migrations.ps1` — verifies clean and legacy upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
 - `ui/ConfigManager.Tests` — verifies the UI's comment-preserving config.toml editor (run: `dotnet run --project ui\ConfigManager.Tests`).

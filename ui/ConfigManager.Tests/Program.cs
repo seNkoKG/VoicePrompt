@@ -58,6 +58,7 @@ cfg.Set("engine", "device", "cuda");
 cfg.Set("audio", "device", "");
 cfg.Set("voiceprompt", "slovenian_slang", true);
 cfg.Set("voiceprompt", "output_mode", "clipboard");
+cfg.Set("voiceprompt", "voice_commands", true);
 cfg.Set("voiceprompt", "base_prompt", "V kodi pišem");
 cfg.Save();
 
@@ -75,6 +76,7 @@ Check("hotwords added + escaped", Regex.IsMatch(after, @"hotwords = \""python, n
 Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
 Check("VoicePrompt profile section added", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "slovenian_slang") == true);
 Check("copy-only output setting round trips", new VoicePromptTray.ConfigManager(path).GetString("voiceprompt", "output_mode") == "clipboard");
+Check("voice-command setting round trips", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "voice_commands") == true);
 Check("file still parses after re-read", new VoicePromptTray.ConfigManager(path).GetInt("vad", "silence_ms") == 300);
 
 string savedOnce = File.ReadAllText(path);
@@ -87,6 +89,7 @@ Check("new config is written immediately", File.Exists(newPath) && File.ReadAllT
 Check("new config has working defaults", defaults.GetString("hotkey", "binding") == "f1");
 Check("new config enables lossless long-recording prefetch", defaults.GetBool("voiceprompt", "buffered_transcription") == true);
 Check("new config defaults to automatic paste", defaults.GetString("voiceprompt", "output_mode") == "paste");
+Check("new config keeps voice commands opt-in", defaults.GetBool("voiceprompt", "voice_commands") == false);
 
 string legacyPath = Path.Combine(dir, "legacy.toml");
 const string legacyPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";

@@ -97,6 +97,9 @@ Write-Output "[SYNCED  ] buffered_transcription.py -- lossless long-recording pr
 $outputModeSource = Join-Path $PSScriptRoot "output_mode.py"
 Copy-Item -LiteralPath $outputModeSource -Destination "$site\output_mode.py" -Force
 Write-Output "[SYNCED  ] output_mode.py -- safe transcript delivery routing"
+$voiceCommandsSource = Join-Path $PSScriptRoot "voice_commands.py"
+Copy-Item -LiteralPath $voiceCommandsSource -Destination "$site\voice_commands.py" -Force
+Write-Output "[SYNCED  ] voice_commands.py -- exact opt-in spoken commands"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -572,7 +575,11 @@ $canonicalTranscribeAndType = @'
 
         try:
             delivery = type_text(text + " ")
-            if delivery == "clipboard":
+            if delivery == "cancelled":
+                log.info("Voice command cancelled transcript")
+            elif delivery == "command":
+                log.info("Voice command shortcut sent")
+            elif delivery == "clipboard":
                 log.info("Transcript copied to clipboard: %d chars", len(text))
             else:
                 log.info("Paste shortcut sent: %d chars", len(text))
@@ -835,7 +842,10 @@ Apply-Patch $typer @'
     user32.keybd_event(_VK_V, 0, 0, _VOICEPROMPT_INJECTED)
     user32.keybd_event(_VK_V, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
     user32.keybd_event(_VK_CONTROL, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
-'@ "typer.py -- mark injected paste events"
+'@ "typer.py -- mark injected paste events" @(
+    'user32.keybd_event(_VK_V, 0, 0, _VOICEPROMPT_INJECTED)',
+    'def _send_ctrl_key(key_vk: int) -> None:'
+)
 
 # 9. Typer - normalize, recover, and optionally clean before touching the clipboard
 $typerContent = [System.IO.File]::ReadAllText($typer)
@@ -864,6 +874,12 @@ from .transcript_history import remember_transcript
 from .transcript_history import remember_transcript
 from .output_mode import deliver_text
 '@ "typer.py -- transcript output routing" 'from .output_mode import deliver_text'
+Apply-Patch $typer @'
+from .output_mode import deliver_text
+'@ @'
+from .output_mode import deliver_text
+from .voice_commands import execute_voice_command, resolve_voice_command
+'@ "typer.py -- exact voice-command routing" 'from .voice_commands import execute_voice_command, resolve_voice_command'
 
 $canonicalTypeText = @'
 def type_text(text: str) -> str:
@@ -873,6 +889,14 @@ def type_text(text: str) -> str:
 
     original_text = text
     text = apply_corrections(text)
+    command = resolve_voice_command(text)
+    if command is not None:
+        log.info("Voice command recognized: %s", command.name)
+        def deliver_command(command_text: str) -> str:
+            with _clipboard_lock:
+                return deliver_text(command_text, _copy_text_impl, _type_text_impl)
+        return execute_voice_command(command, deliver_command, _send_ctrl_z)
+
     text = rewrite_text(text)
     remember_transcript(original_text, text)
     log.debug("Typing %d chars", len(text))
@@ -886,6 +910,40 @@ Replace-Block `
     'def _type_text_impl(' `
     $canonicalTypeText `
     "typer.py -- canonical local text pipeline"
+
+$canonicalCommandShortcuts = @'
+def _send_ctrl_v() -> None:
+    """Send Ctrl+V on Windows via ctypes."""
+    _send_ctrl_key(_VK_V)
+
+
+def _send_ctrl_z() -> None:
+    """Send Ctrl+Z on Windows via ctypes."""
+    _send_ctrl_key(0x5A)
+
+
+def _send_ctrl_key(key_vk: int) -> None:
+    """Send one marked Ctrl shortcut that the hotkey filter ignores."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    user32.keybd_event.argtypes = [
+        ctypes.c_ubyte, ctypes.c_ubyte, ctypes.c_uint, ctypes.c_size_t,
+    ]
+    user32.keybd_event.restype = None
+    user32.keybd_event(_VK_CONTROL, 0, 0, _VOICEPROMPT_INJECTED)
+    user32.keybd_event(key_vk, 0, 0, _VOICEPROMPT_INJECTED)
+    user32.keybd_event(key_vk, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
+    user32.keybd_event(_VK_CONTROL, 0, _KEYEVENTF_KEYUP, _VOICEPROMPT_INJECTED)
+
+
+'@
+Replace-Block `
+    $typer `
+    'def _send_ctrl_v(' `
+    'def type_text(' `
+    $canonicalCommandShortcuts `
+    "typer.py -- marked paste and undo shortcuts"
 
 Apply-Patch $typer @'
 def _type_windows(text: str) -> None:
@@ -1389,7 +1447,11 @@ $canonicalTranscriptionHandlers = @'
             return
         try:
             delivery = type_text(text + " ")
-            if delivery == "clipboard":
+            if delivery == "cancelled":
+                log.info("Voice command cancelled transcript")
+            elif delivery == "command":
+                log.info("Voice command shortcut sent")
+            elif delivery == "clipboard":
                 log.info("Transcript copied to clipboard: %d chars", len(text))
             else:
                 log.info("Paste shortcut sent: %d chars", len(text))
@@ -1412,7 +1474,11 @@ $canonicalTranscriptionHandlers = @'
 
         try:
             delivery = type_text(text + " ")
-            if delivery == "clipboard":
+            if delivery == "cancelled":
+                log.info("Voice command cancelled transcript")
+            elif delivery == "command":
+                log.info("Voice command shortcut sent")
+            elif delivery == "clipboard":
                 log.info("Transcript copied to clipboard: %d chars", len(text))
             else:
                 log.info("Paste shortcut sent: %d chars", len(text))

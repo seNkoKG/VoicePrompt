@@ -83,12 +83,32 @@ def transcript_output_mode() -> str:
         )
         return "paste"
 
+
+def voice_commands_enabled() -> bool:
+    """Read the opt-in exact-command flag once; runtime restart applies it."""
+    try:
+        from platformdirs import user_config_dir
+
+        config_path = Path(user_config_dir("faster-whisper-dictation")) / "config.toml"
+        with config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+        return config.get("voiceprompt", {}).get("voice_commands") is True
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not read voice-command setting; keeping commands disabled",
+            exc_info=True,
+        )
+        return False
+
 from whisper_dictation.cli import main  # noqa: E402
 
 sys.argv = [sys.argv[0], "start"]
 os.environ["VOICEPROMPT_OUTPUT_MODE"] = transcript_output_mode()
+os.environ["VOICEPROMPT_VOICE_COMMANDS"] = "1" if voice_commands_enabled() else "0"
 if os.environ["VOICEPROMPT_OUTPUT_MODE"] == "clipboard":
     logging.getLogger(__name__).info("Copy-only transcript output enabled")
+if os.environ["VOICEPROMPT_VOICE_COMMANDS"] == "1":
+    logging.getLogger(__name__).info("Exact voice commands enabled")
 if buffered_transcription_enabled():
     os.environ["VOICEPROMPT_BUFFERED_STREAMING"] = "1"
     sys.argv.append("--streaming")

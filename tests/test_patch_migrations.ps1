@@ -36,7 +36,8 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $corrections = Join-Path $Module "text_corrections.py"
     $buffered = Join-Path $Module "buffered_transcription.py"
     $outputMode = Join-Path $Module "output_mode.py"
-    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode
+    $voiceCommands = Join-Path $Module "voice_commands.py"
+    & $Python -m py_compile $localEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $voiceCommands
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -96,6 +97,13 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($typerSource, "def _copy_text_impl\(").Count -ne 1) {
         throw "$Name is missing the exactly-once transcript output router."
     }
+    if (-not (Test-Path -LiteralPath $voiceCommands) -or
+        [regex]::Matches($typerSource, "from \.voice_commands import execute_voice_command, resolve_voice_command").Count -ne 1 -or
+        [regex]::Matches($typerSource, "command = resolve_voice_command\(text\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "def _send_ctrl_z\(").Count -ne 1 -or
+        [regex]::Matches($typerSource, "return execute_voice_command\(command, deliver_command, _send_ctrl_z\)").Count -ne 1) {
+        throw "$Name is missing the exact opt-in voice-command router."
+    }
 
     $daemonSource = [System.IO.File]::ReadAllText($daemon)
     if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
@@ -115,6 +123,12 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if (-not $daemonSource.Contains("Transcript copied to clipboard: %d chars")) {
         throw "$Name does not expose a privacy-safe copy-only success signal."
+    }
+    if (-not $daemonSource.Contains("Voice command cancelled transcript")) {
+        throw "$Name does not handle a cancelled voice command without delivery."
+    }
+    if (-not $daemonSource.Contains("Voice command shortcut sent")) {
+        throw "$Name does not report a completed shortcut voice command."
     }
     if (-not $daemonSource.Contains('notify("Transcript delivery failed"')) {
         throw "$Name does not report failed transcript delivery to the user."
