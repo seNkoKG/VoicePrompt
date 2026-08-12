@@ -208,6 +208,7 @@ Apply-Patch "$site\engine\local.py" @'
 '@ @'
         self._language_mode = server_config.language
         self._language = recognition_language(server_config.language)
+        self._recent_language = None
 '@ "engine/local.py -- hybrid language mapping" 'self._language_mode = server_config.language'
 
 # 4. engine/local.py - log detected language + confidence per utterance (debugging auto-detect)
@@ -288,6 +289,14 @@ from ..slang_retry import (
     transcript_score,
 )
 '@ "engine/local.py -- safe decoding options" 'from ..decoding_options import decoding_options'
+Apply-Patch "$site\engine\local.py" @'
+    recognition_prompt,
+    transcript_score,
+'@ @'
+    recognition_prompt,
+    transcript_is_plausible,
+    transcript_score,
+'@ "engine/local.py -- transcript expansion guard" 'transcript_is_plausible,'
 Apply-Patch "$site\engine\local.py" @'
 import logging
 import threading
@@ -433,6 +442,7 @@ Apply-Patch "$site\engine\local.py" @'
             info.language_probability,
             primary_score,
             getattr(info, "all_language_probs", None),
+            self._recent_language,
         )
         if retry_language:
             log.info(
@@ -1011,6 +1021,7 @@ $canonicalLocalInit = @'
         self._model_name = server_config.model
         self._language_mode = server_config.language
         self._language = recognition_language(server_config.language)
+        self._recent_language = None
         self._compute_type = engine_config.compute_type
         self._device = engine_config.device
         self._base_prompt = server_config.prompt
@@ -1052,6 +1063,29 @@ $canonicalLocalTranscribe = @'
             **decoding_options(self._temperature),
         )
         primary_segments = list(segments)
+        audio_seconds = len(audio) / sample_rate
+        if (
+            info.language in {"en", "sl"}
+            and not transcript_is_plausible(primary_segments, audio_seconds)
+        ):
+            log.warning(
+                "Implausible %s transcript expansion; retrying the same language",
+                info.language,
+            )
+            recovery_segments, recovery_info = self._model.transcribe(
+                audio,
+                language=info.language,
+                initial_prompt=bilingual_retry_prompt(info.language, self._base_prompt) or None,
+                hotwords=bilingual_retry_hotwords(info.language, self._base_hotwords) or None,
+                vad_filter=True,
+                vad_parameters=self._vad_parameters,
+                **decoding_options(0.2),
+            )
+            recovery_segments = list(recovery_segments)
+            if transcript_is_plausible(recovery_segments, audio_seconds):
+                primary_segments = recovery_segments
+                info = recovery_info
+                log.info("Same-language repetition recovery accepted")
         primary_seconds = time.perf_counter() - primary_started
         retry_seconds = 0.0
         segments = primary_segments
@@ -1062,6 +1096,7 @@ $canonicalLocalTranscribe = @'
             info.language_probability,
             primary_score,
             getattr(info, "all_language_probs", None),
+            self._recent_language,
         )
         if retry_language:
             log.info(
@@ -1084,7 +1119,7 @@ $canonicalLocalTranscribe = @'
             retry_segments = list(retry_segments)
             retry_seconds = time.perf_counter() - retry_started
             retry_score = transcript_score(retry_segments)
-            if prefer_bilingual_retry(
+            if transcript_is_plausible(retry_segments, audio_seconds) and prefer_bilingual_retry(
                 retry_language,
                 info.language,
                 primary_segments,
@@ -1107,6 +1142,10 @@ $canonicalLocalTranscribe = @'
                     primary_score,
                 )
 
+        if not transcript_is_plausible(segments, audio_seconds):
+            raise RuntimeError("Whisper produced an implausible repetitive transcript")
+        if info.language in {"en", "sl"}:
+            self._recent_language = info.language
         total_seconds = time.perf_counter() - total_started
         log.info(
             "Transcription latency: primary %.3fs, retry %.3fs, total %.3fs",

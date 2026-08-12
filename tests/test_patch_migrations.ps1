@@ -69,6 +69,15 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if ([regex]::Matches($source, "Transcription latency:").Count -ne 1) {
         throw "$Name does not have exactly one latency instrumentation block."
     }
+    if ([regex]::Matches($source, "self\._recent_language = None").Count -ne 1 -or
+        [regex]::Matches($source, "self\._recent_language,").Count -ne 1 -or
+        [regex]::Matches($source, "self\._recent_language = info\.language").Count -ne 1) {
+        throw "$Name does not preserve recent-language evidence through the canonical runtime."
+    }
+    if ([regex]::Matches($source, "transcript_is_plausible\(").Count -ne 4 -or
+        [regex]::Matches($source, "decoding_options\(0\.2\)").Count -ne 1) {
+        throw "$Name does not guard impossible transcript expansion with one same-language recovery."
+    }
 
     $serverSource = [System.IO.File]::ReadAllText($serverEngine)
     if ([regex]::Matches($serverSource, '"sl" if self\.config\.language == "sl-slang"').Count -ne 1 -or

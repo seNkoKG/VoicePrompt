@@ -7,9 +7,10 @@ from collections.abc import Iterable
 from typing import Any
 
 
-_LOW_LANGUAGE_CONFIDENCE = 0.75
-_STRONG_TRANSCRIPT_SCORE = -0.35
+_UNSUPPORTED_LANGUAGE_MAX_LOSS = 0.05
+_RECENT_LANGUAGE_SWITCH_RATIO = 1.5
 _AUTO_MODES = {"", "auto", "sl-slang"}
+_SUPPORTED_LANGUAGES = {"en", "sl"}
 
 SLOVENIAN_SLANG_PROMPT = (
     "Dej, a lohk tole zrihtaš? Kva tle ne štima? Zdej sam poglej, pol pa dej nazaj. "
@@ -42,20 +43,25 @@ def bilingual_retry_language(
     confidence: float = 1.0,
     primary_score: float = float("-inf"),
     language_probabilities: Iterable[tuple[str, float]] | None = None,
+    recent_language: str | None = None,
 ) -> str | None:
     """Choose an English/Slovenian retry for ambiguous Auto-mode speech."""
     if configured not in _AUTO_MODES:
         return None
-    if detected in {"en", "sl"}:
-        if confidence >= _LOW_LANGUAGE_CONFIDENCE or primary_score >= _STRONG_TRANSCRIPT_SCORE:
-            return None
-        return "sl" if detected == "en" else "en"
+    if detected in _SUPPORTED_LANGUAGES:
+        return None
 
     # VoicePrompt Auto is intentionally bilingual. This mirrors established
     # dictation apps that constrain automatic detection to the languages the
     # user actually speaks instead of accepting an unrelated 99-language guess.
     probabilities = dict(language_probabilities or ())
-    return "sl" if probabilities.get("sl", 0.0) >= probabilities.get("en", 0.0) else "en"
+    if recent_language in _SUPPORTED_LANGUAGES:
+        other_language = "sl" if recent_language == "en" else "en"
+        recent_probability = probabilities.get(recent_language, 0.0)
+        other_probability = probabilities.get(other_language, 0.0)
+        if other_probability <= recent_probability * _RECENT_LANGUAGE_SWITCH_RATIO:
+            return recent_language
+    return "sl" if probabilities.get("sl", 0.0) > probabilities.get("en", 0.0) else "en"
 
 
 def should_retry_as_slovenian(
@@ -123,35 +129,41 @@ def transcript_score(segments: Iterable[Any]) -> float:
     return total / weight_total if weight_total else float("-inf")
 
 
+def transcript_is_plausible(
+    segments: Iterable[Any],
+    audio_seconds: float,
+) -> bool:
+    """Reject text expansion that cannot fit in the recorded speech."""
+    if not math.isfinite(audio_seconds) or audio_seconds < 0:
+        return False
+    text = " ".join(
+        str(getattr(segment, "text", "")).strip()
+        for segment in segments
+    ).strip()
+    if not text:
+        return True
+    return (
+        len(text) <= max(120, int(audio_seconds * 50))
+        and len(text.split()) <= max(24, int(audio_seconds * 8))
+    )
+
+
 def prefer_bilingual_retry(
     retry_language: str,
     detected: str,
     original_segments: Iterable[Any],
     retry_segments: Iterable[Any],
 ) -> bool:
-    """Choose a forced bilingual pass only when its decoder score supports it."""
+    """Choose a supported-language retry for an unrelated Auto guess."""
     original_score = transcript_score(original_segments)
     retry_score = transcript_score(retry_segments)
     if not math.isfinite(retry_score):
         return False
+    if detected in _SUPPORTED_LANGUAGES:
+        return False
     if not math.isfinite(original_score):
         return True
-
-    # Auto intentionally supports English and Slovenian. Decoder log-probability
-    # is not calibrated across forced languages, so an unsupported Finnish,
-    # Spanish, or similar primary guess must not survive a valid bilingual pass.
-    if detected not in {"en", "sl"}:
-        return True
-
-    # A forced decode must show a real gain before changing either supported
-    # language. Decoder scores are useful evidence, but are not language IDs.
-    if detected in {"en", "sl"} and retry_language != detected:
-        required_gain = 0.03
-    elif detected == retry_language:
-        required_gain = 0.01
-    else:
-        required_gain = 0.0
-    return retry_score >= original_score + required_gain
+    return retry_score >= original_score - _UNSUPPORTED_LANGUAGE_MAX_LOSS
 
 
 def prefer_slovenian_retry(
