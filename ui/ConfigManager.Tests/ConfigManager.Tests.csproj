@@ -20,6 +20,7 @@
     <Compile Include="..\VoicePromptTray\RecognitionServer.cs" Link="RecognitionServer.cs" />
     <Compile Include="..\VoicePromptTray\SlovenianSlangProfile.cs" Link="SlovenianSlangProfile.cs" />
     <Compile Include="..\VoicePromptTray\UpdateChecker.cs" Link="UpdateChecker.cs" />
+    <Compile Include="..\VoicePromptTray\UpdateInstaller.cs" Link="UpdateInstaller.cs" />
   </ItemGroup>
 
 </Project>

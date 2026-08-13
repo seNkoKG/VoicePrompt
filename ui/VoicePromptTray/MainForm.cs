@@ -23,6 +23,7 @@ internal sealed class MainForm : Form
     private readonly TextSnippetStore _snippetStore;
     private readonly AppProfileStore _appProfileStore;
     private readonly UpdateChecker _updateChecker = new();
+    private readonly UpdateInstaller _updateInstaller = new();
     private readonly Dictionary<string, Panel> _pages = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FlowLayoutPanel> _pageBodies = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NavigationButton> _navigation = new(StringComparer.Ordinal);
@@ -126,6 +127,7 @@ internal sealed class MainForm : Form
     private ActionButton _updateButton = null!;
     private ThemePicker _themePicker = null!;
     private string _updateReleaseUrl = "";
+    private UpdateResult? _availableUpdate;
 
     private bool _loading = true;
     private bool _dirty;
@@ -142,6 +144,7 @@ internal sealed class MainForm : Form
     internal bool HasUnsavedChanges => _dirty;
 
     public event Action? DaemonRestarted;
+    public event Action? UpdateInstallerLaunched;
 
     public MainForm(DaemonManager daemon, AppPaths paths)
     {
@@ -1141,9 +1144,14 @@ internal sealed class MainForm : Form
                 SavePreferences();
         };
         _updateStatus = BuildValueLabel();
-        _updateButton = new ActionButton("Check now", ActionButtonStyle.Secondary) { Width = 100, BackColor = Theme.Surface };
+        _updateButton = new ActionButton("Check now", ActionButtonStyle.Secondary) { Width = 150, BackColor = Theme.Surface };
         _updateButton.Click += async (_, _) =>
         {
+            if (_availableUpdate?.Package is not null)
+            {
+                await InstallUpdateAsync(_availableUpdate);
+                return;
+            }
             if (!string.IsNullOrWhiteSpace(_updateReleaseUrl))
             {
                 OpenExternal(_updateReleaseUrl);
@@ -1152,8 +1160,8 @@ internal sealed class MainForm : Form
             await CheckForUpdatesAsync();
         };
         tools.Add("Support bundle", "No audio or transcript text is included in copied diagnostics.", HorizontalControl(copy, log), 62);
-        tools.Add("Update channel", "Stable is recommended. Preview also checks explicit prereleases and never installs automatically.", _updateChannelChoice, 62);
-        tools.Add("Application updates", "Makes one short request to GitHub only when clicked; no identifier or usage data is sent.", HorizontalControl(_updateStatus, _updateButton), 62);
+        tools.Add("Update channel", "Stable is recommended. Preview also checks explicit prereleases; updates are always installed manually.", _updateChannelChoice, 62);
+        tools.Add("Application updates", "Checks GitHub only when clicked. Downloads are SHA-256 verified before the existing installer starts.", HorizontalControl(_updateStatus, _updateButton), 62);
         tools.Add("Files & updates", "Open the live config directory or the public download page.", HorizontalControl(config, release), 62);
         AddPageItem(body, tools.Build());
         ResetUpdateCheck();
@@ -2544,8 +2552,12 @@ internal sealed class MainForm : Form
 
     private async Task CheckForUpdatesAsync()
     {
+        if (_busy)
+            return;
         _updateReleaseUrl = "";
+        _availableUpdate = null;
         _updateButton.Enabled = false;
+        _updateChannelChoice.Enabled = false;
         _updateButton.Text = "Checking…";
         UpdateChannel channel = SelectedUpdateChannel();
         _updateStatus.Text = channel == UpdateChannel.Preview
@@ -2560,10 +2572,15 @@ internal sealed class MainForm : Form
             if (result.State == UpdateState.Available && result.LatestVersion is not null)
             {
                 _updateReleaseUrl = result.ReleaseUrl;
+                _availableUpdate = result;
                 _updateStatus.Text = $"Update available · {result.CurrentVersion.Display} → {result.LatestVersion.Display}";
                 _updateStatus.ForeColor = Theme.Accent;
-                _updateButton.Text = "Open release";
-                ShowFooter($"VoicePrompt {result.LatestVersion.Display} is available", Theme.Accent);
+                _updateButton.Text = result.Package is null ? "Open release" : "Download & install";
+                ShowFooter(
+                    result.Package is null
+                        ? $"VoicePrompt {result.LatestVersion.Display} is available; its installer is still publishing"
+                        : $"VoicePrompt {result.LatestVersion.Display} is ready to install",
+                    Theme.Accent);
             }
             else if (result.State == UpdateState.UpToDate)
             {
@@ -2583,6 +2600,71 @@ internal sealed class MainForm : Form
         finally
         {
             _updateButton.Enabled = true;
+            _updateChannelChoice.Enabled = true;
+        }
+    }
+
+    private async Task InstallUpdateAsync(UpdateResult update)
+    {
+        if (update.Package is null || update.LatestVersion is null)
+            return;
+        if (_busy)
+            return;
+        if (_dirty)
+        {
+            ShowFooter("Save or discard your changes before installing an update.", Theme.Warn);
+            return;
+        }
+
+        DialogResult answer = MessageBox.Show(
+            this,
+            $"Download and install VoicePrompt {update.LatestVersion.Display}?\n\n" +
+            "The release will be verified before it runs. VoicePrompt will close, preserve your settings, install the update, and restart.",
+            "Install VoicePrompt update",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Information,
+            MessageBoxDefaultButton.Button1);
+        if (answer != DialogResult.OK)
+            return;
+
+        bool launched = false;
+        SetBusy(true);
+        _updateButton.Enabled = false;
+        _updateChannelChoice.Enabled = false;
+        _updateButton.Text = "Preparing…";
+        try
+        {
+            var progress = new Progress<UpdateProgress>(value =>
+            {
+                _updateStatus.Text = value.Percentage is { } percentage
+                    ? $"{value.Message} · {percentage}%"
+                    : value.Message;
+                _updateStatus.ForeColor = Theme.Accent;
+            });
+            StagedUpdate staged = await _updateInstaller.PrepareAsync(update.Package, progress);
+            using Process installer = UpdateInstaller.Launch(staged);
+            launched = true;
+            _updateStatus.Text = $"Installing VoicePrompt {staged.Version.Display}…";
+            _updateStatus.ForeColor = Theme.Ok;
+            _updateButton.Text = "Restarting…";
+            ShowFooter("Verified installer started · VoicePrompt will restart when the update is complete", Theme.Ok);
+            UpdateInstallerLaunched?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _updateStatus.Text = "Update failed · " + ShortMessage(ex.Message);
+            _updateStatus.ForeColor = Theme.Err;
+            _updateButton.Text = "Try again";
+            ShowFooter("Update failed · " + ShortMessage(ex.Message), Theme.Err);
+        }
+        finally
+        {
+            if (!launched && !IsDisposed)
+            {
+                SetBusy(false);
+                _updateButton.Enabled = true;
+                _updateChannelChoice.Enabled = true;
+            }
         }
     }
 
@@ -2592,6 +2674,7 @@ internal sealed class MainForm : Form
     private void ResetUpdateCheck()
     {
         _updateReleaseUrl = "";
+        _availableUpdate = null;
         if (_updateButton is not null)
             _updateButton.Text = "Check now";
         if (_updateStatus is null || _updateChannelChoice is null)

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.21.0] - 2026-08-13
+
+### Added
+
+- Add a manual in-app **Download & install** flow under **System → Application updates** for both Stable and explicitly selected Preview releases.
+- Verify the official GitHub release URL, declared asset size, GitHub SHA-256 digest, published checksum file, archive paths, package contents, and packaged version before starting an update.
+- Show clear download, verification, staging, failure, and restart status inside the existing settings interface.
+
+### Changed
+
+- Reuse the tested per-user installer for in-app upgrades so local settings, vocabulary, recovery history, runtime configuration, and shortcuts are preserved.
+- Remove completed, marked update staging folders after the upgraded app is safely running without touching active downloads or unrelated temporary files.
+- Keep updates fully user-controlled: VoicePrompt still makes no background update request and never downloads or installs a release without an explicit click and confirmation.
+
 ## [1.20.2] - 2026-08-13
 
 ### Changed

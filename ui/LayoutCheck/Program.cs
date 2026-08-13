@@ -178,6 +178,15 @@ if (!updateButton.Visible || updateButton.Parent is null ||
     layoutFailures++;
     failures.AppendLine("LAYOUT update action is hidden or covered in its shared row");
 }
+string originalUpdateButtonText = updateButton.Text;
+updateButton.Text = "Download & install";
+Size updateTextSize = TextRenderer.MeasureText(updateButton.Text, updateButton.Font);
+if (updateTextSize.Width + 24 > updateButton.ClientSize.Width)
+{
+    layoutFailures++;
+    failures.AppendLine("LAYOUT verified update action text is clipped");
+}
+updateButton.Text = originalUpdateButtonText;
 var updateChannel = (ChoiceStrip)typeof(MainForm)
     .GetField("_updateChannelChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;
@@ -214,6 +223,10 @@ pageMap["advanced"].AutoScrollPosition = new Point(0, 460);
 Application.DoEvents();
 string advancedToolsPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_advanced_tools.png");
 SaveClientScreenshot(advancedToolsPath);
+pageMap["advanced"].AutoScrollPosition = new Point(0, 600);
+Application.DoEvents();
+string applicationUpdatesPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_application_updates.png");
+SaveClientScreenshot(applicationUpdatesPath);
 pageMap["advanced"].AutoScrollPosition = new Point(0, 720);
 Application.DoEvents();
 string dataPortabilityPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_data_portability.png");
@@ -653,6 +666,7 @@ foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
+Console.WriteLine($"SCREENSHOT application-updates={applicationUpdatesPath}");
 Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");
 Console.WriteLine($"SCREENSHOT writing-modes={writingModesPath}");
 Console.WriteLine($"SCREENSHOT application-profiles={applicationProfilesPath}");

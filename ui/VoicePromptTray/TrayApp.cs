@@ -24,6 +24,7 @@ internal sealed class TrayApp : IDisposable
         _form = new MainForm(_daemon, _paths);
         _overlay = new RecordingOverlay();
         _form.DaemonRestarted += () => Balloon("Settings applied", "Daemon restarted — press your hotkey to talk.");
+        _form.UpdateInstallerLaunched += Shutdown;
 
         _tray = new NotifyIcon
         {
@@ -89,6 +90,7 @@ internal sealed class TrayApp : IDisposable
         _startupTimer.Start();
         Poll();
         ShowFirstRunBalloon();
+        _ = CleanupCompletedUpdatesAsync();
     }
 
     private static Icon LoadIcon()
@@ -100,6 +102,18 @@ internal sealed class TrayApp : IDisposable
         catch
         {
             return SystemIcons.Application;
+        }
+    }
+
+    private static async Task CleanupCompletedUpdatesAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(90));
+            UpdateInstaller.CleanupStagedUpdates();
+        }
+        catch
+        {
         }
     }
 
@@ -218,6 +232,11 @@ internal sealed class TrayApp : IDisposable
     {
         if (_busy)
             return;
+        Shutdown();
+    }
+
+    private void Shutdown()
+    {
         _timer.Stop();
         _startupTimer.Stop();
         _overlay.Dispose();

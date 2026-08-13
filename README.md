@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.20.2-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.21.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -77,6 +77,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 The installer creates the private Python environment, installs the exact pinned speech runtime, applies the Windows integration fixes, installs the self-contained tray app, and creates desktop and Start Menu shortcuts. Open **VoicePrompt**, then hold **F1** to talk. The first start downloads the selected model (~3.1 GB for `large-v3`) once.
+
+Future releases can be installed from **System → Application updates**: click **Check now**, then **Download & install**. VoicePrompt accepts only the matching official GitHub package, verifies its size, GitHub asset digest, published SHA-256 checksum, safe archive paths, required files, and version, then runs the same settings-preserving installer. Checks and installs remain manual—there is no background request or silent update.
 
 > The executable is not code-signed yet, so Windows may show an “unknown publisher” warning. Only run packages downloaded from this repository's official Releases page. The SHA-256 checksums are attached to every release.
 
@@ -124,7 +126,7 @@ A responsive dark Windows tray app (C# / .NET 10 WinForms) that manages the whol
 - **Settings backup** — exports and review-first imports portable dictation, recognition, audio-detection, writing, recovery, correction, snippet, and application-profile settings without API keys, transcripts, microphone identity, startup state, or machine paths.
 - **All settings** — language (English + Slovenian Auto, dedicated defaults, or any pinned Whisper language), decoding prompt, VAD threshold & timing, microphone (enumerated live) and sample rate, model (`large-v3` / `large-v3-turbo`), compute type, GPU/CPU, temperature, hotwords.
 - **Guided recovery** — tested recognition defaults, live microphone refresh, Windows Sound Settings, privacy-safe performance statistics and copied diagnostics, and one-click log/config access.
-- **Private update check** — manually checks GitHub with a three-second timeout. Stable is the default; Preview is explicit opt-in and also considers prereleases. It never checks in the background or installs silently.
+- **Verified in-app updates** — manually checks GitHub with a three-second timeout, then offers a confirmed **Download & install** action. Stable is the default; Preview is explicit opt-in. Downloads are checked against GitHub's digest and the release checksum before the settings-preserving installer runs; nothing checks, downloads, or installs silently.
 - **Keyboard and accessibility** — predictable tab navigation, screen-reader names, `Ctrl+S` to save, `Esc` to hide, and `Ctrl+1` through `Ctrl+6` for page navigation.
 - **Save & Restart** writes the live config, keeps your comments, and restarts the daemon in one click.
 - **Start with Windows** checkbox manages its own startup shortcut; the daemon auto-starts with the UI.
@@ -289,4 +291,4 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 - **1.21, daily workflow**: guided microphone calibration, explicit correction learning from Recovery, more global actions, and shortcut-conflict guidance.
 - **1.22, optional context**: privacy-visible selected-text and focused-app formatting, kept off by default and blocked in secure fields.
 - **1.23, broader hardware**: benchmark-gated CPU, AMD, and Intel engine options plus an explicit VRAM-saving mode.
-- **Later**: file transcription, scratchpad reprocessing, speaker separation, and a signed installer and updater. Code signing requires a trusted signing certificate and stays separate from unsigned development builds.
+- **Later**: file transcription, scratchpad reprocessing, speaker separation, and a signed installer. Code signing requires a trusted signing certificate and stays separate from unsigned development builds.

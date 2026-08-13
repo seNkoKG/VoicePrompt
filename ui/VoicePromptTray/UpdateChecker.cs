@@ -63,7 +63,23 @@ internal sealed record UpdateResult(
     ReleaseVersion CurrentVersion,
     ReleaseVersion? LatestVersion = null,
     string ReleaseUrl = "",
+    UpdatePackage? Package = null,
     string Error = "");
+
+internal sealed record ReleaseAsset(
+    string Name,
+    Uri DownloadUrl,
+    long Size,
+    string Digest = "");
+
+internal sealed record UpdatePackage(
+    ReleaseVersion Version,
+    ReleaseAsset Archive,
+    ReleaseAsset Checksums);
+
+internal sealed record ReleaseDescriptor(
+    ReleaseVersion Version,
+    UpdatePackage? Package);
 
 internal sealed class UpdateChecker
 {
@@ -108,15 +124,16 @@ internal sealed class UpdateChecker
 
             await using Stream stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             using JsonDocument document = await ReadBoundedJsonAsync(stream, timeout.Token);
-            ReleaseVersion? latestVersion = channel == UpdateChannel.Preview
+            ReleaseDescriptor? latest = channel == UpdateChannel.Preview
                 ? FindLatestPreview(document.RootElement)
                 : ReadLatestStable(document.RootElement);
-            if (latestVersion is null)
+            if (latest is null)
             {
                 string kind = channel == UpdateChannel.Preview ? "release" : "stable release";
                 return Unavailable(currentVersion, $"GitHub did not return a valid {kind} tag.");
             }
 
+            ReleaseVersion latestVersion = latest.Version;
             string tag = "v" + latestVersion.Display;
             string releaseUrl = "https://github.com/seNkoKG/VoicePrompt/releases/tag/" +
                 Uri.EscapeDataString(tag);
@@ -124,7 +141,8 @@ internal sealed class UpdateChecker
                 latestVersion.CompareTo(currentVersion) > 0 ? UpdateState.Available : UpdateState.UpToDate,
                 currentVersion,
                 latestVersion,
-                releaseUrl);
+                releaseUrl,
+                latest.Package);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -172,30 +190,86 @@ internal sealed class UpdateChecker
         return new ReleaseVersion(new Version(major, minor, patch), prerelease);
     }
 
-    private static ReleaseVersion? ReadLatestStable(JsonElement root)
+    private static ReleaseDescriptor? ReadLatestStable(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object ||
             IsTrue(root, "draft") || IsTrue(root, "prerelease") ||
             !root.TryGetProperty("tag_name", out JsonElement tagElement))
             return null;
-        return ParseReleaseTag(tagElement.GetString(), allowPrerelease: false);
+        ReleaseVersion? version = ParseReleaseTag(tagElement.GetString(), allowPrerelease: false);
+        return version is null ? null : new ReleaseDescriptor(version, ReadPackage(root, version));
     }
 
-    private static ReleaseVersion? FindLatestPreview(JsonElement root)
+    private static ReleaseDescriptor? FindLatestPreview(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Array)
             return null;
-        ReleaseVersion? latest = null;
+        ReleaseDescriptor? latest = null;
         foreach (JsonElement release in root.EnumerateArray())
         {
             if (release.ValueKind != JsonValueKind.Object || IsTrue(release, "draft") ||
                 !release.TryGetProperty("tag_name", out JsonElement tagElement))
                 continue;
             ReleaseVersion? candidate = ParseReleaseTag(tagElement.GetString(), allowPrerelease: true);
-            if (candidate is not null && (latest is null || candidate.CompareTo(latest) > 0))
-                latest = candidate;
+            if (candidate is not null && (latest is null || candidate.CompareTo(latest.Version) > 0))
+                latest = new ReleaseDescriptor(candidate, ReadPackage(release, candidate));
         }
         return latest;
+    }
+
+    private static UpdatePackage? ReadPackage(JsonElement release, ReleaseVersion version)
+    {
+        if (!release.TryGetProperty("assets", out JsonElement assets) ||
+            assets.ValueKind != JsonValueKind.Array)
+            return null;
+
+        string tag = "v" + version.Display;
+        string archiveName = $"VoicePrompt-{tag}-windows-x64.zip";
+        string checksumName = $"VoicePrompt-{tag}-SHA256SUMS.txt";
+        ReleaseAsset? archive = null;
+        ReleaseAsset? checksums = null;
+        bool duplicateArchive = false;
+        bool duplicateChecksums = false;
+        foreach (JsonElement asset in assets.EnumerateArray())
+        {
+            if (asset.ValueKind != JsonValueKind.Object ||
+                !asset.TryGetProperty("name", out JsonElement nameElement) ||
+                !asset.TryGetProperty("size", out JsonElement sizeElement) ||
+                !sizeElement.TryGetInt64(out long size) || size <= 0 ||
+                (asset.TryGetProperty("state", out JsonElement stateElement) &&
+                    !string.Equals(stateElement.GetString(), "uploaded", StringComparison.Ordinal)))
+                continue;
+
+            string name = nameElement.GetString() ?? "";
+            if (name != archiveName && name != checksumName)
+                continue;
+
+            string expectedUrl = "https://github.com/seNkoKG/VoicePrompt/releases/download/" +
+                Uri.EscapeDataString(tag) + "/" + Uri.EscapeDataString(name);
+            if (!asset.TryGetProperty("browser_download_url", out JsonElement urlElement) ||
+                !string.Equals(urlElement.GetString(), expectedUrl, StringComparison.Ordinal))
+                continue;
+
+            string digest = asset.TryGetProperty("digest", out JsonElement digestElement)
+                ? digestElement.GetString() ?? ""
+                : "";
+            var parsed = new ReleaseAsset(name, new Uri(expectedUrl), size, digest);
+            if (name == archiveName)
+            {
+                duplicateArchive |= archive is not null;
+                archive ??= parsed;
+            }
+            else
+            {
+                duplicateChecksums |= checksums is not null;
+                checksums ??= parsed;
+            }
+        }
+
+        return archive is not null && checksums is not null &&
+            !duplicateArchive && !duplicateChecksums
+            ? new UpdatePackage(version, archive, checksums)
+            : null;
     }
 
     private static bool IsTrue(JsonElement element, string property) =>

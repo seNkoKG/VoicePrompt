@@ -9,9 +9,9 @@
     <RootNamespace>LayoutCheck</RootNamespace>
     <AssemblyName>VoicePromptTray</AssemblyName>
     <ApplicationIcon>..\..\assets\voiceprompt.ico</ApplicationIcon>
-    <Version>1.20.2</Version>
-    <AssemblyVersion>1.20.2.0</AssemblyVersion>
-    <FileVersion>1.20.2.0</FileVersion>
+    <Version>1.21.0</Version>
+    <AssemblyVersion>1.21.0.0</AssemblyVersion>
+    <FileVersion>1.21.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -37,6 +37,7 @@
     <Compile Include="..\VoicePromptTray\Theme.cs" />
     <Compile Include="..\VoicePromptTray\TrayApp.cs" />
     <Compile Include="..\VoicePromptTray\UpdateChecker.cs" />
+    <Compile Include="..\VoicePromptTray\UpdateInstaller.cs" />
   </ItemGroup>
 
 </Project>

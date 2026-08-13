@@ -1,4 +1,9 @@
 using System.Net;
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 var dir = Path.Combine(Path.GetTempPath(), "vptest_cfg_" + Guid.NewGuid().ToString("N"));
@@ -470,7 +475,7 @@ var availableClient = new HttpClient(new StubHttpMessageHandler(request =>
         request.Headers.Accept.Any(value => value.MediaType == "application/vnd.github+json");
     return new HttpResponseMessage(HttpStatusCode.OK)
     {
-        Content = new StringContent("""{"tag_name":"v1.6.0"}"""),
+        Content = new StringContent(BuildReleaseJson("1.6.0")),
     };
 }));
 var availableUpdate = await new VoicePromptTray.UpdateChecker(availableClient)
@@ -479,7 +484,9 @@ Check("update checker reports newer official stable release",
     safeUpdateRequest &&
     availableUpdate.State == VoicePromptTray.UpdateState.Available &&
     availableUpdate.LatestVersion?.Number == new Version(1, 6, 0) &&
-    availableUpdate.ReleaseUrl == "https://github.com/seNkoKG/VoicePrompt/releases/tag/v1.6.0");
+    availableUpdate.ReleaseUrl == "https://github.com/seNkoKG/VoicePrompt/releases/tag/v1.6.0" &&
+    availableUpdate.Package?.Archive.Name == "VoicePrompt-v1.6.0-windows-x64.zip" &&
+    availableUpdate.Package.Checksums.DownloadUrl.Scheme == Uri.UriSchemeHttps);
 
 bool safePreviewRequest = false;
 var previewClient = new HttpClient(new StubHttpMessageHandler(request =>
@@ -490,13 +497,10 @@ var previewClient = new HttpClient(new StubHttpMessageHandler(request =>
         request.Headers.UserAgent.ToString() == "VoicePrompt/1.6.0";
     return new HttpResponseMessage(HttpStatusCode.OK)
     {
-        Content = new StringContent("""
-        [
-          {"tag_name":"v9.0.0-alpha.1","draft":true,"prerelease":true},
-          {"tag_name":"v1.7.0-beta.2","draft":false,"prerelease":true},
-          {"tag_name":"v1.6.1","draft":false,"prerelease":false}
-        ]
-        """),
+        Content = new StringContent("[" +
+            BuildReleaseJson("9.0.0-alpha.1", draft: true, prerelease: true) + "," +
+            BuildReleaseJson("1.7.0-beta.2", prerelease: true) + "," +
+            BuildReleaseJson("1.6.1") + "]"),
     };
 }));
 var previewUpdate = await new VoicePromptTray.UpdateChecker(previewClient)
@@ -505,7 +509,21 @@ Check("preview checker includes prereleases and excludes drafts",
     safePreviewRequest &&
     previewUpdate.State == VoicePromptTray.UpdateState.Available &&
     previewUpdate.LatestVersion?.Display == "1.7.0-beta.2" &&
-    previewUpdate.ReleaseUrl.EndsWith("/v1.7.0-beta.2", StringComparison.Ordinal));
+    previewUpdate.ReleaseUrl.EndsWith("/v1.7.0-beta.2", StringComparison.Ordinal) &&
+    previewUpdate.Package?.Archive.Name == "VoicePrompt-v1.7.0-beta.2-windows-x64.zip");
+
+var redirectedAssetClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent(BuildReleaseJson("1.6.0").Replace(
+        "https://github.com/seNkoKG/VoicePrompt/releases/download/v1.6.0/VoicePrompt-v1.6.0-windows-x64.zip",
+        "https://example.test/VoicePrompt-v1.6.0-windows-x64.zip",
+        StringComparison.Ordinal)),
+}));
+var redirectedAssetUpdate = await new VoicePromptTray.UpdateChecker(redirectedAssetClient)
+    .CheckAsync("1.5.1");
+Check("update checker refuses unofficial release asset URLs",
+    redirectedAssetUpdate.State == VoicePromptTray.UpdateState.Available &&
+    redirectedAssetUpdate.Package is null);
 
 var currentClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
 {
@@ -515,6 +533,16 @@ var currentUpdate = await new VoicePromptTray.UpdateChecker(currentClient)
     .CheckAsync("1.5.1");
 Check("update checker recognizes the current release",
     currentUpdate.State == VoicePromptTray.UpdateState.UpToDate);
+
+var olderClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent(BuildReleaseJson("1.20.2")),
+}));
+var olderUpdate = await new VoicePromptTray.UpdateChecker(olderClient)
+    .CheckAsync("1.21.0");
+Check("update checker never offers a downgrade",
+    olderUpdate.State == VoicePromptTray.UpdateState.UpToDate &&
+    olderUpdate.LatestVersion?.Display == "1.20.2");
 
 var failedClient = new HttpClient(new StubHttpMessageHandler(_ =>
     new HttpResponseMessage(HttpStatusCode.Forbidden)));
@@ -532,6 +560,101 @@ var oversizedUpdate = await new VoicePromptTray.UpdateChecker(oversizedClient)
     .CheckAsync("1.5.1");
 Check("update checker rejects oversized responses",
     oversizedUpdate.State == VoicePromptTray.UpdateState.Unavailable);
+
+const string stagedVersion = "9.8.7";
+byte[] updateArchive = BuildUpdateArchive(stagedVersion);
+string updateHash = Convert.ToHexStringLower(SHA256.HashData(updateArchive));
+string archiveName = $"VoicePrompt-v{stagedVersion}-windows-x64.zip";
+string checksumName = $"VoicePrompt-v{stagedVersion}-SHA256SUMS.txt";
+byte[] updateChecksums = Encoding.UTF8.GetBytes($"{updateHash}  {archiveName}\n");
+string checksumHash = Convert.ToHexStringLower(SHA256.HashData(updateChecksums));
+string downloadRoot = $"https://github.com/seNkoKG/VoicePrompt/releases/download/v{stagedVersion}/";
+var stagedRelease = new VoicePromptTray.UpdatePackage(
+    new VoicePromptTray.ReleaseVersion(new Version(stagedVersion)),
+    new VoicePromptTray.ReleaseAsset(
+        archiveName,
+        new Uri(downloadRoot + archiveName),
+        updateArchive.Length,
+        "sha256:" + updateHash),
+    new VoicePromptTray.ReleaseAsset(
+        checksumName,
+        new Uri(downloadRoot + checksumName),
+        updateChecksums.Length,
+        "sha256:" + checksumHash));
+bool safeDownloadRequests = true;
+var installerClient = new HttpClient(new StubHttpMessageHandler(request =>
+{
+    safeDownloadRequests &= request.Method == HttpMethod.Get &&
+        request.Headers.Authorization is null &&
+        request.Headers.UserAgent.ToString() == "VoicePrompt-Updater/1.0" &&
+        request.Headers.Accept.Any(value => value.MediaType == "application/octet-stream");
+    byte[] content = request.RequestUri?.AbsolutePath.EndsWith(checksumName, StringComparison.Ordinal) == true
+        ? updateChecksums
+        : updateArchive;
+    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(content) };
+}));
+VoicePromptTray.StagedUpdate staged = await new VoicePromptTray.UpdateInstaller(installerClient)
+    .PrepareAsync(stagedRelease);
+Check("updater downloads, verifies, and stages a complete release",
+    safeDownloadRequests &&
+    File.Exists(staged.InstallerPath) &&
+    File.ReadAllText(Path.Combine(Path.GetDirectoryName(staged.InstallerPath)!, "version.txt")).Trim() == stagedVersion);
+Directory.Delete(staged.Directory, recursive: true);
+
+byte[] badChecksums = Encoding.UTF8.GetBytes($"{new string('0', 64)}  {archiveName}\n");
+var badChecksumRelease = stagedRelease with
+{
+    Checksums = stagedRelease.Checksums with { Size = badChecksums.Length, Digest = "" },
+    Archive = stagedRelease.Archive with { Digest = "" },
+};
+var badChecksumClient = new HttpClient(new StubHttpMessageHandler(request =>
+    new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new ByteArrayContent(
+            request.RequestUri?.AbsolutePath.EndsWith(checksumName, StringComparison.Ordinal) == true
+                ? badChecksums
+                : updateArchive),
+    }));
+bool checksumRejected = await RejectsInvalidDataAsync(() =>
+    new VoicePromptTray.UpdateInstaller(badChecksumClient).PrepareAsync(badChecksumRelease));
+Check("updater refuses a package with a mismatched checksum", checksumRejected);
+
+byte[] unsafeArchive = BuildUpdateArchive(stagedVersion, "../outside.txt");
+string unsafeHash = Convert.ToHexStringLower(SHA256.HashData(unsafeArchive));
+byte[] unsafeChecksums = Encoding.UTF8.GetBytes($"{unsafeHash}  {archiveName}\n");
+var unsafeRelease = stagedRelease with
+{
+    Archive = stagedRelease.Archive with { Size = unsafeArchive.Length, Digest = "sha256:" + unsafeHash },
+    Checksums = stagedRelease.Checksums with { Size = unsafeChecksums.Length, Digest = "" },
+};
+var unsafeClient = new HttpClient(new StubHttpMessageHandler(request =>
+    new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new ByteArrayContent(
+            request.RequestUri?.AbsolutePath.EndsWith(checksumName, StringComparison.Ordinal) == true
+                ? unsafeChecksums
+                : unsafeArchive),
+    }));
+bool unsafeArchiveRejected = await RejectsInvalidDataAsync(() =>
+    new VoicePromptTray.UpdateInstaller(unsafeClient).PrepareAsync(unsafeRelease));
+Check("updater blocks ZIP path traversal", unsafeArchiveRejected);
+
+Check("checksum parser rejects duplicate package entries",
+    ThrowsInvalidData(() => VoicePromptTray.UpdateInstaller.ReadChecksum(
+        $"{updateHash}  {archiveName}\n{updateHash}  {archiveName}\n",
+        archiveName)));
+
+string cleanupRoot = Path.Combine(dir, "update-cleanup");
+string cleanupCandidate = Path.Combine(cleanupRoot, "VoicePrompt-Update-v9.8.7-test");
+string cleanupUnmarked = Path.Combine(cleanupRoot, "VoicePrompt-Update-v9.8.7-unmarked");
+Directory.CreateDirectory(cleanupCandidate);
+Directory.CreateDirectory(cleanupUnmarked);
+string cleanupMarker = Path.Combine(cleanupCandidate, ".voiceprompt-update-stage");
+File.WriteAllText(cleanupMarker, "1");
+File.SetLastWriteTimeUtc(cleanupMarker, DateTime.UtcNow.AddHours(-1));
+VoicePromptTray.UpdateInstaller.CleanupStagedUpdates(cleanupRoot, TimeSpan.FromMinutes(1));
+Check("updater removes only marked completed staging directories",
+    !Directory.Exists(cleanupCandidate) && Directory.Exists(cleanupUnmarked));
 
 Check("recognition server validates and normalizes safe base URLs",
     VoicePromptTray.RecognitionServer.Validate("http://localhost:8000/", 60) is null &&
@@ -567,6 +690,161 @@ var failedRecognitionProbe = await VoicePromptTray.RecognitionServer.ProbeAsync(
     new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
 Check("recognition server health probe reports failure without throwing",
     !failedRecognitionProbe.Success && failedRecognitionProbe.Message.Contains("503"));
+
+string? localUpdatePackage = Environment.GetEnvironmentVariable("VOICEPROMPT_LOCAL_UPDATE_PACKAGE");
+if (!string.IsNullOrWhiteSpace(localUpdatePackage))
+{
+    Match localName = Regex.Match(
+        Path.GetFileName(localUpdatePackage),
+        "^VoicePrompt-v(?<version>.+)-windows-x64\\.zip$",
+        RegexOptions.CultureInvariant);
+    VoicePromptTray.ReleaseVersion? localVersion = VoicePromptTray.UpdateChecker.ParseReleaseTag(
+        localName.Success ? localName.Groups["version"].Value : null,
+        allowPrerelease: true);
+    string localSums = localName.Success
+        ? Path.Combine(
+            Path.GetDirectoryName(localUpdatePackage)!,
+            $"VoicePrompt-v{localName.Groups["version"].Value}-SHA256SUMS.txt")
+        : "";
+    Check("local release package name, version, and checksum asset are complete",
+        localVersion is not null && File.Exists(localUpdatePackage) && File.Exists(localSums));
+    if (localVersion is not null && File.Exists(localSums))
+    {
+        string expected = VoicePromptTray.UpdateInstaller.ReadChecksum(
+            File.ReadAllText(localSums),
+            Path.GetFileName(localUpdatePackage));
+        using FileStream localStream = File.OpenRead(localUpdatePackage);
+        string actual = Convert.ToHexStringLower(SHA256.HashData(localStream));
+        string localExtract = Path.Combine(dir, "local-update-package");
+        VoicePromptTray.UpdateInstaller.ExtractVerifiedArchive(
+            localUpdatePackage,
+            localExtract,
+            localVersion);
+        string productVersion = FileVersionInfo.GetVersionInfo(
+            Path.Combine(localExtract, "VoicePromptTray.exe")).ProductVersion ?? "";
+        Check("local release package passes checksum, safe extraction, and executable version gates",
+            actual == expected && productVersion == localVersion.Display);
+    }
+}
+
+if (Environment.GetEnvironmentVariable("VOICEPROMPT_REAL_UPDATE_SMOKE") == "1")
+{
+    var realChecker = new VoicePromptTray.UpdateChecker();
+    VoicePromptTray.UpdateResult realRelease = await realChecker.CheckAsync("1.20.1");
+    Check("real GitHub update metadata exposes the verified installer assets",
+        realRelease.State == VoicePromptTray.UpdateState.Available &&
+        realRelease.Package is not null);
+    if (realRelease.Package is not null)
+    {
+        VoicePromptTray.StagedUpdate realStage = await new VoicePromptTray.UpdateInstaller()
+            .PrepareAsync(realRelease.Package);
+        Check("real GitHub release downloads, verifies, and extracts",
+            File.Exists(realStage.InstallerPath) &&
+            File.ReadAllText(Path.Combine(Path.GetDirectoryName(realStage.InstallerPath)!, "version.txt")).Trim() ==
+                realRelease.LatestVersion?.Display);
+        if (Environment.GetEnvironmentVariable("VOICEPROMPT_REAL_UPDATE_INSTALL") == "1")
+        {
+            using Process installer = VoicePromptTray.UpdateInstaller.Launch(realStage);
+            await installer.WaitForExitAsync();
+            string installedVersion = File.ReadAllText(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs",
+                "VoicePrompt",
+                "version.txt")).Trim();
+            Check("real verified installer completes and preserves the current-user install",
+                installer.ExitCode == 0 && installedVersion == realRelease.LatestVersion?.Display);
+        }
+        Directory.Delete(realStage.Directory, recursive: true);
+    }
+}
+
+static string BuildReleaseJson(
+    string version,
+    bool draft = false,
+    bool prerelease = false,
+    long archiveSize = 1024,
+    long checksumSize = 128)
+{
+    string tag = "v" + version;
+    string archive = $"VoicePrompt-{tag}-windows-x64.zip";
+    string checksums = $"VoicePrompt-{tag}-SHA256SUMS.txt";
+    string root = $"https://github.com/seNkoKG/VoicePrompt/releases/download/{tag}/";
+    return JsonSerializer.Serialize(new
+    {
+        tag_name = tag,
+        draft,
+        prerelease,
+        assets = new object[]
+        {
+            new
+            {
+                name = archive,
+                state = "uploaded",
+                size = archiveSize,
+                digest = "sha256:" + new string('a', 64),
+                browser_download_url = root + archive,
+            },
+            new
+            {
+                name = checksums,
+                state = "uploaded",
+                size = checksumSize,
+                digest = "sha256:" + new string('b', 64),
+                browser_download_url = root + checksums,
+            },
+        },
+    });
+}
+
+static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
+{
+    string[] files =
+    {
+        "VoicePromptTray.exe", "install.ps1", "version.txt", "requirements.txt", "run_daemon.pyw",
+        "scripts/apply_patches.ps1", "scripts/shortcut_manager.ps1", "scripts/runtime_meter.py",
+        "scripts/ai_rewriter.py", "scripts/transcript_history.py", "scripts/text_corrections.py",
+        "scripts/slang_retry.py", "scripts/decoding_options.py", "scripts/buffered_transcription.py",
+        "scripts/output_mode.py", "scripts/app_profiles.py", "scripts/text_snippets.py",
+        "scripts/voice_commands.py",
+    };
+    using var buffer = new MemoryStream();
+    using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+    {
+        foreach (string file in files.Append(extraEntry).Where(value => value is not null)!)
+        {
+            ZipArchiveEntry entry = archive.CreateEntry(file!, CompressionLevel.Fastest);
+            using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+            writer.Write(file == "version.txt" ? version : "test payload");
+        }
+    }
+    return buffer.ToArray();
+}
+
+static async Task<bool> RejectsInvalidDataAsync(Func<Task> action)
+{
+    try
+    {
+        await action();
+        return false;
+    }
+    catch (InvalidDataException)
+    {
+        return true;
+    }
+}
+
+static bool ThrowsInvalidData(Action action)
+{
+    try
+    {
+        action();
+        return false;
+    }
+    catch (InvalidDataException)
+    {
+        return true;
+    }
+}
 
 Directory.Delete(dir, true);
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURES");
