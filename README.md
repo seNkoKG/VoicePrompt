@@ -47,7 +47,7 @@ Measured on an RTX 5080:
     v
 +----------------------+   +----------------------+   +----------------------+
 | Hotkey listener      |-->| Windows audio        |-->| faster-whisper       |
-| pynput global hook   |   | 16 kHz mono          |   | large-v3 CUDA fp16   |
+| Win32 native hotkey  |   | 16 kHz mono          |   | large-v3 CUDA fp16   |
 | selected key consumed|   | live level meter     |   | language selection   |
 +----------------------+   +----------------------+   +----------+-----------+
                                                                  |
@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.21.1-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.22.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -110,7 +110,7 @@ A responsive dark Windows tray app (C# / .NET 10 WinForms) that manages the whol
 - **Native dark window** — the Windows caption, frame, controls, and scroll surfaces match the app instead of flashing light chrome around it.
 - **Focused workspaces** — Dictation, Audio, Engine & AI, Recovery, and System pages keep everyday setup simple while leaving expert controls available.
 - **System tray** — runs minimized next to the clock; double-click the icon (or the desktop **VoicePrompt** shortcut) to open settings. The tray menu can instantly copy the latest saved transcript, start/stop/restart the daemon, and quit the app.
-- **Recording overlay** — a small microphone and real audio waveform appears above the taskbar while the hotkey is held. It follows the active screen and never takes keyboard focus.
+- **Recording overlay** — choose a compact live waveform, equalizer bars, or a reactive microphone orb. The clean graphite popup follows the active screen, appears immediately while the hotkey is held, and never takes keyboard focus.
 - **Live input test** — the Audio page shows quiet, good-signal, and very-loud microphone levels while the hotkey is held by reusing the overlay stream, with no second capture or extra GPU work.
 - **Hotkey recorder** — click the box, press **one key (F1, Space, 7…)** or a **combo (Ctrl+Shift+F1, Alt+Space…)**, Enter confirms, Esc cancels. Supports `hold` (press & hold to talk) or `toggle` modes.
 - **Flexible output** — paste directly into the focused app by default, or use **Copy only** when a target blocks synthetic paste and place the completed transcript manually.
@@ -222,13 +222,13 @@ VoicePrompt's tested Windows integration layer is applied **after every reinstal
 5. **`engine/local.py`** — passes prompt, temperature, hotwords, and VAD controls to local faster-whisper. These settings otherwise have no effect in the upstream local engine.
 6. **`engine/local.py` / `decoding_options.py`** — keeps beam-5 accuracy while bounding every language pass to one decode, with independent 30-second windows, repetition penalty, and native no-repeat protection.
 7. **`daemon.py` / `meter.py`** — publishes recording state immediately on hotkey activation, then streams microphone levels and waveform samples through named shared memory without a second audio capture or disk polling.
-8. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f24`, `space`, `enter`, …) and combos, so the UI's recorder can save them.
-9. **`hotkey/listener.py`** — selectively consumes the configured hotkey on Windows, so keys such as F1 do not also trigger browser help or application commands. Other keys and the app's injected transcription remain untouched.
+8. **`config.py`** — hotkey validation accepts single keys (letters, digits, `f1`–`f11`, `f13`–`f24`, `space`, `enter`, …) and Ctrl/Alt/Shift combos while rejecting Windows-reserved bindings.
+9. **`hotkey/listener.py` / `windows_hotkey.py`** — registers the shortcut through Windows' native global-hotkey message queue, so keys such as F1 do not also trigger browser help or application commands. Hold release is read from physical key state, key repeat is suppressed by the OS, callback failures are isolated, and the low-level hook that could silently stop after idle is not used on Windows.
 10. **`typer.py` / local text tools** — applies approved corrections, stores bounded local recovery, and optionally cleans completed text before the clipboard is opened, with a strict deadline and raw-text fallback.
 11. **`daemon.py`** — retains every held-recording audio chunk instead of silently discarding everything after 90 seconds; VAD segmentation remains bounded without limiting the complete recording.
 12. **`daemon.py` / `buffered_transcription.py`** — serially pre-transcribes complete long-recording speech blocks without typing partial text, preserves block order, and retries the retained full audio after any empty, failed, or incomplete background result.
 13. **`typer.py` / `output_mode.py`** — routes the final transcript exactly once to automatic paste or verified clipboard-only delivery, without emitting paste keystrokes in Copy-only mode.
-14. **`typer.py` / `voice_commands.py` / `text_snippets.py`** — recognizes only enabled whole-utterance English/Slovenian commands and saved snippets, skips AI and history for them, and marks Undo input so the global hotkey listener ignores VoicePrompt's own shortcut.
+14. **`typer.py` / `voice_commands.py` / `text_snippets.py`** — recognizes only enabled whole-utterance English/Slovenian commands and saved snippets, skips AI and history for them, and routes each result exactly once.
 15. **`typer.py` / `app_profiles.py` / `ai_rewriter.py`** — resolves an optional exact focused-app rule once after transcription, overrides only writing/output behavior, and inherits global settings after any missing, inaccessible, unmatched, or invalid rule.
 16. **`engine/server.py`** — maps the internal Slovenian slang profile to the standard `sl` API code and omits an empty language field so compatible servers can auto-detect safely.
 17. **`audio.py`** — validates a saved input device on every recording and falls back to the current Windows default when that device was unplugged, renamed, or removed.
@@ -251,7 +251,8 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_voice_commands.py` — verifies default-off behavior, exact English/Slovenian recognition, Unicode output, and substring false-positive protection.
 - `tests/test_server_engine.py` — verifies bounded OpenAI-compatible WAV requests, Slovenian/Auto language routing, and empty-result fallback on timeouts or malformed responses.
 - `tests/test_text_snippets.py` — verifies bounded Unicode snippet loading, bilingual exact resolution, malformed-data fallback, and false-positive protection.
-- `tests/test_patch_migrations.ps1` — verifies clean and legacy upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
+- `tests/test_windows_hotkey.py` — verifies shortcut parsing plus native Windows press/release delivery after idle and across repeated activations.
+- `tests/test_patch_migrations.ps1` — verifies clean, legacy, and immediately previous release upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
 - `ui/LayoutCheck` — verifies every settings layout plus cold overlay activation at full opacity.
 - `ui/ConfigManager.Tests` — verifies the comment-preserving config editor plus privacy-safe, validated settings/vocabulary backup round trips (run: `dotnet run --project ui\ConfigManager.Tests`).
 
@@ -263,7 +264,7 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 |---|---|
 | `Library cublas64_12.dll is not found` | CUDA 12 DLLs not on PATH → rerun `install.ps1` so the pinned `nvidia-*cu12` packages are repaired; `run_daemon.pyw` prepends their `bin` dirs automatically |
 | Nothing typed but recording starts | Transcription crashed → read `%USERPROFILE%\.voice-typing\daemon.log`; check `language = ""` (not `"auto"`) and patches applied |
-| Hotkey does nothing in an elevated app or game | Windows can isolate higher-integrity input hooks → run VoicePrompt at the same privilege level, or choose a binding the app does not reserve |
+| Hotkey cannot be saved or registered | F12 and Windows-logo combinations are reserved by Windows; choose another key or use Ctrl, Alt, and Shift modifiers |
 | Bad or slangy Slovenian accuracy | Leave language on **Auto** for English/Slovenian routing; Slovenian recovery adds colloquial vocabulary automatically. Keep `large-v3` for best accuracy and add only personal names or exact terms to Prompt/Hotwords |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (and make sure the Quadcast is the default input) |
 | AI test fails or times out | Confirm the endpoint and model, start the provider, then click **Test** again; live dictation will paste the original transcript whenever cleanup is unavailable |

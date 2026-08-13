@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.22.0] - 2026-08-13
+
+### Added
+
+- Add three selectable recording indicators—Wave, Bars, and Orb—with an accessible visual picker in System settings.
+- Add a native Windows global-hotkey backend with dedicated press/release stress coverage.
+
+### Changed
+
+- Make the recording indicator narrower, cleaner, fully graphite, and more responsive to real microphone energy; refresh the product screenshots and website copy to match.
+- Reconnect the overlay and live input meter automatically after daemon restarts or transient shared-memory failures.
+- Bound local configuration, correction, snippet, profile, and transcript-history reads, and write mutable settings atomically to reduce corruption risk.
+
+### Fixed
+
+- Replace the Windows low-level keyboard hook with the OS-managed `RegisterHotKey` message queue so the configured shortcut cannot silently disappear after idle.
+- Suppress held-key repeat through Windows and detect physical release directly, keeping F1 isolated from the focused application with near-instant start and stop callbacks.
+- Preserve the hotkey listener after activation callback failures and surface registration conflicts instead of leaving dictation silently inactive.
+- Reject Windows-reserved F12 and Windows-logo bindings in the recorder, imported settings, and runtime validation; migrate an older unsupported binding safely to F1 with an in-app notice.
+
 ## [1.21.1] - 2026-08-13
 
 ### Fixed

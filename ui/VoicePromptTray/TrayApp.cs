@@ -22,7 +22,8 @@ internal sealed class TrayApp : IDisposable
         _daemon = new DaemonManager(_paths);
         _historyStore = new TranscriptHistoryStore(_paths.HistoryPath, _paths.HistorySettingsPath);
         _form = new MainForm(_daemon, _paths);
-        _overlay = new RecordingOverlay();
+        _overlay = new RecordingOverlay(_form.OverlayStyle);
+        _form.OverlayStyleChanged += _overlay.SelectStyle;
         _form.DaemonRestarted += () => Balloon("Settings applied", "Daemon restarted — press your hotkey to talk.");
         _form.UpdateInstallerLaunched += Shutdown;
 

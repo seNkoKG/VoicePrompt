@@ -263,6 +263,22 @@ if (form.HasUnsavedChanges)
     failures.AppendLine("BEHAVIOR opening and navigating settings marked the form as modified");
 }
 
+var overlayStylePicker = (OverlayStylePicker)typeof(MainForm)
+    .GetField("_overlayStylePicker", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+string originalOverlayStyle = overlayStylePicker.SelectedValue;
+overlayStylePicker.SelectValue(originalOverlayStyle == RecordingOverlay.BarsStyle
+    ? RecordingOverlay.WaveStyle
+    : RecordingOverlay.BarsStyle);
+Application.DoEvents();
+if (form.HasUnsavedChanges || form.OverlayStyle == originalOverlayStyle)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR overlay style did not apply instantly as a local preference");
+}
+overlayStylePicker.SelectValue(originalOverlayStyle);
+Application.DoEvents();
+
 var thresholdField = typeof(MainForm).GetField("_threshold", BindingFlags.Instance | BindingFlags.NonPublic)!;
 var threshold = (NumericUpDown)thresholdField.GetValue(form)!;
 decimal originalThreshold = threshold.Value;
@@ -551,6 +567,7 @@ typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlag
 Application.DoEvents();
 
 string overlayPath = Path.Combine(Path.GetTempPath(), "voiceprompt_overlay.png");
+var overlayPaths = new Dictionary<string, string>();
 long overlayActivationMs;
 using (var overlay = new RecordingOverlay
 {
@@ -587,6 +604,20 @@ using (var overlay = new RecordingOverlay
         failures.AppendLine($"LAYOUT overlay is too wide at {overlay.Width}px");
     }
 
+    using (var map = MemoryMappedFile.CreateOrOpen(AudioMeterReader.MapName, AudioMeterReader.MapSize))
+    using (var view = map.CreateViewAccessor())
+    {
+        int sequence = (view.ReadInt32(0) & 0x7FFFFFFE) + 2;
+        view.Write(0, sequence | 1);
+    }
+    updateMeter.Invoke(overlay, Array.Empty<object>());
+    Application.DoEvents();
+    if (!overlay.Visible)
+    {
+        behaviorFailures++;
+        failures.AppendLine("BEHAVIOR transient meter write hid the active recording overlay");
+    }
+
     var waveform = (float[])typeof(RecordingOverlay)
         .GetField("_waveform", BindingFlags.Instance | BindingFlags.NonPublic)!
         .GetValue(overlay)!;
@@ -596,11 +627,25 @@ using (var overlay = new RecordingOverlay
         waveform[i] = MathF.Sin(i * 1.18f) * (0.18f + 0.68f * envelope);
     }
 
-    overlay.Show();
-    Application.DoEvents();
-    using var bitmap = new Bitmap(overlay.Width, overlay.Height);
-    overlay.DrawToBitmap(bitmap, new Rectangle(Point.Empty, overlay.Size));
-    bitmap.Save(overlayPath);
+    foreach (string style in RecordingOverlay.SupportedStyles)
+    {
+        overlay.SelectStyle(style);
+        overlay.Location = new Point(-30000, -30000);
+        overlay.Show();
+        Application.DoEvents();
+        if (overlay.Width > 190 || overlay.Width < 40 || overlay.Height is < 40 or > 56)
+        {
+            layoutFailures++;
+            failures.AppendLine($"LAYOUT {style} overlay has invalid compact size {overlay.Width}x{overlay.Height}");
+        }
+        string stylePath = Path.Combine(Path.GetTempPath(), $"voiceprompt_overlay_{style}.png");
+        using var bitmap = new Bitmap(overlay.Width, overlay.Height);
+        overlay.DrawToBitmap(bitmap, new Rectangle(Point.Empty, overlay.Size));
+        bitmap.Save(stylePath);
+        overlayPaths[style] = stylePath;
+        if (style == RecordingOverlay.WaveStyle)
+            bitmap.Save(overlayPath);
+    }
 }
 
 form.ShowPageForDiagnostics("audio");
@@ -657,6 +702,14 @@ using (var recorder = new HotkeyRecorder { Binding = "f1" })
         behaviorFailures++;
         failures.AppendLine($"BEHAVIOR hotkey Enter did not commit F2: {recorder.Binding}");
     }
+
+    beginCapture.Invoke(recorder, Array.Empty<object>());
+    keyDown.Invoke(recorder, new object[] { new KeyEventArgs(Keys.F12) });
+    if (recorder.Binding != "f2")
+    {
+        behaviorFailures++;
+        failures.AppendLine("BEHAVIOR hotkey recorder accepted Windows-reserved F12");
+    }
 }
 
 Console.Write(failures.ToString());
@@ -665,6 +718,8 @@ Console.WriteLine($"OVERLAY_ACTIVATION_MS={overlayActivationMs}");
 foreach (string page in pages)
     Console.WriteLine($"SCREENSHOT {page}={Path.Combine(Path.GetTempPath(), screenshotNames[page])}");
 Console.WriteLine($"SCREENSHOT overlay={overlayPath}");
+foreach ((string style, string path) in overlayPaths)
+    Console.WriteLine($"SCREENSHOT overlay-{style}={path}");
 Console.WriteLine($"SCREENSHOT advanced-tools={advancedToolsPath}");
 Console.WriteLine($"SCREENSHOT application-updates={applicationUpdatesPath}");
 Console.WriteLine($"SCREENSHOT data-portability={dataPortabilityPath}");

@@ -161,6 +161,9 @@ string correctionsPath = Path.Combine(dir, "local", "corrections.json");
 var dictionary = new VoicePromptTray.PersonalDictionaryStore(correctionsPath);
 dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
 Check("personal corrections round trip", dictionary.LoadText().Contains("žabar => Ljubljančan"));
+File.WriteAllText(correctionsPath, new string('x', 128 * 1024 + 1));
+Check("oversized personal corrections fail closed", dictionary.LoadText() == "");
+dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
 
 string snippetsPath = Path.Combine(dir, "local", "snippets.json");
 var snippets = new VoicePromptTray.TextSnippetStore(snippetsPath);
@@ -168,6 +171,9 @@ var parsedSnippets = VoicePromptTray.TextSnippetStore.Parse("signature => Lep po
 Check("text snippets parse escaped lines", parsedSnippets.Count == 2 && parsedSnippets[0].Content == "Lep pozdrav,\nŽan");
 snippets.SaveText("signature => Lep pozdrav,\\nŽan\nreply => Thank you!");
 Check("text snippets round trip", snippets.LoadText().Contains("Lep pozdrav,\\nŽan") && snippets.LoadText().Contains("reply => Thank you!"));
+File.WriteAllText(snippetsPath, new string('x', 512 * 1024 + 1));
+Check("oversized text snippets fail closed", snippets.LoadText() == "");
+snippets.SaveText("signature => Lep pozdrav,\\nŽan\nreply => Thank you!");
 try
 {
     VoicePromptTray.TextSnippetStore.Parse("reply => One\nREPLY => Two");
@@ -189,6 +195,9 @@ Check("application profiles parse exact writing and output modes",
 appProfiles.SaveText("Code.exe => prompt, paste\nBeležke.exe => off, clipboard");
 Check("application profiles round trip Unicode executable names",
     appProfiles.LoadText().Contains("Beležke.exe => off, clipboard"));
+File.WriteAllText(appProfilesPath, new string('x', 128 * 1024 + 1));
+Check("oversized application profiles fail closed", appProfiles.LoadText() == "");
+appProfiles.SaveText("Code.exe => prompt, paste\nBeležke.exe => off, clipboard");
 Check("application profiles identify provider requirement",
     VoicePromptTray.AppProfileStore.UsesAi("Code.exe => grammar, inherit") &&
     !VoicePromptTray.AppProfileStore.UsesAi("Notepad.exe => verbatim, paste"));
@@ -272,7 +281,15 @@ try
 }
 catch (InvalidDataException)
 {
-    Check("settings backup rejects invalid hotkeys", true);
+Check("settings backup rejects invalid hotkeys", true);
+Check("native Windows hotkeys reject reserved bindings",
+    VoicePromptTray.HotkeyBinding.Validate("f12") != null &&
+    VoicePromptTray.HotkeyBinding.Validate("cmd+l") != null &&
+    VoicePromptTray.HotkeyBinding.Validate("ctrl++f1") != null &&
+    VoicePromptTray.HotkeyBinding.Validate("+f1") != null &&
+    VoicePromptTray.HotkeyBinding.Validate("f1+") != null &&
+    VoicePromptTray.HotkeyBinding.Validate("ctrl+shift+f1") is null &&
+    VoicePromptTray.HotkeyBinding.Validate("f24") is null);
 }
 try
 {
@@ -325,6 +342,8 @@ Check("verbatim history uses delivered text as its source",
 history.Delete("empty");
 history.Delete("one");
 Check("history deletes selected transcript", history.Load().Count == 0 && history.Latest() is null);
+File.WriteAllText(historyPath, new string('x', 2 * 1024 * 1024 + 1));
+Check("oversized transcript history fails closed", history.Load().Count == 0);
 
 var languageProfile = VoicePromptTray.LanguageProfileStore.Create(
     "es",
@@ -805,7 +824,7 @@ static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
         "scripts/ai_rewriter.py", "scripts/transcript_history.py", "scripts/text_corrections.py",
         "scripts/slang_retry.py", "scripts/decoding_options.py", "scripts/buffered_transcription.py",
         "scripts/output_mode.py", "scripts/app_profiles.py", "scripts/text_snippets.py",
-        "scripts/voice_commands.py",
+        "scripts/voice_commands.py", "scripts/windows_hotkey.py",
     };
     using var buffer = new MemoryStream();
     using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))

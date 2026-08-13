@@ -14,6 +14,7 @@ internal sealed class MainForm : Form
     private const string IntelligencePage = "intelligence";
     private const string HistoryPage = "history";
     private const string AdvancedPage = "advanced";
+    private const int PreferencesMaxBytes = 64 * 1024;
 
     private readonly DaemonManager _daemon;
     private readonly ConfigManager _config;
@@ -126,12 +127,14 @@ internal sealed class MainForm : Form
     private ChoiceStrip _updateChannelChoice = null!;
     private ActionButton _updateButton = null!;
     private ThemePicker _themePicker = null!;
+    private OverlayStylePicker _overlayStylePicker = null!;
     private string _updateReleaseUrl = "";
     private UpdateResult? _availableUpdate;
 
     private bool _loading = true;
     private bool _dirty;
     private bool _busy;
+    private bool _hotkeyWasMigrated;
     private string _selectedPage = OverviewPage;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -143,8 +146,12 @@ internal sealed class MainForm : Form
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal bool HasUnsavedChanges => _dirty;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal string OverlayStyle => _overlayStylePicker.SelectedValue;
+
     public event Action? DaemonRestarted;
     public event Action? UpdateInstallerLaunched;
+    public event Action<string>? OverlayStyleChanged;
 
     public MainForm(DaemonManager daemon, AppPaths paths)
     {
@@ -190,6 +197,8 @@ internal sealed class MainForm : Form
         _ = RefreshMicrophonesAsync();
         UpdateStatus(_daemon.Refresh(true));
         UpdateOverview();
+        if (_hotkeyWasMigrated)
+            ShowFooter("A reserved or invalid shortcut was reset to F1. Review it in Dictation settings.", Theme.Warn);
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -1098,8 +1107,18 @@ internal sealed class MainForm : Form
         _themePicker = new ThemePicker { Dock = DockStyle.Fill };
         _themePicker.SelectValue(Theme.Current.Id);
         _themePicker.SelectedChanged += (_, _) => ApplySelectedTheme();
-        var appearance = new SectionBuilder("Appearance", "Three restrained dark palettes, designed to stay readable for long sessions.");
+        _overlayStylePicker = new OverlayStylePicker { Dock = DockStyle.Fill };
+        _overlayStylePicker.SelectedChanged += (_, _) =>
+        {
+            if (_loading)
+                return;
+            SavePreferences();
+            OverlayStyleChanged?.Invoke(_overlayStylePicker.SelectedValue);
+            ShowFooter($"{char.ToUpperInvariant(_overlayStylePicker.SelectedValue[0]) + _overlayStylePicker.SelectedValue[1..]} overlay applied", Theme.Ok);
+        };
+        var appearance = new SectionBuilder("Appearance", "A focused dark interface with instant local customization.");
         appearance.Add("Interface theme", "Graphite is the neutral default. Changes apply instantly and stay on this computer.", _themePicker, 96);
+        appearance.Add("Recording overlay", "Choose a compact waveform, equalizer bars, or a minimal reactive microphone orb.", _overlayStylePicker, 104);
         AddPageItem(body, appearance.Build());
 
         var performance = new SectionBuilder("Recent performance", "Timing metadata from the local runtime log. No audio or transcript text is read.");
@@ -1765,10 +1784,14 @@ internal sealed class MainForm : Form
         }
 
         bool runtimeReady = _paths.Installed;
-        bool hotkeyReady = !string.IsNullOrWhiteSpace(_hotkeyRecorder.Binding);
+        string? hotkeyError = HotkeyBinding.Validate(_hotkeyRecorder.Binding);
+        bool hotkeyReady = hotkeyError is null;
         bool audioReady = _microphoneCombo.Items.Count > 0;
         UpdateChecklist(_runtimeCheck, runtimeReady, runtimeReady ? "Installed and available" : "Installer repair required");
-        UpdateChecklist(_hotkeyCheck, hotkeyReady, hotkeyReady ? _hotkeyRecorder.Binding.ToUpperInvariant() + " is configured" : "Choose a global shortcut");
+        UpdateChecklist(
+            _hotkeyCheck,
+            hotkeyReady,
+            hotkeyReady ? _hotkeyRecorder.Binding.ToUpperInvariant() + " is configured" : hotkeyError!);
         UpdateChecklist(_audioCheck, audioReady, audioReady ? _microphoneSummary.Text : "No input devices found");
     }
 
@@ -1787,7 +1810,15 @@ internal sealed class MainForm : Form
     private void LoadConfiguration()
     {
         _loading = true;
-        _hotkeyRecorder.Binding = _config.GetString("hotkey", "binding") ?? "f1";
+        string configuredHotkey = _config.GetString("hotkey", "binding") ?? "f1";
+        if (HotkeyBinding.Validate(configuredHotkey) != null)
+        {
+            configuredHotkey = "f1";
+            _config.Set("hotkey", "binding", configuredHotkey);
+            _config.Save();
+            _hotkeyWasMigrated = true;
+        }
+        _hotkeyRecorder.Binding = configuredHotkey;
         _activationChoice.SelectValue(_config.GetString("hotkey", "mode") ?? "hold");
         UpdateActivationHint();
         _outputChoice.SelectValue(string.Equals(
@@ -2097,11 +2128,12 @@ internal sealed class MainForm : Form
             return;
 
         string hotkey = _hotkeyRecorder.Binding.Trim();
-        if (hotkey.Length == 0)
+        string? hotkeyError = HotkeyBinding.Validate(hotkey);
+        if (hotkeyError != null)
         {
             ShowPage(DictationPage);
             _hotkeyRecorder.Focus();
-            ShowFooter("Choose a global hotkey before saving.", Theme.Err);
+            ShowFooter(hotkeyError, Theme.Err);
             return;
         }
 
@@ -2367,7 +2399,7 @@ internal sealed class MainForm : Form
             ? $"Running · PID {info.Pid} · {info.Hotkey} ({info.Mode})"
             : info.State.ToString();
         _diagnosticRuntime.Text = _paths.Installed ? "Installed · local faster-whisper" : "Missing · run the installer";
-        _diagnosticConfig.Text = File.Exists(_paths.ConfigPath) ? "Loaded · " + _paths.ConfigPath : "Not found";
+        _diagnosticConfig.Text = File.Exists(_paths.ConfigPath) ? "Loaded · config.toml" : "Not found";
         string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? Application.ProductVersion;
         _diagnosticVersion.Text = $"VoicePrompt {version} · Windows x64";
         UpdateOverview();
@@ -2776,9 +2808,10 @@ internal sealed class MainForm : Form
     {
         try
         {
-            if (!File.Exists(path))
+            string? json = ReadBoundedPreferences(path);
+            if (json is null)
                 return "graphite";
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            using JsonDocument document = JsonDocument.Parse(json);
             return document.RootElement.TryGetProperty("theme", out JsonElement theme)
                 ? Theme.Find(theme.GetString()).Id
                 : "graphite";
@@ -2789,14 +2822,22 @@ internal sealed class MainForm : Form
         }
     }
 
+    private static string? ReadBoundedPreferences(string path)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length > PreferencesMaxBytes)
+            return null;
+        return File.ReadAllText(path, Encoding.UTF8);
+    }
+
     private void LoadPreferences()
     {
         try
         {
             Directory.CreateDirectory(_paths.AppDataDir);
-            if (!File.Exists(PreferencesPath))
+            string? json = ReadBoundedPreferences(PreferencesPath);
+            if (json is null)
                 return;
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(PreferencesPath));
+            using JsonDocument document = JsonDocument.Parse(json);
             JsonElement root = document.RootElement;
             if (root.TryGetProperty("bounds", out JsonElement bounds) &&
                 bounds.TryGetProperty("x", out JsonElement x) &&
@@ -2813,6 +2854,8 @@ internal sealed class MainForm : Form
                 _selectedPage = page.GetString() ?? OverviewPage;
             if (root.TryGetProperty("updateChannel", out JsonElement updateChannel))
                 _updateChannelChoice.SelectValue(updateChannel.GetString() == "preview" ? "preview" : "stable");
+            if (root.TryGetProperty("overlayStyle", out JsonElement overlayStyle))
+                _overlayStylePicker.SelectValue(overlayStyle.GetString());
             _themePicker.SelectValue(Theme.Current.Id);
         }
         catch
@@ -2822,6 +2865,7 @@ internal sealed class MainForm : Form
 
     private void SavePreferences()
     {
+        string temporaryPath = PreferencesPath + ".tmp";
         try
         {
             Directory.CreateDirectory(_paths.AppDataDir);
@@ -2831,11 +2875,20 @@ internal sealed class MainForm : Form
                 page = _selectedPage,
                 updateChannel = _updateChannelChoice.SelectedValue,
                 theme = Theme.Current.Id,
+                overlayStyle = _overlayStylePicker.SelectedValue,
             });
-            File.WriteAllText(PreferencesPath, json);
+            File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
+            File.Move(temporaryPath, PreferencesPath, true);
         }
         catch
         {
+            try
+            {
+                File.Delete(temporaryPath);
+            }
+            catch
+            {
+            }
         }
     }
 

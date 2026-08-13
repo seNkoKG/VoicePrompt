@@ -25,6 +25,8 @@ internal sealed record DeviceScanResult(IReadOnlyList<string> Devices, string Er
 
 internal sealed class DaemonManager
 {
+    private const int MaximumPidBytes = 64;
+    private const int MaximumStateBytes = 64 * 1024;
     private readonly AppPaths _paths;
     private readonly object _lock = new();
     private DaemonInfo _last = new();
@@ -59,7 +61,7 @@ internal sealed class DaemonManager
 
         try
         {
-            if (!int.TryParse(File.ReadAllText(_paths.PidPath).Trim(), out int pid))
+            if (!int.TryParse(ReadBoundedText(_paths.PidPath, MaximumPidBytes).Trim(), out int pid))
                 return new DaemonInfo { State = DaemonState.Stopped };
 
             using var process = Process.GetProcessById(pid);
@@ -69,7 +71,7 @@ internal sealed class DaemonManager
             var info = new DaemonInfo { State = DaemonState.Running, Pid = pid };
             if (File.Exists(_paths.StatePath))
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(_paths.StatePath));
+                using var doc = JsonDocument.Parse(ReadBoundedText(_paths.StatePath, MaximumStateBytes));
                 var root = doc.RootElement;
                 info = info with
                 {
@@ -88,6 +90,13 @@ internal sealed class DaemonManager
         {
             return new DaemonInfo();
         }
+    }
+
+    private static string ReadBoundedText(string path, int maximumBytes)
+    {
+        if (new FileInfo(path).Length > maximumBytes)
+            throw new InvalidDataException("VoicePrompt runtime state is unexpectedly large.");
+        return File.ReadAllText(path, Encoding.UTF8);
     }
 
     public void Start()

@@ -1,4 +1,4 @@
-# Verifies the Windows runtime patch on both clean upstream and v1.1.2 upgrade layouts.
+# Verifies clean upstream plus legacy and immediately previous release upgrades.
 [CmdletBinding()]
 param(
     [string]$Python = "python.exe"
@@ -42,7 +42,10 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
-    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands
+    $windowsHotkey = Join-Path $Module "windows_hotkey.py"
+    $listener = Join-Path $Module "hotkey\listener.py"
+    $config = Join-Path $Module "config.py"
+    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon $listener (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands $windowsHotkey
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -52,6 +55,34 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         -not $cliSource.Contains('force_signal = signal.SIGTERM if sys.platform == "win32" else signal.SIGKILL') -or
         $cliSource.Contains("os.kill(pid, signal.SIGKILL)")) {
         throw "$Name does not stop and classify Windows runtime processes safely."
+    }
+
+    $listenerSource = [System.IO.File]::ReadAllText($listener)
+    $windowsHotkeySource = [System.IO.File]::ReadAllText($windowsHotkey)
+    $configSource = [System.IO.File]::ReadAllText($config)
+    if ([regex]::Matches($listenerSource, "from \.\.windows_hotkey import WindowsHotkeyBackend").Count -ne 1 -or
+        [regex]::Matches($listenerSource, "self\._win32_backend = WindowsHotkeyBackend").Count -ne 1 -or
+        -not $listenerSource.Contains('if sys.platform == "win32":') -or
+        $listenerSource.Contains("win32_event_filter") -or
+        $listenerSource.Contains("suppressing_target") -or
+        [regex]::Matches($listenerSource, "def _handle_native_release\(self\)").Count -ne 1 -or
+        [regex]::Matches($listenerSource, "self\._handle_native_release,").Count -ne 1 -or
+        -not $listenerSource.Contains("self._key_released = True")) {
+        throw "$Name does not select the canonical native Windows hotkey backend."
+    }
+    if (-not $windowsHotkeySource.Contains("RegisterHotKey") -or
+        -not $windowsHotkeySource.Contains("MOD_NOREPEAT") -or
+        -not $windowsHotkeySource.Contains("GetAsyncKeyState") -or
+        -not $windowsHotkeySource.Contains("Hotkey %s callback failed; listener is still active")) {
+        throw "$Name is missing reliable native Windows hotkey lifecycle handling."
+    }
+    if ([regex]::Matches($configSource, "_HOTKEY_NAMED_KEYS = frozenset").Count -ne 1 -or
+        [regex]::Matches($configSource, "_HOTKEY_MODIFIERS =").Count -ne 1 -or
+        -not $configSource.Contains('key.isascii()') -or
+        -not $configSource.Contains('len(set(modifiers)) != len(modifiers)') -or
+        $configSource.Contains('"cmd", "super", "meta"') -or
+        $configSource.Contains('1[0-9]|2[0-4]')) {
+        throw "$Name does not have one canonical native Windows hotkey contract."
     }
 
     $source = [System.IO.File]::ReadAllText($localEngine)
@@ -128,6 +159,11 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if (-not (Test-Path -LiteralPath $history) -or -not (Test-Path -LiteralPath $corrections)) {
         throw "$Name is missing a local text pipeline module."
+    }
+    if (-not ([System.IO.File]::ReadAllText($history)).Contains("_MAX_HISTORY_BYTES") -or
+        -not ([System.IO.File]::ReadAllText($corrections)).Contains("_MAX_FILE_BYTES") -or
+        -not ([System.IO.File]::ReadAllText($textSnippets)).Contains("_MAX_FILE_BYTES")) {
+        throw "$Name can load an unbounded local text file in the dictation path."
     }
     if (-not (Test-Path -LiteralPath $outputMode) -or
         [regex]::Matches($typerSource, "deliver_text\(text, _copy_text_impl, _type_text_impl, mode=output_override\)").Count -ne 1 -or
@@ -211,9 +247,13 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
 $cleanModule = New-UpstreamRuntime "clean"
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-first"
 $cleanFirstHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash
+$cleanListenerHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "hotkey\listener.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-second"
 if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash -ne $cleanFirstHash) {
     throw "Clean install patching is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "hotkey\listener.py") -Algorithm SHA256).Hash -ne $cleanListenerHash) {
+    throw "Clean hotkey patching is not byte-for-byte idempotent."
 }
 Assert-CurrentRuntime $cleanModule "clean install"
 
@@ -233,10 +273,32 @@ $upgradeModule = New-UpstreamRuntime "upgrade"
 Invoke-RuntimePatch $oldPatch $upgradeModule "v1.1.2"
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-first"
 $upgradeFirstHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash
+$upgradeListenerHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "hotkey\listener.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-second"
 if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash -ne $upgradeFirstHash) {
     throw "Upgrade patching is not byte-for-byte idempotent."
 }
+if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "hotkey\listener.py") -Algorithm SHA256).Hash -ne $upgradeListenerHash) {
+    throw "Upgrade hotkey patching is not byte-for-byte idempotent."
+}
 Assert-CurrentRuntime $upgradeModule "v1.1.2 upgrade"
+
+$previousArchive = Join-Path $testRoot "v1.21.1-fixture.zip"
+$previousRoot = Join-Path $testRoot "v1.21.1"
+& git -C $root archive --format=zip "--output=$previousArchive" v1.21.1 scripts run_daemon.pyw
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not read the v1.21.1 upgrade fixture from git history."
+}
+Expand-Archive -LiteralPath $previousArchive -DestinationPath $previousRoot
+$previousPatch = Join-Path $previousRoot "scripts\apply_patches.ps1"
+$previousModule = New-UpstreamRuntime "previous"
+Invoke-RuntimePatch $previousPatch $previousModule "v1.21.1"
+Invoke-RuntimePatch $currentPatch $previousModule "previous-first"
+$previousConfigHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "config.py") -Algorithm SHA256).Hash
+Invoke-RuntimePatch $currentPatch $previousModule "previous-second"
+if ((Get-FileHash -LiteralPath (Join-Path $previousModule "config.py") -Algorithm SHA256).Hash -ne $previousConfigHash) {
+    throw "Previous-release hotkey migration is not byte-for-byte idempotent."
+}
+Assert-CurrentRuntime $previousModule "v1.21.1 upgrade"
 
 Write-Output "PATCH_MIGRATION_GATE=PASS"

@@ -43,6 +43,7 @@ internal sealed class UpdateInstaller
         "scripts/app_profiles.py",
         "scripts/text_snippets.py",
         "scripts/voice_commands.py",
+        "scripts/windows_hotkey.py",
     };
 
     private static readonly Regex ChecksumLine = new(

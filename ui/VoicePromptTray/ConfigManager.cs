@@ -6,6 +6,7 @@ namespace VoicePromptTray;
 
 internal sealed class ConfigManager
 {
+    private const int MaximumConfigBytes = 1024 * 1024;
     private const string LegacyBiasedPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
 
     private const string DefaultToml = """
@@ -79,13 +80,15 @@ internal sealed class ConfigManager
         if (File.Exists(_path))
         {
             Exists = true;
-            raw = File.ReadAllText(_path);
+            if (new FileInfo(_path).Length > MaximumConfigBytes)
+                throw new InvalidDataException("VoicePrompt configuration is unexpectedly large.");
+            raw = File.ReadAllText(_path, Encoding.UTF8);
         }
         else
         {
             Exists = true;
             raw = DefaultToml;
-            File.WriteAllText(_path, raw, new UTF8Encoding(false));
+            WriteAtomic(raw);
         }
 
         if (raw.Contains("\r\n"))
@@ -327,6 +330,26 @@ internal sealed class ConfigManager
     public void Save()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path, string.Join(_eol, _lines) + _eol, new UTF8Encoding(false));
+        WriteAtomic(string.Join(_eol, _lines) + _eol);
+    }
+
+    private void WriteAtomic(string content)
+    {
+        string temporary = _path + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, content, new UTF8Encoding(false));
+            File.Move(temporary, _path, true);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch
+            {
+            }
+        }
     }
 }

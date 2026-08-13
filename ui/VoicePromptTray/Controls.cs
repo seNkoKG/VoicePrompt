@@ -179,6 +179,184 @@ internal sealed class ThemePicker : Control
     }
 }
 
+internal sealed class OverlayStylePicker : Control
+{
+    private static readonly (string Id, string Name)[] Options =
+    [
+        (RecordingOverlay.WaveStyle, "Wave"),
+        (RecordingOverlay.BarsStyle, "Bars"),
+        (RecordingOverlay.OrbStyle, "Orb"),
+    ];
+
+    private int _hovered = -1;
+    private string _selectedValue = RecordingOverlay.WaveStyle;
+
+    public event EventHandler? SelectedChanged;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string SelectedValue => _selectedValue;
+
+    public OverlayStylePicker()
+    {
+        Height = 84;
+        BackColor = Theme.Surface;
+        Cursor = Cursors.Hand;
+        TabStop = true;
+        AccessibleRole = AccessibleRole.List;
+        AccessibleName = "Recording overlay style";
+        SetStyle(
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.Selectable |
+            ControlStyles.UserPaint,
+            true);
+    }
+
+    public void SelectValue(string? value)
+    {
+        string normalized = RecordingOverlay.NormalizeStyle(value);
+        if (_selectedValue == normalized)
+            return;
+        _selectedValue = normalized;
+        Invalidate();
+        SelectedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var labelFont = Theme.Font(8.7f, FontStyle.Bold);
+        int gap = 8;
+        int width = Math.Max(1, (ClientSize.Width - gap * (Options.Length - 1)) / Options.Length);
+        for (int i = 0; i < Options.Length; i++)
+        {
+            (string id, string name) = Options[i];
+            var bounds = new Rectangle(
+                i * (width + gap),
+                1,
+                i == Options.Length - 1 ? ClientSize.Width - i * (width + gap) : width,
+                Height - 2);
+            bool selected = id == _selectedValue;
+            using var path = Theme.RoundedRect(Rectangle.Inflate(bounds, -1, -1), 11);
+            using var fill = new SolidBrush(Theme.SurfaceRaised);
+            using var border = new Pen(selected ? Theme.Accent : i == _hovered ? Theme.BorderStrong : Theme.Border, selected ? 1.8f : 1f);
+            e.Graphics.FillPath(fill, path);
+            e.Graphics.DrawPath(border, path);
+
+            DrawPreview(e.Graphics, id, new Rectangle(bounds.Left + 12, bounds.Top + 11, bounds.Width - 24, 29));
+            TextRenderer.DrawText(
+                e.Graphics,
+                name,
+                labelFont,
+                new Rectangle(bounds.Left + 12, bounds.Top + 49, bounds.Width - 24, 20),
+                Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+        if (Focused && ShowFocusCues)
+            ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -2, -2));
+    }
+
+    private static void DrawPreview(Graphics g, string id, Rectangle bounds)
+    {
+        using var signal = new Pen(Theme.TextSecondary, 1.55f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+        float centerY = bounds.Top + bounds.Height / 2f;
+        if (id == RecordingOverlay.OrbStyle)
+        {
+            var circle = new RectangleF(bounds.Left + 2, bounds.Top + 1, 27, 27);
+            g.DrawEllipse(signal, circle);
+            g.DrawLine(signal, circle.Left + 13.5f, circle.Top + 8, circle.Left + 13.5f, circle.Top + 17);
+            return;
+        }
+
+        g.DrawEllipse(signal, bounds.Left + 2, centerY - 6, 7, 12);
+        float startX = bounds.Left + 18;
+        float endX = bounds.Right - 3;
+        if (id == RecordingOverlay.BarsStyle)
+        {
+            float[] heights = [3, 7, 11, 6, 9, 4, 8, 5, 3];
+            float step = Math.Max(4f, (endX - startX) / (heights.Length - 1));
+            for (int i = 0; i < heights.Length && startX + i * step <= endX; i++)
+                g.DrawLine(signal, startX + i * step, centerY - heights[i] / 2, startX + i * step, centerY + heights[i] / 2);
+            return;
+        }
+
+        PointF[] points =
+        [
+            new(startX, centerY),
+            new(startX + (endX - startX) * .14f, centerY - 3),
+            new(startX + (endX - startX) * .28f, centerY + 6),
+            new(startX + (endX - startX) * .43f, centerY - 8),
+            new(startX + (endX - startX) * .58f, centerY + 7),
+            new(startX + (endX - startX) * .73f, centerY - 4),
+            new(endX, centerY),
+        ];
+        g.DrawLines(signal, points);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        int next = IndexAt(e.Location);
+        if (next != _hovered)
+        {
+            _hovered = next;
+            Invalidate();
+        }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        _hovered = -1;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        Focus();
+        int index = IndexAt(e.Location);
+        if (e.Button == MouseButtons.Left && index >= 0)
+            SelectValue(Options[index].Id);
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        int current = Array.FindIndex(Options, option => option.Id == _selectedValue);
+        int next = e.KeyCode switch
+        {
+            Keys.Left or Keys.Up => Math.Max(0, current - 1),
+            Keys.Right or Keys.Down => Math.Min(Options.Length - 1, current + 1),
+            _ => current,
+        };
+        if (next != current)
+        {
+            SelectValue(Options[next].Id);
+            e.Handled = true;
+        }
+        base.OnKeyDown(e);
+    }
+
+    private int IndexAt(Point location)
+    {
+        int gap = 8;
+        int width = Math.Max(1, (ClientSize.Width - gap * (Options.Length - 1)) / Options.Length);
+        for (int i = 0; i < Options.Length; i++)
+        {
+            int right = i == Options.Length - 1 ? ClientSize.Width : i * (width + gap) + width;
+            if (location.X >= i * (width + gap) && location.X < right)
+                return i;
+        }
+        return -1;
+    }
+}
+
 internal enum ActionButtonStyle
 {
     Primary,

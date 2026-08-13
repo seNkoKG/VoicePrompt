@@ -11,6 +11,7 @@ internal sealed record AppProfileEntry(
 
 internal sealed class AppProfileStore
 {
+    private const int MaximumFileBytes = 128 * 1024;
     private static readonly HashSet<string> WritingModes =
         new(["inherit", "off", "clean", "grammar", "prompt"], StringComparer.Ordinal);
     private static readonly HashSet<string> OutputModes =
@@ -23,7 +24,8 @@ internal sealed class AppProfileStore
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(_path));
+            using JsonDocument document = JsonDocument.Parse(
+                BoundedLocalFile.ReadUtf8(_path, MaximumFileBytes));
             if (!document.RootElement.TryGetProperty("version", out JsonElement version) || version.GetInt32() != 1 ||
                 !document.RootElement.TryGetProperty("items", out JsonElement items))
                 return "";

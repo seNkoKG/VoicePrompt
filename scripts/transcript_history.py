@@ -12,6 +12,14 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 _lock = threading.Lock()
+_MAX_SETTINGS_BYTES = 16 * 1024
+_MAX_HISTORY_BYTES = 2 * 1024 * 1024
+
+
+def _read_bounded(path: Path, maximum_bytes: int) -> str:
+    if path.stat().st_size > maximum_bytes:
+        raise OSError(f"Local VoicePrompt file exceeds {maximum_bytes} bytes")
+    return path.read_text(encoding="utf-8")
 
 
 def _data_dir() -> Path:
@@ -25,7 +33,7 @@ def _data_dir() -> Path:
 def _settings() -> tuple[bool, int]:
     path = _data_dir() / "history-settings.json"
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(_read_bounded(path, _MAX_SETTINGS_BYTES))
         enabled = bool(data.get("enabled", True))
         limit = max(5, min(100, int(data.get("limit", 20))))
         return enabled, limit
@@ -53,7 +61,7 @@ def remember_transcript(original_text: str, output_text: str) -> None:
             items: list[dict[str, object]] = []
             if path.exists():
                 try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    payload = json.loads(_read_bounded(path, _MAX_HISTORY_BYTES))
                     if isinstance(payload, dict) and isinstance(payload.get("items"), list):
                         items = [entry for entry in payload["items"] if isinstance(entry, dict)]
                 except (OSError, json.JSONDecodeError):

@@ -106,6 +106,9 @@ Write-Output "[SYNCED  ] text_snippets.py -- bounded reusable text"
 $voiceCommandsSource = Join-Path $PSScriptRoot "voice_commands.py"
 Copy-Item -LiteralPath $voiceCommandsSource -Destination "$site\voice_commands.py" -Force
 Write-Output "[SYNCED  ] voice_commands.py -- exact opt-in spoken commands"
+$windowsHotkeySource = Join-Path $PSScriptRoot "windows_hotkey.py"
+Copy-Item -LiteralPath $windowsHotkeySource -Destination "$site\windows_hotkey.py" -Force
+Write-Output "[SYNCED  ] windows_hotkey.py -- native Windows global hotkey"
 $runnerSource = Join-Path (Split-Path -Parent $PSScriptRoot) "run_daemon.pyw"
 Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
@@ -745,11 +748,17 @@ Replace-Block `
     $canonicalActivate `
     "daemon.py -- immediate activation feedback"
 
-# 7. config.py - allow single keys (letters, digits, f1-f24, named keys like space/enter)
-Apply-Patch "$site\config.py" @'
+# 7. config.py - support native Windows keys while rejecting OS-reserved bindings
+$config = "$site\config.py"
+Apply-Patch $config @'
 _HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift", "cmd", "super", "meta"}
 '@ @'
-_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift", "cmd", "super", "meta"}
+_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift"}
+'@ "config.py -- native Windows modifiers" '_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift"}'
+Apply-Patch $config @'
+_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift"}
+'@ @'
+_HOTKEY_MODIFIERS = {"alt", "ctrl", "control", "shift"}
 _HOTKEY_NAMED_KEYS = frozenset(
     {
         "space", "tab", "enter", "esc", "backspace", "insert", "delete",
@@ -757,145 +766,199 @@ _HOTKEY_NAMED_KEYS = frozenset(
         "print_screen", "pause", "caps_lock", "scroll_lock", "num_lock", "menu",
     }
 )
-'@ "config.py -- named keys set"
-Apply-Patch "$site\config.py" @'
-    return key.isalpha() and len(key) == 1 and all(mod in _HOTKEY_MODIFIERS for mod in modifiers)
-'@ @'
+'@ "config.py -- named keys set" '_HOTKEY_NAMED_KEYS = frozenset('
+$canonicalHotkeyValidation = @'
+def _is_supported_hotkey_binding(binding: str) -> bool:
+    """Return True for hotkeys supported by the native Windows backend."""
+    parts = [part.strip().lower() for part in binding.split("+")]
+    if not parts or any(not part for part in parts):
+        return False
+    key = parts[-1]
+    modifiers = parts[:-1]
     if not all(mod in _HOTKEY_MODIFIERS for mod in modifiers):
         return False
-    if len(key) == 1 and (key.isalpha() or key.isdigit()):
+    if len(set(modifiers)) != len(modifiers):
+        return False
+    if len(key) == 1 and key.isascii() and (key.isalpha() or key.isdigit()):
         return True
-    if key in _HOTKEY_NAMED_KEYS or re.fullmatch(r"f(?:[1-9]|1[0-9]|2[0-4])", key):
+    if key in _HOTKEY_NAMED_KEYS or re.fullmatch(r"f(?:(?:[1-9]|1[0-1])|(?:1[3-9]|2[0-4]))", key):
         return True
     return False
-'@ "config.py -- single/multi-key validation" 'if key in _HOTKEY_NAMED_KEYS or re.fullmatch'
+'@
+Replace-Block `
+    $config `
+    'def _is_supported_hotkey_binding(' `
+    'def validate(' `
+    $canonicalHotkeyValidation `
+    "config.py -- canonical native hotkey validation"
 
-# 8. Windows hotkey listener - consume only the configured hotkey so apps never receive it
+# 8. Windows hotkey listener - use the OS-managed global-hotkey queue instead
+# of a low-level keyboard hook that Windows may silently remove.
 $listener = "$site\hotkey\listener.py"
-Apply-Patch $listener @'
-import os
-import sys
-'@ @'
-import os
-import queue
-import sys
-'@ "hotkey/listener.py -- event queue import"
-Apply-Patch $listener @'
+Remove-Patch $listener "import queue`n" "hotkey/listener.py -- obsolete Windows hook queue"
+
+$canonicalPynput = @'
+    def _start_pynput(self) -> None:
+        """Start hotkey listener using pynput."""
+        if sys.platform == "linux" and os.environ.get("XDG_SESSION_TYPE", "x11") == "x11":
+            _throttle_pynput_xrecord()
+
+        from pynput import keyboard
+
+        modifier_map = {
+            "alt": {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, keyboard.Key.alt_gr},
+            "ctrl": {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r},
+            "control": {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r},
+            "shift": {keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r},
+            "cmd": {keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r},
+            "super": {keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r},
+            "meta": {keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r},
+        }
+
+        required_modifier_keys: set[keyboard.Key] = set()
+        for mod in self._modifiers:
+            keys = modifier_map.get(mod, set())
+            required_modifier_keys.update(keys)
+
         pressed_modifiers: set = set()
 
         def _key_name(key) -> str:
-'@ @'
-        pressed_modifiers: set = set()
-        win32_event_filter = None
+            if hasattr(key, "char") and key.char:
+                return key.char.lower()
+            if hasattr(key, "name"):
+                return key.name.lower()
+            return str(key).lower()
 
-        if sys.platform == "win32":
-            import ctypes
-
-            required_win_vks = {
-                mod: {
-                    key.value.vk
-                    for key in modifier_map.get(mod, set())
-                    if key.value.vk is not None
-                }
-                for mod in self._modifiers
-            }
-            modifier_vks = set().union(*required_win_vks.values())
-            pressed_win_vks: set[int] = set()
-            named_target = getattr(keyboard.Key, self._key, None)
-            if named_target is not None:
-                target_vk = named_target.value.vk
-            else:
-                vk_key_scan = ctypes.windll.user32.VkKeyScanW
-                vk_key_scan.argtypes = [ctypes.c_wchar]
-                vk_key_scan.restype = ctypes.c_short
-                target_vk = vk_key_scan(self._key) & 0xFF
-
-            events: queue.SimpleQueue[str] = queue.SimpleQueue()
-            suppressing_target = False
-            press_messages = {0x0100, 0x0104}
-            release_messages = {0x0101, 0x0105}
-
-            def dispatch_win32_events() -> None:
-                while not self._stop_event.is_set():
-                    try:
-                        action = events.get(timeout=0.2)
-                    except queue.Empty:
-                        continue
-                    if action == "press":
-                        self._handle_press()
-                    else:
-                        self._handle_release()
-
-            self._thread = threading.Thread(target=dispatch_win32_events, daemon=True)
-            self._thread.start()
-
-            def win32_modifiers_held() -> bool:
-                return all(pressed_win_vks & keys for keys in required_win_vks.values())
-
-            def win32_event_filter(msg, data):
-                nonlocal suppressing_target
-
-                if int(data.dwExtraInfo or 0) == 0x56505459:
+        def _is_modifier_held() -> bool:
+            for mod in self._modifiers:
+                mod_keys = modifier_map.get(mod, set())
+                if not pressed_modifiers & mod_keys:
                     return False
+            return True
 
-                vk = int(data.vkCode)
-                is_press = msg in press_messages
-                is_release = msg in release_messages
-                if vk in modifier_vks:
-                    if is_press:
-                        pressed_win_vks.add(vk)
-                    elif is_release:
-                        pressed_win_vks.discard(vk)
-                        if suppressing_target and self.mode == "hold":
-                            events.put("release")
+        def on_press(key):
+            if key in required_modifier_keys:
+                pressed_modifiers.add(key)
 
-                if vk != target_vk:
-                    return True
-                if is_press and suppressing_target:
-                    self._listener.suppress_event()
-                if is_press and win32_modifiers_held():
-                    if not suppressing_target:
-                        suppressing_target = True
-                        events.put("press")
-                    self._listener.suppress_event()
-                if is_release and suppressing_target:
-                    suppressing_target = False
-                    with self._lock:
-                        self._key_released = True
-                    if self.mode == "hold":
-                        events.put("release")
-                    self._listener.suppress_event()
-                return True
+            name = _key_name(key)
+            if name == self._key and _is_modifier_held():
+                self._handle_press()
 
-        def _key_name(key) -> str:
-'@ "hotkey/listener.py -- selective Windows hotkey filter" 'def win32_event_filter(msg, data):'
-Apply-Patch $listener @'
-                if data.flags & 0x10:
-                    return False
-'@ @'
-                if int(data.dwExtraInfo or 0) == 0x56505459:
-                    return False
-'@ "hotkey/listener.py -- ignore only VoicePrompt paste events"
-Apply-Patch $listener @'
-                if vk != target_vk:
-                    return True
-                if is_press and win32_modifiers_held():
-'@ @'
-                if vk != target_vk:
-                    return True
-                if is_press and suppressing_target:
-                    self._listener.suppress_event()
-                if is_press and win32_modifiers_held():
-'@ "hotkey/listener.py -- suppress held combo repeats"
-Apply-Patch $listener @'
+        def on_release(key):
+            if key in required_modifier_keys:
+                pressed_modifiers.discard(key)
+                if self.mode == "hold" and self._active and not _is_modifier_held():
+                    self._handle_release()
+
+            name = _key_name(key)
+            if name == self._key:
+                self._handle_release()
+
         self._listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        self._listener.daemon = True
+        self._listener.start()
+        log.info("Hotkey listener started (pynput): %s [%s mode]", self.binding, self.mode)
+'@
+Replace-Block `
+    $listener `
+    '    def _start_pynput(' `
+    '    def _start_evdev(' `
+    $canonicalPynput `
+    "hotkey/listener.py -- canonical non-Windows pynput backend"
+
+Apply-Patch $listener @'
+        self._listener = None
+        self._thread: threading.Thread | None = None
 '@ @'
-        self._listener = keyboard.Listener(
-            on_press=on_press,
-            on_release=on_release,
-            win32_event_filter=win32_event_filter,
-        )
-'@ "hotkey/listener.py -- enable selective Windows filter"
+        self._listener = None
+        self._win32_backend = None
+        self._thread: threading.Thread | None = None
+'@ "hotkey/listener.py -- native Windows backend state" 'self._win32_backend = None'
+
+Apply-Patch $listener @'
+        if self._use_evdev():
+            self._start_evdev()
+        else:
+            self._start_pynput()
+'@ @'
+        if sys.platform == "win32":
+            from ..windows_hotkey import WindowsHotkeyBackend
+
+            self._win32_backend = WindowsHotkeyBackend(
+                self.binding,
+                self._handle_press,
+                self._handle_native_release,
+                self._stop_event,
+            )
+            self._win32_backend.start()
+        elif self._use_evdev():
+            self._start_evdev()
+        else:
+            self._start_pynput()
+'@ "hotkey/listener.py -- select native Windows backend" 'from ..windows_hotkey import WindowsHotkeyBackend'
+
+Apply-Patch $listener @'
+                self._handle_press,
+                self._handle_release,
+                self._stop_event,
+'@ @'
+                self._handle_press,
+                self._handle_native_release,
+                self._stop_event,
+'@ "hotkey/listener.py -- immediate native Windows release" 'self._handle_native_release,'
+
+Apply-Patch $listener @'
+        with self._lock:
+            self._release_stamp = 0.0
+        if self._listener is not None:
+'@ @'
+        with self._lock:
+            self._release_stamp = 0.0
+        if self._win32_backend is not None:
+            self._win32_backend.stop()
+            self._win32_backend = None
+        if self._listener is not None:
+'@ "hotkey/listener.py -- stop native Windows backend" 'self._win32_backend.stop()'
+
+$canonicalRelease = @'
+    def _handle_release(self) -> None:
+        """Mark a physical release and debounce hold-mode deactivation."""
+        with self._lock:
+            self._key_released = True
+            if self.mode != "hold" or not self._active:
+                return
+            self._release_stamp = time.monotonic()
+            if self._release_watcher is None or not self._release_watcher.is_alive():
+                self._release_watcher = threading.Thread(
+                    target=self._release_watcher_loop, daemon=True,
+                )
+                self._release_watcher.start()
+'@
+Replace-Block `
+    $listener `
+    '    def _handle_release(' `
+    '    def _release_watcher_loop(' `
+    $canonicalRelease `
+    "hotkey/listener.py -- unified physical release handling"
+
+Apply-Patch $listener @'
+    def _handle_release(self) -> None:
+'@ @'
+    def _handle_native_release(self) -> None:
+        """Deactivate immediately after the native backend sees physical release."""
+        callback = None
+        with self._lock:
+            self._key_released = True
+            if self.mode == "hold" and self._active:
+                self._active = False
+                self._release_stamp = 0.0
+                callback = self.on_deactivate
+        if callback is not None:
+            log.debug("Hold OFF")
+            callback()
+
+    def _handle_release(self) -> None:
+'@ "hotkey/listener.py -- zero-delay native Windows release" 'def _handle_native_release(self) -> None:'
 
 Apply-Patch $typer @'
 _KEYEVENTF_KEYUP = 0x0002

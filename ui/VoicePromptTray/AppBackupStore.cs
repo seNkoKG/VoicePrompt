@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 namespace VoicePromptTray;
 
@@ -106,12 +105,6 @@ internal static class AppBackupStore
     internal const string Format = "voiceprompt-settings-backup";
     internal const int Version = 1;
     private const int MaxFileBytes = 512 * 1024;
-    private static readonly HashSet<string> Modifiers =
-        new(["alt", "ctrl", "control", "shift", "cmd", "super", "meta"], StringComparer.Ordinal);
-    private static readonly HashSet<string> NamedKeys =
-        new(["space", "tab", "enter", "esc", "backspace", "insert", "delete", "home", "end",
-            "page_up", "page_down", "up", "down", "left", "right", "print_screen", "pause",
-            "caps_lock", "scroll_lock", "num_lock", "menu"], StringComparer.Ordinal);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public static string Serialize(VoicePromptBackupDocument document) =>
@@ -168,7 +161,7 @@ internal static class AppBackupStore
             ?? throw new InvalidDataException("The backup is missing recovery settings.");
 
         string hotkey = dictation.Hotkey?.Trim().ToLowerInvariant() ?? "";
-        if (!ValidHotkey(hotkey))
+        if (HotkeyBinding.Validate(hotkey) != null)
             throw new InvalidDataException("The backup contains an invalid global hotkey.");
         string activation = dictation.Activation?.Trim().ToLowerInvariant() ?? "";
         if (activation is not ("hold" or "toggle"))
@@ -259,14 +252,4 @@ internal static class AppBackupStore
         };
     }
 
-    private static bool ValidHotkey(string value)
-    {
-        string[] parts = value.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || parts[..^1].Any(part => !Modifiers.Contains(part)) ||
-            parts[..^1].Distinct(StringComparer.Ordinal).Count() != parts.Length - 1)
-            return false;
-        string key = parts[^1];
-        return (key.Length == 1 && char.IsAsciiLetterOrDigit(key[0])) ||
-            NamedKeys.Contains(key) || Regex.IsMatch(key, @"^f(?:[1-9]|1[0-9]|2[0-4])$");
-    }
 }

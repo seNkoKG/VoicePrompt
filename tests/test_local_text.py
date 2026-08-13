@@ -55,6 +55,10 @@ class LocalTextTests(unittest.TestCase):
         (self.root / "corrections.json").write_text("{broken", encoding="utf-8")
         self.assertEqual(apply_corrections("keep me"), "keep me")
 
+    def test_oversized_corrections_fail_closed_without_delaying_dictation(self) -> None:
+        (self.root / "corrections.json").write_bytes(b"x" * (128 * 1024 + 1))
+        self.assertEqual(apply_corrections("keep me"), "keep me")
+
     def test_history_keeps_newest_entries_and_unicode(self) -> None:
         (self.root / "history-settings.json").write_text(
             json.dumps({"enabled": True, "limit": 5}), encoding="utf-8"
@@ -80,6 +84,12 @@ class LocalTextTests(unittest.TestCase):
         payload = json.loads((self.root / "history.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["items"][0]["text"], "same")
         self.assertEqual(payload["items"][0]["originalText"], "")
+
+    def test_oversized_history_is_replaced_without_blocking(self) -> None:
+        (self.root / "history.json").write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+        remember_transcript("raw", "safe output")
+        payload = json.loads((self.root / "history.json").read_text(encoding="utf-8"))
+        self.assertEqual([item["text"] for item in payload["items"]], ["safe output"])
 
 
 if __name__ == "__main__":

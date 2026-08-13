@@ -1,15 +1,11 @@
 using System.ComponentModel;
 using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace VoicePromptTray;
 
 internal sealed class HotkeyRecorder : Control
 {
-    [DllImport("user32.dll")]
-    private static extern short GetKeyState(int keyCode);
-
     private string _binding = "";
     private string _committedBinding = "";
     private bool _capturing;
@@ -167,8 +163,6 @@ internal sealed class HotkeyRecorder : Control
             parts.Add("alt");
         if ((e.Modifiers & Keys.Shift) != 0)
             parts.Add("shift");
-        if (IsPressed(Keys.LWin) || IsPressed(Keys.RWin))
-            parts.Add("cmd");
         parts.Add(key);
 
         _binding = string.Join('+', parts);
@@ -255,8 +249,6 @@ internal sealed class HotkeyRecorder : Control
         }
     }
 
-    private static bool IsPressed(Keys key) => (GetKeyState((int)key) & 0x8000) != 0;
-
     private static string DisplayPart(string part) => part switch
     {
         "ctrl" => "CTRL",
@@ -277,7 +269,7 @@ internal sealed class HotkeyRecorder : Control
             return ((char)('0' + code - Keys.D0)).ToString();
         if (code is >= Keys.NumPad0 and <= Keys.NumPad9)
             return ((char)('0' + code - Keys.NumPad0)).ToString();
-        if (code is >= Keys.F1 and <= Keys.F24)
+        if (code is >= Keys.F1 and <= Keys.F24 && code != Keys.F12)
             return "f" + (code - Keys.F1 + 1);
 
         return code switch

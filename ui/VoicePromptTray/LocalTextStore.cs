@@ -4,6 +4,16 @@ using System.Text.Json.Serialization;
 
 namespace VoicePromptTray;
 
+internal static class BoundedLocalFile
+{
+    public static string ReadUtf8(string path, long maximumBytes)
+    {
+        if (new FileInfo(path).Length > maximumBytes)
+            throw new InvalidDataException($"Local VoicePrompt file exceeds {maximumBytes} bytes.");
+        return File.ReadAllText(path, Encoding.UTF8);
+    }
+}
+
 internal sealed record TranscriptEntry
 {
     [JsonPropertyName("id")]
@@ -38,6 +48,8 @@ internal sealed record HistorySettings
 
 internal sealed class TranscriptHistoryStore
 {
+    private const int MaximumSettingsBytes = 16 * 1024;
+    private const int MaximumHistoryBytes = 2 * 1024 * 1024;
     private readonly string _historyPath;
     private readonly string _settingsPath;
 
@@ -51,7 +63,8 @@ internal sealed class TranscriptHistoryStore
     {
         try
         {
-            var value = JsonSerializer.Deserialize<HistorySettings>(File.ReadAllText(_settingsPath));
+            var value = JsonSerializer.Deserialize<HistorySettings>(
+                BoundedLocalFile.ReadUtf8(_settingsPath, MaximumSettingsBytes));
             return value == null ? new() : value with { Limit = Math.Clamp(value.Limit, 5, 100) };
         }
         catch
@@ -71,7 +84,8 @@ internal sealed class TranscriptHistoryStore
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(_historyPath));
+            using JsonDocument document = JsonDocument.Parse(
+                BoundedLocalFile.ReadUtf8(_historyPath, MaximumHistoryBytes));
             if (!document.RootElement.TryGetProperty("items", out JsonElement items))
                 return [];
             return items.Deserialize<List<TranscriptEntry>>() ?? [];
@@ -111,6 +125,7 @@ internal sealed record CorrectionEntry(
 
 internal sealed class PersonalDictionaryStore
 {
+    private const int MaximumFileBytes = 128 * 1024;
     private readonly string _path;
 
     public PersonalDictionaryStore(string path) => _path = path;
@@ -119,7 +134,8 @@ internal sealed class PersonalDictionaryStore
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(_path));
+            using JsonDocument document = JsonDocument.Parse(
+                BoundedLocalFile.ReadUtf8(_path, MaximumFileBytes));
             if (!document.RootElement.TryGetProperty("items", out JsonElement items))
                 return "";
             var entries = items.Deserialize<List<CorrectionEntry>>() ?? [];
@@ -174,6 +190,7 @@ internal sealed record TextSnippetEntry(
 
 internal sealed class TextSnippetStore
 {
+    private const int MaximumFileBytes = 512 * 1024;
     private readonly string _path;
 
     public TextSnippetStore(string path) => _path = path;
@@ -182,7 +199,8 @@ internal sealed class TextSnippetStore
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(_path));
+            using JsonDocument document = JsonDocument.Parse(
+                BoundedLocalFile.ReadUtf8(_path, MaximumFileBytes));
             if (!document.RootElement.TryGetProperty("items", out JsonElement items))
                 return "";
             var entries = items.Deserialize<List<TextSnippetEntry>>() ?? [];

@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+_MAX_FILE_BYTES = 512 * 1024
+
 
 @dataclass(frozen=True)
 class TextSnippet:
@@ -33,7 +35,10 @@ def _normalize_name(value: str) -> str:
 def load_snippets(path: str | Path | None = None) -> dict[str, TextSnippet]:
     """Load at most 50 valid snippets; malformed files fail closed."""
     try:
-        payload = json.loads(Path(path or _snippets_path()).read_text(encoding="utf-8"))
+        snippet_path = Path(path or _snippets_path())
+        if snippet_path.stat().st_size > _MAX_FILE_BYTES:
+            return {}
+        payload = json.loads(snippet_path.read_text(encoding="utf-8"))
         items = payload.get("items", []) if isinstance(payload, dict) else []
         if not isinstance(items, list):
             return {}

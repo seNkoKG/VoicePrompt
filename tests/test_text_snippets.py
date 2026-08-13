@@ -41,6 +41,9 @@ class TextSnippetTests(unittest.TestCase):
             self.assertEqual(list(snippets), ["valid"])
             self.assertEqual(snippets["valid"].content, "ok")
 
+            path.write_bytes(b"x" * (512 * 1024 + 1))
+            self.assertEqual(load_snippets(path), {})
+
 
 if __name__ == "__main__":
     unittest.main()
