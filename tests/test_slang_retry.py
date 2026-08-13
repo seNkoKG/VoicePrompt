@@ -42,13 +42,44 @@ class SlangRetryTests(unittest.TestCase):
         self.assertFalse(should_retry_as_slovenian("", "sl", 0.20, -0.90))
         self.assertIsNone(bilingual_retry_language("", "sl", 0.75, -0.90))
 
-    def test_supported_language_never_retries_as_the_other_language(self) -> None:
-        for detected in ("en", "sl"):
-            with self.subTest(detected=detected):
-                self.assertIsNone(
-                    bilingual_retry_language("auto", detected, 0.01, -1.50)
-                )
+    def test_ambiguous_short_supported_language_tests_the_other_candidate(self) -> None:
+        probabilities = [("sl", 0.48), ("en", 0.34)]
+        self.assertEqual(
+            bilingual_retry_language(
+                "auto", "sl", 0.48, -0.55, probabilities, "en", 2.9
+            ),
+            "en",
+        )
+        self.assertEqual(
+            bilingual_retry_language(
+                "auto", "en", 0.48, -0.55,
+                [("en", 0.48), ("sl", 0.34)], "sl", 2.9,
+            ),
+            "sl",
+        )
+
+    def test_clear_or_long_supported_language_stays_single_pass(self) -> None:
+        probabilities = [("sl", 0.82), ("en", 0.12)]
+        self.assertIsNone(
+            bilingual_retry_language(
+                "auto", "sl", 0.82, -0.4, probabilities, "en", 2.9
+            )
+        )
+        self.assertIsNone(
+            bilingual_retry_language(
+                "auto", "sl", 0.48, -0.4,
+                [("sl", 0.48), ("en", 0.34)], "en", 8.0,
+            )
+        )
         self.assertFalse(should_retry_as_slovenian("", "en", 0.01, -1.50))
+
+    def test_short_slovenian_with_clear_pairwise_evidence_does_not_retry(self) -> None:
+        self.assertIsNone(
+            bilingual_retry_language(
+                "auto", "sl", 0.36, -0.66,
+                [("sl", 0.36), ("en", 0.10)], "en", 4.2,
+            )
+        )
 
     def test_auto_primary_pass_stays_language_neutral(self) -> None:
         prompt = recognition_prompt("", "Python in API.")
@@ -135,6 +166,34 @@ class SlangRetryTests(unittest.TestCase):
         translated = [Segment("Prosim, popravite to.", -0.66, [1, 2, 3, 4])]
         english = [Segment("Please fix this.", -0.40, [1, 2, 3, 4])]
         self.assertFalse(prefer_bilingual_retry("en", "sl", translated, english))
+
+    def test_short_english_mislabeled_slovenian_uses_combined_evidence(self) -> None:
+        wrong_slovenian = [Segment("Ampak verzija ni?", -0.55, [1, 2, 3, 4])]
+        english = [Segment("But the version is not?", -0.30, [1, 2, 3, 4, 5])]
+        self.assertTrue(
+            prefer_bilingual_retry(
+                "en",
+                "sl",
+                wrong_slovenian,
+                english,
+                [("sl", 0.48), ("en", 0.34)],
+                "en",
+            )
+        )
+
+    def test_real_short_slovenian_resists_english_translation(self) -> None:
+        slovenian = [Segment("Prosim, popravi to.", -0.66, [1, 2, 3, 4])]
+        english = [Segment("Please fix this.", -0.40, [1, 2, 3, 4])]
+        self.assertFalse(
+            prefer_bilingual_retry(
+                "en",
+                "sl",
+                slovenian,
+                english,
+                [("sl", 0.36), ("en", 0.10)],
+                "en",
+            )
+        )
 
     def test_marginal_english_retry_cannot_replace_real_slovenian(self) -> None:
         slovenian = [Segment("Prosim, popravi to.", -0.40, [1, 2, 3, 4])]

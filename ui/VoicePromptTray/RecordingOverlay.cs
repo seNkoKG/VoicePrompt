@@ -32,7 +32,7 @@ internal sealed class RecordingOverlay : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
-        ClientSize = new Size(184, 44);
+        ClientSize = new Size(176, 44);
         BackColor = OverlayBackground;
         DoubleBuffered = true;
         Opacity = 0;
@@ -94,7 +94,9 @@ internal sealed class RecordingOverlay : Form
         }
 
         bool recording = meterSample.Recording && _lastSignal != 0 && now - _lastSignal < 3000;
-        _level = meterSample.Level;
+        float targetLevel = recording ? meterSample.Level : 0f;
+        float levelResponse = targetLevel > _level ? 0.46f : 0.20f;
+        _level += (targetLevel - _level) * levelResponse;
 
         if (recording && !_recording)
         {
@@ -105,11 +107,14 @@ internal sealed class RecordingOverlay : Form
         }
         _recording = recording;
 
-        float response = recording ? 0.52f : 0.24f;
-        float strength = 0.58f + 0.42f * MathF.Sqrt(_level);
+        float response = recording ? 0.48f : 0.22f;
+        float audibleLevel = Math.Clamp((_level - 0.06f) / 0.74f, 0f, 1f);
+        float strength = MathF.Sqrt(audibleLevel);
         for (int i = 0; i < _waveform.Length; i++)
         {
-            float sample = recording ? (_waveBytes[i] - 128f) / 127f * strength : 0f;
+            float sample = recording && audibleLevel > 0f
+                ? (_waveBytes[i] - 128f) / 127f * strength
+                : 0f;
             _waveform[i] += (sample - _waveform[i]) * response;
         }
 
@@ -138,6 +143,7 @@ internal sealed class RecordingOverlay : Form
     {
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
         using (var background = Theme.RoundedRect(new Rectangle(0, 0, Width - 1, Height - 1), 14))
         using (var fill = new SolidBrush(OverlayBackground))
@@ -168,9 +174,9 @@ internal sealed class RecordingOverlay : Form
     private void DrawWaveform(Graphics g)
     {
         const float startX = 39f;
-        const float endX = 171f;
+        const float endX = 163f;
         const float centerY = 22f;
-        const float amplitude = 13f;
+        const float amplitude = 11.5f;
 
         var points = new PointF[_waveform.Length];
         for (int i = 0; i < points.Length; i++)
@@ -188,7 +194,7 @@ internal sealed class RecordingOverlay : Form
             EndCap = LineCap.Round,
             LineJoin = LineJoin.Round,
         };
-        g.DrawCurve(line, points, 0.22f);
+        g.DrawLines(line, points);
     }
 
     protected override void Dispose(bool disposing)

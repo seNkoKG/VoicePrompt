@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.20.2] - 2026-08-13
+
+### Changed
+
+- Make the compact recording overlay narrower and scale the waveform from a real noise floor, removing the large idle trace while keeping immediate microphone feedback.
+- Record privacy-safe English, Slovenian, and recent-language probability evidence for future Auto-routing diagnostics.
+
+### Fixed
+
+- Test a second bilingual candidate when a short English or Slovenian recording has a low-confidence, closely matched language guess instead of trusting the first supported label unconditionally.
+- Select between ambiguous English and Slovenian candidates with combined language-token, decoder, and recent-language evidence, recovering short English without translating clear Slovenian.
+- Keep normal, confident, and longer recordings on the existing single-pass path so the accuracy fix adds no routine latency or GPU work.
+- Gate clean installs and legacy upgrades on the same short-English and genuine-Slovenian routing contract shipped by the runtime patcher.
+
 ## [1.20.1] - 2026-08-12
 
 ### Fixed

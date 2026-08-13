@@ -1143,13 +1143,23 @@ $canonicalLocalTranscribe = @'
         retry_seconds = 0.0
         segments = primary_segments
         primary_score = transcript_score(primary_segments)
+        language_probabilities = getattr(info, "all_language_probs", None)
+        if self._language is None and language_probabilities:
+            supported_probabilities = dict(language_probabilities)
+            log.info(
+                "Bilingual evidence: en %.2f, sl %.2f, recent=%s",
+                supported_probabilities.get("en", 0.0),
+                supported_probabilities.get("sl", 0.0),
+                self._recent_language or "none",
+            )
         retry_language = bilingual_retry_language(
             self._language_mode,
             info.language,
             info.language_probability,
             primary_score,
-            getattr(info, "all_language_probs", None),
+            language_probabilities,
             self._recent_language,
+            audio_seconds,
         )
         if retry_language:
             log.info(
@@ -1177,6 +1187,8 @@ $canonicalLocalTranscribe = @'
                 info.language,
                 primary_segments,
                 retry_segments,
+                language_probabilities=language_probabilities,
+                recent_language=self._recent_language
             ):
                 segments = retry_segments
                 info = retry_info

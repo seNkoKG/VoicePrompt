@@ -83,6 +83,12 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($source, "self\._recent_language = info\.language").Count -ne 1) {
         throw "$Name does not preserve recent-language evidence through the canonical runtime."
     }
+    if ([regex]::Matches($source, '"Bilingual evidence: en %\.2f, sl %\.2f, recent=%s"').Count -ne 1 -or
+        [regex]::Matches($source, "language_probabilities=language_probabilities").Count -ne 1 -or
+        [regex]::Matches($source, "recent_language=self\._recent_language").Count -ne 1 -or
+        [regex]::Matches($source, "            audio_seconds,").Count -ne 1) {
+        throw "$Name does not compare ambiguous short English and Slovenian candidates."
+    }
     if ([regex]::Matches($source, "transcript_is_plausible\(").Count -ne 4 -or
         [regex]::Matches($source, "decoding_options\(0\.2\)").Count -ne 1) {
         throw "$Name does not guard impossible transcript expansion with one same-language recovery."

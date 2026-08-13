@@ -9,6 +9,13 @@ from typing import Any
 
 _UNSUPPORTED_LANGUAGE_MAX_LOSS = 0.05
 _RECENT_LANGUAGE_SWITCH_RATIO = 1.5
+_SUPPORTED_RETRY_MAX_SECONDS = 5.0
+_SUPPORTED_RETRY_MAX_CONFIDENCE = 0.70
+_SUPPORTED_RETRY_RATIO = 0.60
+_RECENT_SUPPORTED_RETRY_RATIO = 0.45
+_LANGUAGE_EVIDENCE_WEIGHT = 0.35
+_RECENT_LANGUAGE_BONUS = 0.08
+_SUPPORTED_RETRY_MIN_GAIN = 0.02
 _AUTO_MODES = {"", "auto", "sl-slang"}
 _SUPPORTED_LANGUAGES = {"en", "sl"}
 
@@ -44,17 +51,32 @@ def bilingual_retry_language(
     primary_score: float = float("-inf"),
     language_probabilities: Iterable[tuple[str, float]] | None = None,
     recent_language: str | None = None,
+    audio_seconds: float = float("inf"),
 ) -> str | None:
     """Choose an English/Slovenian retry for ambiguous Auto-mode speech."""
     if configured not in _AUTO_MODES:
         return None
+
+    probabilities = dict(language_probabilities or ())
     if detected in _SUPPORTED_LANGUAGES:
+        if audio_seconds > _SUPPORTED_RETRY_MAX_SECONDS:
+            return None
+        detected_probability = probabilities.get(detected, confidence)
+        if detected_probability >= _SUPPORTED_RETRY_MAX_CONFIDENCE:
+            return None
+        other_language = "sl" if detected == "en" else "en"
+        other_probability = probabilities.get(other_language, 0.0)
+        ratio = (
+            _RECENT_SUPPORTED_RETRY_RATIO
+            if recent_language == other_language
+            else _SUPPORTED_RETRY_RATIO
+        )
+        if detected_probability > 0 and other_probability >= detected_probability * ratio:
+            return other_language
         return None
 
-    # VoicePrompt Auto is intentionally bilingual. This mirrors established
-    # dictation apps that constrain automatic detection to the languages the
-    # user actually speaks instead of accepting an unrelated 99-language guess.
-    probabilities = dict(language_probabilities or ())
+    # VoicePrompt Auto is intentionally bilingual. Constrain unrelated
+    # 100-language guesses to the two languages selected by the default profile.
     if recent_language in _SUPPORTED_LANGUAGES:
         other_language = "sl" if recent_language == "en" else "en"
         recent_probability = probabilities.get(recent_language, 0.0)
@@ -153,14 +175,33 @@ def prefer_bilingual_retry(
     detected: str,
     original_segments: Iterable[Any],
     retry_segments: Iterable[Any],
+    language_probabilities: Iterable[tuple[str, float]] | None = None,
+    recent_language: str | None = None,
 ) -> bool:
-    """Choose a supported-language retry for an unrelated Auto guess."""
+    """Choose the bilingual candidate with the stronger combined evidence."""
     original_score = transcript_score(original_segments)
     retry_score = transcript_score(retry_segments)
     if not math.isfinite(retry_score):
         return False
     if detected in _SUPPORTED_LANGUAGES:
-        return False
+        if retry_language not in _SUPPORTED_LANGUAGES or retry_language == detected:
+            return False
+        probabilities = dict(language_probabilities or ())
+        detected_probability = probabilities.get(detected, 0.0)
+        retry_probability = probabilities.get(retry_language, 0.0)
+        if detected_probability <= 0 or retry_probability <= 0:
+            return False
+        if not math.isfinite(original_score):
+            return True
+        original_evidence = original_score + _LANGUAGE_EVIDENCE_WEIGHT * math.log(
+            detected_probability
+        )
+        retry_evidence = retry_score + _LANGUAGE_EVIDENCE_WEIGHT * math.log(
+            retry_probability
+        )
+        if recent_language == retry_language:
+            retry_evidence += _RECENT_LANGUAGE_BONUS
+        return retry_evidence >= original_evidence + _SUPPORTED_RETRY_MIN_GAIN
     if not math.isfinite(original_score):
         return True
     return retry_score >= original_score - _UNSUPPORTED_LANGUAGE_MAX_LOSS
