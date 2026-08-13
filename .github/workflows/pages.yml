@@ -31,9 +31,9 @@ jobs:
       - name: Prepare resilient site download
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v1.21.0
-          RELEASE_ZIP: VoicePrompt-v1.21.0-windows-x64.zip
-          RELEASE_SUMS: VoicePrompt-v1.21.0-SHA256SUMS.txt
+          RELEASE_TAG: v1.21.1
+          RELEASE_ZIP: VoicePrompt-v1.21.1-windows-x64.zip
+          RELEASE_SUMS: VoicePrompt-v1.21.1-SHA256SUMS.txt
         run: |
           mkdir -p _site/downloads
           cp -R docs/. _site/

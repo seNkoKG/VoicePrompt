@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.21.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.21.1-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -161,7 +161,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 **Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
-Detected English and Slovenian are never replaced by a decode in the other supported language. If Whisper reports Finnish, Spanish, Latin, or another unrelated language, VoicePrompt uses the model's language probabilities and recent supported-language evidence to choose one bounded English or Slovenian recovery pass. The retry is accepted only when its transcript remains physically plausible and its decoder score is not materially worse. Slovenian recovery receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
+A detected English result is never replaced by Slovenian. A moderate-confidence Slovenian guess that contradicts recent English or competing language evidence is cross-checked once as English, and the retry replaces it only when the combined evidence wins. If prepared blocks from one long recording disagree, VoicePrompt retries the retained complete recording instead of pasting mixed languages. Finnish, Spanish, Latin, and other unrelated Auto guesses remain constrained to one bounded English or Slovenian recovery pass. Slovenian recovery receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
 
 ### Additional languages
 

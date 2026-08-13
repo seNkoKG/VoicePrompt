@@ -539,7 +539,7 @@ var olderClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpRespons
     Content = new StringContent(BuildReleaseJson("1.20.2")),
 }));
 var olderUpdate = await new VoicePromptTray.UpdateChecker(olderClient)
-    .CheckAsync("1.21.0");
+    .CheckAsync("1.21.1");
 Check("update checker never offers a downgrade",
     olderUpdate.State == VoicePromptTray.UpdateState.UpToDate &&
     olderUpdate.LatestVersion?.Display == "1.20.2");

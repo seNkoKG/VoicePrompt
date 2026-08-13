@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.21.1] - 2026-08-13
+
+### Fixed
+
+- Never replace a primary English Auto result with a forced Slovenian decode.
+- Cross-check moderate-confidence Slovenian guesses for up to 12 seconds when recent English context or competing language evidence indicates English, covering the observed 7.3-second false Slovenian detection.
+- Detect mixed English/Slovenian results across buffered blocks and retry the retained complete recording once instead of pasting inconsistent languages.
+
+### Changed
+
+- Preserve the final selected language alongside each prepared long-recording block so consistency recovery adds no work to the normal single-language fast path.
+
 ## [1.21.0] - 2026-08-13
 
 ### Added

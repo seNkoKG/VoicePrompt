@@ -83,6 +83,10 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($source, "self\._recent_language = info\.language").Count -ne 1) {
         throw "$Name does not preserve recent-language evidence through the canonical runtime."
     }
+    if ([regex]::Matches($source, "self\.last_language = None").Count -ne 1 -or
+        [regex]::Matches($source, "self\.last_language = info\.language").Count -ne 1) {
+        throw "$Name does not expose the final language for buffered consistency checks."
+    }
     if ([regex]::Matches($source, '"Bilingual evidence: en %\.2f, sl %\.2f, recent=%s"').Count -ne 1 -or
         [regex]::Matches($source, "language_probabilities=language_probabilities").Count -ne 1 -or
         [regex]::Matches($source, "recent_language=self\._recent_language").Count -ne 1 -or
@@ -161,8 +165,15 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not (Test-Path -LiteralPath $buffered) -or
         -not $daemonSource.Contains("self._buffered_streaming") -or
         -not $daemonSource.Contains("full audio will be used") -or
-        -not $daemonSource.Contains("Short or uninterrupted recordings keep the proven exact batch path")) {
+        -not $daemonSource.Contains("Short or uninterrupted recordings keep the proven exact batch path") -or
+        -not $daemonSource.Contains('getattr(self._engine, "last_language", None)') -or
+        -not $daemonSource.Contains("Buffered language conflict detected")) {
         throw "$Name is missing the lossless buffered transcription contract."
+    }
+    $bufferedSource = [System.IO.File]::ReadAllText($buffered)
+    if (-not $bufferedSource.Contains("len(self._languages) > 1") -or
+        -not $bufferedSource.Contains("def language_conflict(self)")) {
+        throw "$Name does not reject mixed-language buffered output."
     }
     if (-not $daemonSource.Contains("Paste shortcut sent: %d chars")) {
         throw "$Name does not expose a privacy-safe successful-paste signal."

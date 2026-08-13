@@ -42,6 +42,24 @@ class BufferedSessionTests(unittest.TestCase):
         self.assertEqual(session.compute_seconds, 0.7)
         self.assertFalse(session.needs_fallback)
 
+    def test_mixed_auto_languages_require_one_full_audio_fallback(self) -> None:
+        session = BufferedSession(10, minimum_batch_seconds=1.0)
+        session.add_utterance(np.ones(10, dtype=np.float32))
+        session.add_utterance(np.ones(10, dtype=np.float32))
+        session.record_result("wrong first block", 0.2, "sl")
+        session.record_result("correct second block", 0.2, "en")
+        self.assertTrue(session.language_conflict)
+        self.assertTrue(session.needs_fallback)
+
+    def test_consistent_auto_language_keeps_fast_buffered_result(self) -> None:
+        session = BufferedSession(10, minimum_batch_seconds=1.0)
+        session.add_utterance(np.ones(10, dtype=np.float32))
+        session.add_utterance(np.ones(10, dtype=np.float32))
+        session.record_result("first block", 0.2, "en")
+        session.record_result("second block", 0.2, "en")
+        self.assertFalse(session.language_conflict)
+        self.assertFalse(session.needs_fallback)
+
     def test_empty_or_failed_chunk_requires_full_audio_fallback(self) -> None:
         empty = BufferedSession(10, minimum_batch_seconds=1.0)
         empty.add_utterance(np.ones(10, dtype=np.float32))

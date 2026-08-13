@@ -262,6 +262,7 @@ Apply-Patch "$site\engine\local.py" @'
         self._language_mode = server_config.language
         self._language = recognition_language(server_config.language)
         self._recent_language = None
+        self.last_language = None
 '@ "engine/local.py -- hybrid language mapping" 'self._language_mode = server_config.language'
 
 # 4. engine/local.py - log detected language + confidence per utterance (debugging auto-detect)
@@ -1075,6 +1076,7 @@ $canonicalLocalInit = @'
         self._language_mode = server_config.language
         self._language = recognition_language(server_config.language)
         self._recent_language = None
+        self.last_language = None
         self._compute_type = engine_config.compute_type
         self._device = engine_config.device
         self._base_prompt = server_config.prompt
@@ -1211,6 +1213,7 @@ $canonicalLocalTranscribe = @'
             raise RuntimeError("Whisper produced an implausible repetitive transcript")
         if info.language in {"en", "sl"}:
             self._recent_language = info.language
+        self.last_language = info.language
         total_seconds = time.perf_counter() - total_started
         log.info(
             "Transcription latency: primary %.3fs, retry %.3fs, total %.3fs",
@@ -1539,7 +1542,11 @@ $canonicalTranscriptionHandlers = @'
             log.error("Buffered transcription failed; full audio will be used", exc_info=True)
             return
         elapsed = time.perf_counter() - started
-        session.record_result(text, elapsed)
+        session.record_result(
+            text,
+            elapsed,
+            getattr(self._engine, "last_language", None),
+        )
         log.info(
             "Buffered chunk ready: %.1fs audio in %.3fs",
             len(audio) / self.config.audio.sample_rate,
@@ -1556,6 +1563,10 @@ $canonicalTranscriptionHandlers = @'
         fallback = session.needs_fallback
         fallback_seconds = 0.0
         if fallback:
+            if session.language_conflict:
+                log.warning(
+                    "Buffered language conflict detected; retrying the complete recording"
+                )
             fallback_started = time.perf_counter()
             try:
                 text = self._engine.transcribe(full_audio, self.config.audio.sample_rate)

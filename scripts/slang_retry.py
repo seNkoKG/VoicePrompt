@@ -9,10 +9,9 @@ from typing import Any
 
 _UNSUPPORTED_LANGUAGE_MAX_LOSS = 0.05
 _RECENT_LANGUAGE_SWITCH_RATIO = 1.5
-_SUPPORTED_RETRY_MAX_SECONDS = 5.0
+_SUPPORTED_RETRY_MAX_SECONDS = 12.0
 _SUPPORTED_RETRY_MAX_CONFIDENCE = 0.70
 _SUPPORTED_RETRY_RATIO = 0.60
-_RECENT_SUPPORTED_RETRY_RATIO = 0.45
 _LANGUAGE_EVIDENCE_WEIGHT = 0.35
 _RECENT_LANGUAGE_BONUS = 0.08
 _SUPPORTED_RETRY_MIN_GAIN = 0.02
@@ -59,19 +58,24 @@ def bilingual_retry_language(
 
     probabilities = dict(language_probabilities or ())
     if detected in _SUPPORTED_LANGUAGES:
+        # Never turn a primary English decode into Slovenian. An English label
+        # can be imperfect, but a forced Slovenian pass is the exact failure
+        # Auto mode must avoid.
+        if detected == "en":
+            return None
         if audio_seconds > _SUPPORTED_RETRY_MAX_SECONDS:
             return None
         detected_probability = probabilities.get(detected, confidence)
         if detected_probability >= _SUPPORTED_RETRY_MAX_CONFIDENCE:
             return None
-        other_language = "sl" if detected == "en" else "en"
+        other_language = "en"
         other_probability = probabilities.get(other_language, 0.0)
-        ratio = (
-            _RECENT_SUPPORTED_RETRY_RATIO
-            if recent_language == other_language
-            else _SUPPORTED_RETRY_RATIO
-        )
-        if detected_probability > 0 and other_probability >= detected_probability * ratio:
+        if recent_language == other_language:
+            return other_language
+        if (
+            detected_probability > 0
+            and other_probability >= detected_probability * _SUPPORTED_RETRY_RATIO
+        ):
             return other_language
         return None
 

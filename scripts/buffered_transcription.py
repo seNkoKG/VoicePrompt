@@ -25,6 +25,7 @@ class BufferedSession:
         self._pending: list[np.ndarray] = []
         self._pending_samples = 0
         self._results: list[str] = []
+        self._languages: set[str] = set()
         self._failed = False
         self._lock = threading.Lock()
         self.scheduled_batches = 0
@@ -57,13 +58,20 @@ class BufferedSession:
         with self._lock:
             self.scheduled_before_release = self.scheduled_batches
 
-    def record_result(self, text: str, elapsed_seconds: float) -> None:
+    def record_result(
+        self,
+        text: str,
+        elapsed_seconds: float,
+        language: str | None = None,
+    ) -> None:
         clean = text.strip()
         with self._lock:
             self.completed_batches += 1
             self.compute_seconds += max(0.0, elapsed_seconds)
             if clean:
                 self._results.append(clean)
+                if language:
+                    self._languages.add(language)
             else:
                 self._failed = True
 
@@ -90,7 +98,13 @@ class BufferedSession:
                 self._failed
                 or self.completed_batches != self.scheduled_batches
                 or not self._results
+                or len(self._languages) > 1
             )
+
+    @property
+    def language_conflict(self) -> bool:
+        with self._lock:
+            return len(self._languages) > 1
 
     @property
     def text(self) -> str:

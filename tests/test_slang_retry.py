@@ -50,13 +50,41 @@ class SlangRetryTests(unittest.TestCase):
             ),
             "en",
         )
-        self.assertEqual(
+        self.assertIsNone(
             bilingual_retry_language(
                 "auto", "en", 0.48, -0.55,
                 [("en", 0.48), ("sl", 0.34)], "sl", 2.9,
-            ),
-            "sl",
+            )
         )
+
+    def test_observed_seven_second_english_mislabel_is_cross_checked(self) -> None:
+        self.assertEqual(
+            bilingual_retry_language(
+                "auto",
+                "sl",
+                0.54,
+                -0.55,
+                [("sl", 0.54), ("en", 0.15)],
+                "en",
+                7.264,
+            ),
+            "en",
+        )
+
+    def test_detected_english_is_never_replaced_by_slovenian(self) -> None:
+        for seconds in (1.0, 4.5, 11.9):
+            with self.subTest(seconds=seconds):
+                self.assertIsNone(
+                    bilingual_retry_language(
+                        "auto",
+                        "en",
+                        0.30,
+                        -0.70,
+                        [("en", 0.30), ("sl", 0.28)],
+                        "sl",
+                        seconds,
+                    )
+                )
 
     def test_clear_or_long_supported_language_stays_single_pass(self) -> None:
         probabilities = [("sl", 0.82), ("en", 0.12)]
@@ -68,17 +96,18 @@ class SlangRetryTests(unittest.TestCase):
         self.assertIsNone(
             bilingual_retry_language(
                 "auto", "sl", 0.48, -0.4,
-                [("sl", 0.48), ("en", 0.34)], "en", 8.0,
+                [("sl", 0.48), ("en", 0.34)], "en", 13.0,
             )
         )
         self.assertFalse(should_retry_as_slovenian("", "en", 0.01, -1.50))
 
-    def test_short_slovenian_with_clear_pairwise_evidence_does_not_retry(self) -> None:
-        self.assertIsNone(
+    def test_recent_english_cross_checks_ambiguous_short_slovenian(self) -> None:
+        self.assertEqual(
             bilingual_retry_language(
                 "auto", "sl", 0.36, -0.66,
                 [("sl", 0.36), ("en", 0.10)], "en", 4.2,
-            )
+            ),
+            "en",
         )
 
     def test_auto_primary_pass_stays_language_neutral(self) -> None:
