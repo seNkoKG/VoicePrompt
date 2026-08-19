@@ -66,6 +66,8 @@ internal sealed class MainForm : Form
     private ChoiceStrip _outputChoice = null!;
     private Label _outputHint = null!;
     private ToggleSwitch _voiceCommandsToggle = null!;
+    private ToggleSwitch _smartFormattingToggle = null!;
+    private ToggleSwitch _contextAwarenessToggle = null!;
     private ToggleSwitch _autoStartToggle = null!;
     private ChoiceStrip _languageChoice = null!;
     private ComboBox _additionalLanguageCombo = null!;
@@ -625,13 +627,17 @@ internal sealed class MainForm : Form
         _outputChoice.SelectedChanged += (_, _) => UpdateOutputHint();
         _outputHint = BuildInlineHint(Theme.Surface);
         _voiceCommandsToggle = new ToggleSwitch("Enable spoken commands") { Dock = DockStyle.Left };
+        _smartFormattingToggle = new ToggleSwitch("Format dictation automatically") { Dock = DockStyle.Left };
+        _contextAwarenessToggle = new ToggleSwitch("Match the active app and nearby text") { Dock = DockStyle.Left };
         _autoStartToggle = new ToggleSwitch("Launch VoicePrompt when I sign in") { Dock = DockStyle.Left };
 
         var shortcut = new SectionBuilder("Shortcut & behavior", "A global key works from browsers, editors, chat apps, and games.");
         shortcut.Add("Global hotkey", "Click the field, press a key or combination, then press Enter.", _hotkeyRecorder, 76);
         shortcut.Add("Activation", "Hold mode is fastest and avoids accidental long recordings.", StackControl(_activationChoice, _activationHint, 64), 82);
         shortcut.Add("Output", "Copy only is useful when an app blocks synthetic paste or you want manual placement.", StackControl(_outputChoice, _outputHint, 64), 82);
-        shortcut.Add("Voice commands", "Exact phrases only; English + Slovenian.", _voiceCommandsToggle, 62);
+        shortcut.Add("Voice commands", "Exact commands and snippets, plus “Command …” / “Ukaz …” for selected text when AI is enabled.", _voiceCommandsToggle, 62);
+        shortcut.Add("Smart formatting", "Local punctuation, casing, paragraph commands, and safe filler cleanup; no AI required.", _smartFormattingToggle, 62);
+        shortcut.Add("App context", "Uses the active app type and bounded nearby text when Windows exposes it; password fields are ignored.", _contextAwarenessToggle, 62);
         shortcut.Add("Windows startup", "Start silently in the tray so dictation is always available.", _autoStartToggle, 62);
         AddPageItem(body, shortcut.Build());
 
@@ -988,7 +994,7 @@ internal sealed class MainForm : Form
         };
         _historyList.SelectedIndexChanged += (_, _) => UpdateHistorySelection();
         _historyResultPreview = BuildHistoryPreview("Delivered transcript");
-        _historyOriginalPreview = BuildHistoryPreview("Original transcript before AI cleanup");
+        _historyOriginalPreview = BuildHistoryPreview("Raw transcript before formatting and AI cleanup");
         _historyComparisonStatus = BuildInlineHint(Theme.Surface);
         _historyComparisonStatus.Text = "Select a transcript to compare both versions.";
         var comparison = BuildHistoryComparison();
@@ -998,6 +1004,8 @@ internal sealed class MainForm : Form
         _historyCopyOriginalButton.Click += (_, _) => CopySelectedHistory(original: true);
         var delete = new ActionButton("Delete", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
         delete.Click += (_, _) => DeleteSelectedHistory();
+        var learn = new ActionButton("Learn correction", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
+        learn.Click += (_, _) => LearnCorrectionFromHistory();
         var refresh = new ActionButton("Refresh", ActionButtonStyle.Secondary) { BackColor = Theme.Surface };
         refresh.Click += (_, _) => LoadHistory();
         var clear = new ActionButton("Clear all", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
@@ -1008,7 +1016,7 @@ internal sealed class MainForm : Form
         var recovery = new SectionBuilder("Recent transcripts", "Newest first. Select an entry to inspect or copy it.");
         recovery.Add("Saved entries", "Timestamp and a short preview. Transcript text stays out of logs and diagnostics.", _historyList, 176);
         recovery.Add("Compare versions", "See the delivered result beside the untouched local transcript. Both remain private.", comparison, 220);
-        recovery.Add("Actions", "Copy either version, or manage the selected local recovery entry.", BuildHistoryActions(copy, _historyCopyOriginalButton, delete, refresh, clear), 122);
+        recovery.Add("Actions", "Teach a correction once, copy either version, or manage the selected local recovery entry.", BuildHistoryActions(copy, _historyCopyOriginalButton, learn, delete, refresh, clear), 122);
         AddPageItem(body, recovery.Build());
     }
 
@@ -1355,6 +1363,8 @@ internal sealed class MainForm : Form
 
         _autoStartToggle.CheckedChanged += (_, _) => MarkDirty();
         _voiceCommandsToggle.CheckedChanged += (_, _) => MarkDirty();
+        _smartFormattingToggle.CheckedChanged += (_, _) => MarkDirty();
+        _contextAwarenessToggle.CheckedChanged += (_, _) => MarkDirty();
         _bufferedTranscriptionToggle.CheckedChanged += (_, _) => MarkDirty();
         _historyEnabled.CheckedChanged += (_, _) => MarkDirty();
         foreach (TextBox text in new[]
@@ -1656,6 +1666,8 @@ internal sealed class MainForm : Form
                 Activation = _activationChoice.SelectedValue,
                 OutputMode = _outputChoice.SelectedValue,
                 VoiceCommands = _voiceCommandsToggle.Checked,
+                SmartFormatting = _smartFormattingToggle.Checked,
+                ContextAwareness = _contextAwarenessToggle.Checked,
                 Language = profile.Language,
                 Prompt = profile.Prompt,
                 Hotwords = profile.Hotwords,
@@ -1706,6 +1718,8 @@ internal sealed class MainForm : Form
             _activationChoice.SelectValue(backup.Dictation.Activation);
             _outputChoice.SelectValue(backup.Dictation.OutputMode);
             _voiceCommandsToggle.Checked = backup.Dictation.VoiceCommands;
+            _smartFormattingToggle.Checked = backup.Dictation.SmartFormatting;
+            _contextAwarenessToggle.Checked = backup.Dictation.ContextAwareness;
             ApplyLanguageProfile(new LanguageProfileDocument
             {
                 Language = backup.Dictation.Language,
@@ -1827,6 +1841,8 @@ internal sealed class MainForm : Form
             StringComparison.OrdinalIgnoreCase) ? "clipboard" : "paste");
         UpdateOutputHint();
         _voiceCommandsToggle.Checked = _config.GetBool("voiceprompt", "voice_commands") ?? false;
+        _smartFormattingToggle.Checked = _config.GetBool("voiceprompt", "smart_formatting") ?? true;
+        _contextAwarenessToggle.Checked = _config.GetBool("voiceprompt", "context_awareness") ?? true;
 
         string language = _config.GetString("server", "language") ?? "";
         string? primaryLanguage = LanguageCatalog.PrimaryModeFor(language);
@@ -2240,6 +2256,8 @@ internal sealed class MainForm : Form
         bool bufferedTranscription = _bufferedTranscriptionToggle.Checked;
         string outputMode = _outputChoice.SelectedValue;
         bool voiceCommands = _voiceCommandsToggle.Checked;
+        bool smartFormatting = _smartFormattingToggle.Checked;
+        bool contextAwareness = _contextAwarenessToggle.Checked;
 
         SetBusy(true);
         ShowFooter("Saving settings and restarting the dictation runtime…", Theme.Accent);
@@ -2262,6 +2280,8 @@ internal sealed class MainForm : Form
                 _config.Set("voiceprompt", "buffered_transcription", bufferedTranscription);
                 _config.Set("voiceprompt", "output_mode", outputMode);
                 _config.Set("voiceprompt", "voice_commands", voiceCommands);
+                _config.Set("voiceprompt", "smart_formatting", smartFormatting);
+                _config.Set("voiceprompt", "context_awareness", contextAwareness);
                 _config.Set("vad", "threshold", threshold);
                 _config.Set("vad", "silence_ms", silenceMs);
                 _config.Set("vad", "min_speech_ms", minimumSpeechMs);
@@ -2481,6 +2501,36 @@ internal sealed class MainForm : Form
         ShowFooter("Transcript deleted", Theme.Muted);
     }
 
+    private void LearnCorrectionFromHistory()
+    {
+        if (_historyList.SelectedItem is not HistoryListItem selected)
+        {
+            ShowFooter("Select a transcript first.", Theme.Warn);
+            return;
+        }
+        string source = _historyOriginalPreview.SelectedText.Trim();
+        string result = _historyResultPreview.SelectedText.Trim();
+        if (source.Length == 0)
+            source = selected.Entry.SourceText.Trim();
+        if (result.Length == 0)
+            result = selected.Entry.Text.Trim();
+        string heard = source.Length <= 120 ? source : "";
+        string replacement = !source.Equals(result, StringComparison.Ordinal) && result.Length <= 120 ? result : "";
+        using var dialog = new CorrectionLearningDialog(heard, replacement);
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        try
+        {
+            _dictionaryStore.AddOrReplace(dialog.Heard, dialog.Replacement);
+            _correctionsText.Text = _dictionaryStore.LoadText();
+            ShowFooter("Correction learned · applies to the next dictation", Theme.Ok);
+        }
+        catch (InvalidDataException ex)
+        {
+            ShowFooter(ShortMessage(ex.Message), Theme.Err);
+        }
+    }
+
     private void ClearHistory()
     {
         if (_historyList.Items.Count == 0)
@@ -2517,6 +2567,8 @@ internal sealed class MainForm : Form
         _computeChoice.SelectValue("float16");
         _temperature.Value = 0;
         _bufferedTranscriptionToggle.Checked = true;
+        _smartFormattingToggle.Checked = true;
+        _contextAwarenessToggle.Checked = true;
         MarkDirty();
         ShowFooter("Recommended setup restored. Save to activate it.", Theme.Accent);
     }

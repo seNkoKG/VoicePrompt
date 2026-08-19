@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.22.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.23.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -240,7 +240,8 @@ Run: `powershell -ExecutionPolicy Bypass -File scripts\apply_patches.ps1`
 The E2E harness simulates what a human does (no spoken voice needed):
 
 - `tests/e2e_test.ps1` — opens a live text target window, presses the hotkey via `keybd_event`, plays an audio file through the speakers/microphone path, and proves the transcribed text lands there (timestamps the release→paste latency).
-- `tests/bench_one.py` / `tests/accuracy_metrics.py` — model load time, VRAM, WER, CER, language accuracy, repetition rate, and p50/p95 latency from an optional reference manifest.
+- `tests/fetch_fleurs_sample.py` — immediately downloads a small licensed English/Slovenian public benchmark through the Hugging Face dataset server; no Common Voice export wait or dataset SDK required.
+- `tests/bench_one.py` / `tests/accuracy_metrics.py` / `tests/benchmark_gate.py` — model load time, VRAM, WER, CER, language accuracy, repetition rate, p50/p95 latency, and build-failing quality gates.
 - `tests/probe_devices.py` — enumerates PortAudio input devices.
 - `tests/test_ai_rewriter.py` — exercises both cleanup modes, warm connection reuse, API authentication, response guards, strict timeouts, and raw fallback against a local mock provider.
 - `tests/test_slang_retry.py` — verifies language-neutral primary decoding, bilingual recovery, transcript confidence gates, and safeguards against translating real English.
@@ -257,6 +258,15 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `ui/ConfigManager.Tests` — verifies the comment-preserving config editor plus privacy-safe, validated settings/vocabulary backup round trips (run: `dotnet run --project ui\ConfigManager.Tests`).
 
 Verified end-to-end results (simulated): a clear English utterance landed **0.78 s** after key release; an ambiguous Slovenian utterance requiring the safety decode landed in **1.86 s**. The original batch path retained a **129.9-second** recording's opening sentence, all 18 checkpoints, and unique final sentence. With fast long recordings enabled, a real-time **99.2-second** English sample produced one ordered paste **0.49 s** after release and matched the full one-pass decode's measured **7.04% WER** on the same reference.
+
+Fetch and gate a fresh public English/Slovenian sample without waiting for a corpus export:
+
+```powershell
+$python = "$env:USERPROFILE\.voice-typing\venv\Scripts\python.exe"
+& $python tests\fetch_fleurs_sample.py --output "$env:TEMP\VoicePrompt-FLEURS" --samples-per-language 10
+& $python tests\bench_one.py Systran/faster-whisper-large-v3 float16 --manifest "$env:TEMP\VoicePrompt-FLEURS\manifest.json" --language auto | Tee-Object "$env:TEMP\VoicePrompt-FLEURS\results.jsonl"
+& $python tests\benchmark_gate.py "$env:TEMP\VoicePrompt-FLEURS\results.jsonl"
+```
 
 ## 🩹 Troubleshooting
 
@@ -289,7 +299,7 @@ Verified end-to-end results (simulated): a clear English utterance landed **0.78
 
 ## Roadmap
 
-- **1.21, daily workflow**: guided microphone calibration, explicit correction learning from Recovery, more global actions, and shortcut-conflict guidance.
-- **1.22, optional context**: privacy-visible selected-text and focused-app formatting, kept off by default and blocked in secure fields.
-- **1.23, broader hardware**: benchmark-gated CPU, AMD, and Intel engine options plus an explicit VRAM-saving mode.
+- **Current, daily workflow**: explicit correction learning from Recovery, reusable voice snippets, and exact English/Slovenian voice commands.
+- **Current, local context**: smart punctuation and formatting, bounded focused-app context blocked in password fields, and selected-text AI commands with an explicit “Command” / “Ukaz” prefix.
+- **Later, broader hardware**: benchmark-gated CPU, AMD, and Intel engine options plus an explicit VRAM-saving mode.
 - **Later**: file transcription, scratchpad reprocessing, speaker separation, and a signed installer. Code signing requires a trusted signing certificate and stays separate from unsigned development builds.

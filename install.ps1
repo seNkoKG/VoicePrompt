@@ -96,10 +96,13 @@ $packageOutputMode = Join-Path $packageRoot "scripts\output_mode.py"
 $packageAppProfiles = Join-Path $packageRoot "scripts\app_profiles.py"
 $packageTextSnippets = Join-Path $packageRoot "scripts\text_snippets.py"
 $packageVoiceCommands = Join-Path $packageRoot "scripts\voice_commands.py"
+$packageSmartFormatter = Join-Path $packageRoot "scripts\smart_formatter.py"
+$packageWindowsContext = Join-Path $packageRoot "scripts\windows_context.py"
+$packageSelectionCommands = Join-Path $packageRoot "scripts\selection_commands.py"
 $packageWindowsHotkey = Join-Path $packageRoot "scripts\windows_hotkey.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
 $packageRequirements = Join-Path $packageRoot "requirements.txt"
-foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageWindowsHotkey, $packageRunner, $packageRequirements)) {
+foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageSmartFormatter, $packageWindowsContext, $packageSelectionCommands, $packageWindowsHotkey, $packageRunner, $packageRequirements)) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -180,6 +183,9 @@ Copy-Item -LiteralPath $packageOutputMode -Destination (Join-Path $installScript
 Copy-Item -LiteralPath $packageAppProfiles -Destination (Join-Path $installScripts "app_profiles.py") -Force
 Copy-Item -LiteralPath $packageTextSnippets -Destination (Join-Path $installScripts "text_snippets.py") -Force
 Copy-Item -LiteralPath $packageVoiceCommands -Destination (Join-Path $installScripts "voice_commands.py") -Force
+Copy-Item -LiteralPath $packageSmartFormatter -Destination (Join-Path $installScripts "smart_formatter.py") -Force
+Copy-Item -LiteralPath $packageWindowsContext -Destination (Join-Path $installScripts "windows_context.py") -Force
+Copy-Item -LiteralPath $packageSelectionCommands -Destination (Join-Path $installScripts "selection_commands.py") -Force
 Copy-Item -LiteralPath $packageWindowsHotkey -Destination (Join-Path $installScripts "windows_hotkey.py") -Force
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath $packageRequirements -Destination (Join-Path $installRoot "requirements.txt") -Force

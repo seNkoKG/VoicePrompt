@@ -106,6 +106,15 @@ Write-Output "[SYNCED  ] text_snippets.py -- bounded reusable text"
 $voiceCommandsSource = Join-Path $PSScriptRoot "voice_commands.py"
 Copy-Item -LiteralPath $voiceCommandsSource -Destination "$site\voice_commands.py" -Force
 Write-Output "[SYNCED  ] voice_commands.py -- exact opt-in spoken commands"
+$smartFormatterSource = Join-Path $PSScriptRoot "smart_formatter.py"
+Copy-Item -LiteralPath $smartFormatterSource -Destination "$site\smart_formatter.py" -Force
+Write-Output "[SYNCED  ] smart_formatter.py -- deterministic local formatting"
+$windowsContextSource = Join-Path $PSScriptRoot "windows_context.py"
+Copy-Item -LiteralPath $windowsContextSource -Destination "$site\windows_context.py" -Force
+Write-Output "[SYNCED  ] windows_context.py -- bounded local application context"
+$selectionCommandsSource = Join-Path $PSScriptRoot "selection_commands.py"
+Copy-Item -LiteralPath $selectionCommandsSource -Destination "$site\selection_commands.py" -Force
+Write-Output "[SYNCED  ] selection_commands.py -- explicit selected-text command mode"
 $windowsHotkeySource = Join-Path $PSScriptRoot "windows_hotkey.py"
 Copy-Item -LiteralPath $windowsHotkeySource -Destination "$site\windows_hotkey.py" -Force
 Write-Output "[SYNCED  ] windows_hotkey.py -- native Windows global hotkey"
@@ -1026,6 +1035,24 @@ from .app_profiles import resolve_app_profile
 from .app_profiles import resolve_app_profile
 from .voice_commands import execute_voice_command, resolve_voice_command
 '@ "typer.py -- exact voice-command routing" 'from .voice_commands import execute_voice_command, resolve_voice_command'
+Apply-Patch $typer @'
+from .voice_commands import execute_voice_command, resolve_voice_command
+'@ @'
+from .voice_commands import execute_voice_command, resolve_voice_command
+from .smart_formatter import format_dictation
+from .windows_context import capture_context
+'@ "typer.py -- context-aware local formatting" 'from .windows_context import capture_context'
+Apply-Patch $typer @'
+from .ai_rewriter import rewrite_text
+'@ @'
+from .ai_rewriter import rewrite_selection, rewrite_text
+'@ "typer.py -- selected-text AI transform" 'from .ai_rewriter import rewrite_selection, rewrite_text'
+Apply-Patch $typer @'
+from .windows_context import capture_context
+'@ @'
+from .windows_context import capture_context
+from .selection_commands import resolve_selection_command
+'@ "typer.py -- explicit selection-command routing" 'from .selection_commands import resolve_selection_command'
 
 $canonicalTypeText = @'
 def type_text(text: str) -> str:
@@ -1034,7 +1061,9 @@ def type_text(text: str) -> str:
         return "paste"
 
     original_text = text
+    context = capture_context()
     text = apply_corrections(text)
+    text = format_dictation(text, context)
     profile = resolve_app_profile()
     output_override = profile.output_override if profile is not None else None
     writing_override = profile.writing_override if profile is not None else None
@@ -1045,6 +1074,18 @@ def type_text(text: str) -> str:
             profile.writing_mode,
             profile.output_mode,
         )
+    selection_instruction = resolve_selection_command(text)
+    if selection_instruction is not None:
+        log.info("Selected-text command recognized")
+        with _clipboard_lock:
+            selected_text = context.selected_text or _capture_selected_text()
+        if not selected_text:
+            log.warning("Selected-text command cancelled because no text selection was available")
+            return "cancelled"
+        replacement = rewrite_selection(selected_text, selection_instruction)
+        remember_transcript(selected_text, replacement)
+        with _clipboard_lock:
+            return deliver_text(replacement, _copy_text_impl, _type_text_impl, mode=output_override)
     command = resolve_voice_command(text)
     if command is not None:
         log.info("Voice command recognized: %s", command.name)
@@ -1078,6 +1119,24 @@ def _send_ctrl_v() -> None:
 def _send_ctrl_z() -> None:
     """Send Ctrl+Z on Windows via ctypes."""
     _send_ctrl_key(0x5A)
+
+
+def _capture_selected_text() -> str:
+    """Copy a selection while preserving an existing text clipboard."""
+    if sys.platform != "win32":
+        return ""
+    previous = _win_clipboard_get()
+    if previous is None:
+        return ""
+    sentinel = f"VoicePrompt-selection-{time.monotonic_ns()}"
+    try:
+        _win_clipboard_set(sentinel)
+        _send_ctrl_key(0x43)
+        time.sleep(0.06)
+        selected = _win_clipboard_get()
+        return selected if selected and selected != sentinel and len(selected) <= 20_000 else ""
+    finally:
+        _win_clipboard_set(previous)
 
 
 def _send_ctrl_key(key_vk: int) -> None:

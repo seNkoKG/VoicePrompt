@@ -94,11 +94,23 @@ def voice_commands_enabled() -> bool:
     """Read the opt-in exact-command flag once; runtime restart applies it."""
     return config_section("voiceprompt").get("voice_commands") is True
 
+
+def smart_formatting_enabled() -> bool:
+    """Keep deterministic local cleanup on unless explicitly disabled."""
+    return config_section("voiceprompt").get("smart_formatting", True) is not False
+
+
+def context_awareness_enabled() -> bool:
+    """Use only bounded local application context unless explicitly disabled."""
+    return config_section("voiceprompt").get("context_awareness", True) is not False
+
 from whisper_dictation.cli import main  # noqa: E402
 
 sys.argv = [sys.argv[0], "start"]
 os.environ["VOICEPROMPT_OUTPUT_MODE"] = transcript_output_mode()
 os.environ["VOICEPROMPT_VOICE_COMMANDS"] = "1" if voice_commands_enabled() else "0"
+os.environ["VOICEPROMPT_SMART_FORMATTING"] = "1" if smart_formatting_enabled() else "0"
+os.environ["VOICEPROMPT_CONTEXT_AWARENESS"] = "1" if context_awareness_enabled() else "0"
 if os.environ["VOICEPROMPT_OUTPUT_MODE"] == "clipboard":
     logging.getLogger(__name__).info("Copy-only transcript output enabled")
 if os.environ["VOICEPROMPT_VOICE_COMMANDS"] == "1":

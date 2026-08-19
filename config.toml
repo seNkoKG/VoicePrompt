@@ -15,6 +15,8 @@ slovenian_slang = false                # mixed English/Slovenian slang retry pro
 buffered_transcription = true          # pre-transcribe long speech blocks; paste once on release
 output_mode = "paste"                  # "paste" into focused app or leave text on "clipboard"
 voice_commands = false                 # exact whole-utterance commands; disabled by default
+smart_formatting = true                # local punctuation, casing, and conservative filler cleanup
+context_awareness = true               # local app type and bounded nearby-text spacing
 
 [hotkey]
 binding = "f1"                        # Hotkey: modifiers + key (e.g. "alt+v", "ctrl+shift+d", "f1")

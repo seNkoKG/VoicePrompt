@@ -69,6 +69,9 @@ Copy-Item -LiteralPath (Join-Path $root "scripts\output_mode.py") -Destination (
 Copy-Item -LiteralPath (Join-Path $root "scripts\app_profiles.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\text_snippets.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\voice_commands.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\smart_formatter.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\windows_context.py") -Destination (Join-Path $packageRoot "scripts")
+Copy-Item -LiteralPath (Join-Path $root "scripts\selection_commands.py") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\windows_hotkey.py") -Destination (Join-Path $packageRoot "scripts")
 [System.IO.File]::WriteAllText((Join-Path $packageRoot "version.txt"), "$Version`r`n", [System.Text.UTF8Encoding]::new($false))
 

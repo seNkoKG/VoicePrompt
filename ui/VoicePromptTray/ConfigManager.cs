@@ -22,6 +22,8 @@ internal sealed class ConfigManager
         buffered_transcription = true
         output_mode = "paste"
         voice_commands = false
+        smart_formatting = true
+        context_awareness = true
 
         [hotkey]
         binding = "f1"

@@ -64,6 +64,8 @@ cfg.Set("audio", "device", "");
 cfg.Set("voiceprompt", "slovenian_slang", true);
 cfg.Set("voiceprompt", "output_mode", "clipboard");
 cfg.Set("voiceprompt", "voice_commands", true);
+cfg.Set("voiceprompt", "smart_formatting", false);
+cfg.Set("voiceprompt", "context_awareness", false);
 cfg.Set("voiceprompt", "base_prompt", "V kodi pišem");
 cfg.Save();
 
@@ -82,6 +84,8 @@ Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
 Check("VoicePrompt profile section added", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "slovenian_slang") == true);
 Check("copy-only output setting round trips", new VoicePromptTray.ConfigManager(path).GetString("voiceprompt", "output_mode") == "clipboard");
 Check("voice-command setting round trips", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "voice_commands") == true);
+Check("smart-formatting setting round trips", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "smart_formatting") == false);
+Check("context-awareness setting round trips", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "context_awareness") == false);
 Check("file still parses after re-read", new VoicePromptTray.ConfigManager(path).GetInt("vad", "silence_ms") == 300);
 
 string savedOnce = File.ReadAllText(path);
@@ -97,6 +101,8 @@ Check("new config keeps recognition local with bounded server fallback",
 Check("new config enables lossless long-recording prefetch", defaults.GetBool("voiceprompt", "buffered_transcription") == true);
 Check("new config defaults to automatic paste", defaults.GetString("voiceprompt", "output_mode") == "paste");
 Check("new config keeps voice commands opt-in", defaults.GetBool("voiceprompt", "voice_commands") == false);
+Check("new config enables local smart formatting", defaults.GetBool("voiceprompt", "smart_formatting") == true);
+Check("new config enables bounded context awareness", defaults.GetBool("voiceprompt", "context_awareness") == true);
 
 string legacyPath = Path.Combine(dir, "legacy.toml");
 const string legacyPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
@@ -161,6 +167,11 @@ string correctionsPath = Path.Combine(dir, "local", "corrections.json");
 var dictionary = new VoicePromptTray.PersonalDictionaryStore(correctionsPath);
 dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
 Check("personal corrections round trip", dictionary.LoadText().Contains("žabar => Ljubljančan"));
+dictionary.AddOrReplace("polly market", "Polymarket app");
+dictionary.AddOrReplace("codecks", "Codex");
+Check("personal corrections learn immediately",
+    dictionary.LoadText().Contains("polly market => Polymarket app") &&
+    dictionary.LoadText().Contains("codecks => Codex"));
 File.WriteAllText(correctionsPath, new string('x', 128 * 1024 + 1));
 Check("oversized personal corrections fail closed", dictionary.LoadText() == "");
 dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
@@ -228,6 +239,8 @@ var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
         Activation = "hold",
         OutputMode = "clipboard",
         VoiceCommands = true,
+        SmartFormatting = false,
+        ContextAwareness = false,
         Language = "sl",
         Prompt = "Imena: Žan",
         Hotwords = "Codex, Ljubljana",
@@ -264,7 +277,9 @@ Check("settings backup preserves portable Unicode values",
     restoredBackup.Recognition.EngineType == "server" &&
     restoredBackup.Recognition.ServerUrl == "https://speech.example.test" &&
     restoredBackup.Recognition.ServerTimeoutSeconds == 90 &&
-    restoredBackup.Dictation.OutputMode == "clipboard");
+    restoredBackup.Dictation.OutputMode == "clipboard" &&
+    !restoredBackup.Dictation.SmartFormatting &&
+    !restoredBackup.Dictation.ContextAwareness);
 Check("settings backup excludes API keys", !backupJson.Contains("api_key", StringComparison.OrdinalIgnoreCase));
 Check("settings backup excludes transcript history", !backupJson.Contains("\"history\"", StringComparison.OrdinalIgnoreCase));
 Check("settings backup excludes microphone identity", !backupJson.Contains("microphone", StringComparison.OrdinalIgnoreCase));
@@ -824,7 +839,8 @@ static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
         "scripts/ai_rewriter.py", "scripts/transcript_history.py", "scripts/text_corrections.py",
         "scripts/slang_retry.py", "scripts/decoding_options.py", "scripts/buffered_transcription.py",
         "scripts/output_mode.py", "scripts/app_profiles.py", "scripts/text_snippets.py",
-        "scripts/voice_commands.py", "scripts/windows_hotkey.py",
+        "scripts/voice_commands.py", "scripts/smart_formatter.py", "scripts/windows_context.py",
+        "scripts/selection_commands.py", "scripts/windows_hotkey.py",
     };
     using var buffer = new MemoryStream();
     using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))

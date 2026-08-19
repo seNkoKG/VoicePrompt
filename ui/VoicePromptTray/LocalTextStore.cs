@@ -157,6 +157,21 @@ internal sealed class PersonalDictionaryStore
         File.Move(temp, _path, true);
     }
 
+    public void AddOrReplace(string heard, string replacement)
+    {
+        string normalizedHeard = heard.Trim();
+        string normalizedReplacement = replacement.Trim();
+        _ = Parse($"{normalizedHeard} => {normalizedReplacement}");
+        var entries = Parse(LoadText()).ToList();
+        int index = entries.FindIndex(entry => entry.Heard.Equals(normalizedHeard, StringComparison.OrdinalIgnoreCase));
+        var value = new CorrectionEntry(normalizedHeard, normalizedReplacement);
+        if (index >= 0)
+            entries[index] = value;
+        else
+            entries.Add(value);
+        SaveText(string.Join(Environment.NewLine, entries.Select(entry => $"{entry.Heard} => {entry.Replacement}")));
+    }
+
     public static IReadOnlyList<CorrectionEntry> Parse(string text)
     {
         var entries = new List<CorrectionEntry>();

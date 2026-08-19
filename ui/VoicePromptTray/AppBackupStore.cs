@@ -14,6 +14,10 @@ internal sealed record BackupDictationSettings
     public string OutputMode { get; init; } = "paste";
     [JsonPropertyName("voice_commands")]
     public bool VoiceCommands { get; init; }
+    [JsonPropertyName("smart_formatting")]
+    public bool SmartFormatting { get; init; } = true;
+    [JsonPropertyName("context_awareness")]
+    public bool ContextAwareness { get; init; } = true;
     [JsonPropertyName("language")]
     public string Language { get; init; } = "";
     [JsonPropertyName("prompt")]

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.23.0] - 2026-08-19
+
+### Added
+
+- Add always-on local smart formatting for spoken punctuation, paragraph commands, conservative filler cleanup, and context-aware spacing and casing.
+- Add bounded focused-application context with secure-field exclusion and local application-style classification.
+- Add explicit selected-text AI commands through the `Command …` and `Ukaz …` prefixes, with prompt-injection guards and unchanged-text fallback.
+- Add one-step correction learning from Recovery, including phrase selections and immediate local application without model retraining.
+- Add no-wait English and Slovenian FLEURS sampling plus aggregate and per-language WER, language-detection, repetition, and latency release gates.
+
+### Changed
+
+- Enable smart formatting and bounded context awareness by default while exposing both controls in Dictation settings and portable backups.
+- Package and migrate the new formatting, context, and command modules on clean installs and every supported upgrade path.
+- Report public benchmark results by language so English accuracy cannot hide a Slovenian regression.
+
+### Fixed
+
+- Make the standalone benchmark discover pip-provided CUDA DLLs, measure IEEE-float WAV duration through PyAV, and emit Windows-console-safe JSON.
+- Preserve surrounding spacing when Windows exposes text around the caret, while ignoring password edit controls and failing closed on unsupported fields.
+
 ## [1.22.0] - 2026-08-13
 
 ### Added

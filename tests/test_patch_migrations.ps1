@@ -42,10 +42,13 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $appProfiles = Join-Path $Module "app_profiles.py"
     $textSnippets = Join-Path $Module "text_snippets.py"
     $voiceCommands = Join-Path $Module "voice_commands.py"
+    $smartFormatter = Join-Path $Module "smart_formatter.py"
+    $windowsContext = Join-Path $Module "windows_context.py"
+    $selectionCommands = Join-Path $Module "selection_commands.py"
     $windowsHotkey = Join-Path $Module "windows_hotkey.py"
     $listener = Join-Path $Module "hotkey\listener.py"
     $config = Join-Path $Module "config.py"
-    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon $listener (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands $windowsHotkey
+    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon $listener (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands $smartFormatter $windowsContext $selectionCommands $windowsHotkey
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -183,6 +186,18 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($typerSource, "def _send_ctrl_z\(").Count -ne 1 -or
         [regex]::Matches($typerSource, "return execute_voice_command\(command, deliver_command, _send_ctrl_z\)").Count -ne 1) {
         throw "$Name is missing the exact opt-in voice-command router."
+    }
+    if (-not (Test-Path -LiteralPath $smartFormatter) -or
+        -not (Test-Path -LiteralPath $windowsContext) -or
+        [regex]::Matches($typerSource, "context = capture_context\(\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "text = format_dictation\(text, context\)").Count -ne 1) {
+        throw "$Name is missing the context-aware local formatting pipeline."
+    }
+    if (-not (Test-Path -LiteralPath $selectionCommands) -or
+        [regex]::Matches($typerSource, "selection_instruction = resolve_selection_command\(text\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "replacement = rewrite_selection\(selected_text, selection_instruction\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "def _capture_selected_text\(\)").Count -ne 1) {
+        throw "$Name is missing selected-text command mode."
     }
 
     $audioSource = [System.IO.File]::ReadAllText($audio)

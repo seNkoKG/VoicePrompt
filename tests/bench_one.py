@@ -4,12 +4,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import sys
 import time
 import wave
 from pathlib import Path
 
 from accuracy_metrics import summarize
+
+
+def configure_cuda_paths() -> None:
+    """Match the installed daemon's pip-provided CUDA DLL discovery."""
+    if sys.platform != "win32":
+        return
+    site_packages = Path(sys.executable).resolve().parent.parent / "Lib" / "site-packages"
+    for relative in (
+        "nvidia/cublas/bin",
+        "nvidia/cudnn/bin",
+        "nvidia/cuda_runtime/bin",
+        "nvidia/cuda_nvrtc/bin",
+    ):
+        path = site_packages / relative
+        if path.exists():
+            os.environ["PATH"] = str(path) + os.pathsep + os.environ.get("PATH", "")
 
 
 def vram_mb() -> int:
@@ -27,8 +45,19 @@ def vram_mb() -> int:
 
 
 def audio_duration(path: Path) -> float:
-    with wave.open(str(path), "rb") as audio:
-        return audio.getnframes() / audio.getframerate()
+    try:
+        with wave.open(str(path), "rb") as audio:
+            return audio.getnframes() / audio.getframerate()
+    except wave.Error:
+        # FLEURS serves valid IEEE-float WAV files, which stdlib wave does not
+        # decode. PyAV is already a faster-whisper runtime dependency.
+        import av
+
+        with av.open(str(path)) as container:
+            stream = container.streams.audio[0]
+            if stream.duration is not None:
+                return float(stream.duration * stream.time_base)
+            return sum(frame.samples / frame.sample_rate for frame in container.decode(stream))
 
 
 def load_cases(manifest: Path | None, paths: list[str]) -> list[dict[str, str]]:
@@ -59,6 +88,7 @@ def main() -> int:
     if not cases:
         parser.error("provide at least one WAV file or --manifest")
 
+    configure_cuda_paths()
     baseline = vram_mb()
     started = time.perf_counter()
     from faster_whisper import WhisperModel
@@ -94,9 +124,16 @@ def main() -> int:
             "vram_mb": vram_mb(),
         }
         records.append(record)
-        print(json.dumps({"event": "result", **record}, ensure_ascii=False), flush=True)
+        print(json.dumps({"event": "result", **record}), flush=True)
 
-    print(json.dumps({"event": "summary", **summarize(records)}, ensure_ascii=False), flush=True)
+    languages = sorted({record.get("expected_language", "") for record in records} - {""})
+    by_language = {
+        language: summarize([
+            record for record in records if record.get("expected_language") == language
+        ])
+        for language in languages
+    }
+    print(json.dumps({"event": "summary", **summarize(records), "by_language": by_language}), flush=True)
     return 0
 
 
