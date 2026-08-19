@@ -9,7 +9,7 @@ colorama==0.4.6
 ctranslate2==4.8.1
 faster-whisper==1.2.1
 faster-whisper-dictation==0.2.0
-filelock==3.32.2
+filelock==3.32.3
 flatbuffers==25.12.19
 fsspec==2026.7.0
 h11==0.16.0
