@@ -42,14 +42,15 @@ class BufferedSessionTests(unittest.TestCase):
         self.assertEqual(session.compute_seconds, 0.7)
         self.assertFalse(session.needs_fallback)
 
-    def test_mixed_auto_languages_require_one_full_audio_fallback(self) -> None:
+    def test_code_switched_languages_keep_order_without_destructive_fallback(self) -> None:
         session = BufferedSession(10, minimum_batch_seconds=1.0)
         session.add_utterance(np.ones(10, dtype=np.float32))
         session.add_utterance(np.ones(10, dtype=np.float32))
-        session.record_result("wrong first block", 0.2, "sl")
-        session.record_result("correct second block", 0.2, "en")
+        session.record_result("Odpri datoteko.", 0.2, "sl")
+        session.record_result("Then run the tests.", 0.2, "en")
         self.assertTrue(session.language_conflict)
-        self.assertTrue(session.needs_fallback)
+        self.assertFalse(session.needs_fallback)
+        self.assertEqual(session.text, "Odpri datoteko. Then run the tests.")
 
     def test_consistent_auto_language_keeps_fast_buffered_result(self) -> None:
         session = BufferedSession(10, minimum_batch_seconds=1.0)

@@ -40,7 +40,7 @@ class DecodingOptionsTests(unittest.TestCase):
         self.assertIn("language_probabilities=language_probabilities", patch)
         self.assertIn("recent_language=self._recent_language", patch)
         self.assertIn("self._recent_language = None", patch)
-        self.assertEqual(patch.count("self._recent_language,"), 2)
+        self.assertIn("self._recent_language = remember_recent_language(", patch)
         self.assertIn("transcript_is_plausible(primary_segments, audio_seconds)", patch)
         self.assertIn("decoding_options(0.2)", patch)
         self.assertIn('Remove-Patch "$site\\engine\\local.py"', patch)

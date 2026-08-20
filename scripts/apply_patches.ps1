@@ -364,6 +364,14 @@ Apply-Patch "$site\engine\local.py" @'
     transcript_score,
 '@ "engine/local.py -- transcript expansion guard" 'transcript_is_plausible,'
 Apply-Patch "$site\engine\local.py" @'
+    recognition_prompt,
+    transcript_is_plausible,
+'@ @'
+    recognition_prompt,
+    remember_recent_language,
+    transcript_is_plausible,
+'@ "engine/local.py -- stable language memory" 'remember_recent_language,'
+Apply-Patch "$site\engine\local.py" @'
 import logging
 import threading
 '@ @'
@@ -1193,7 +1201,8 @@ $canonicalLocalInit = @'
         vad_config: VADConfig,
     ):
         self._model = None
-        self._model_lock = threading.Lock()
+        self._model_lock = threading.RLock()
+        self._last_used = 0.0
         self._model_name = server_config.model
         self._language_mode = server_config.language
         self._language = recognition_language(server_config.language)
@@ -1220,8 +1229,81 @@ Replace-Block `
     $canonicalLocalInit `
     "engine/local.py -- canonical recognition initialization"
 
+$canonicalLocalLifecycle = @'
+    def _ensure_model(self) -> None:
+        with self._model_lock:
+            if self._model is not None:
+                if not self._model.model.model_is_loaded:
+                    log.info("Reloading local model weights...")
+                    self._model.model.load_model()
+                    log.info("Local model weights reloaded")
+                return
+
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError:
+                raise RuntimeError(
+                    "faster-whisper not installed. "
+                    "Install with: pip install 'faster-whisper-dictation[local]'"
+                )
+
+            device = self._device
+            compute_type = self._compute_type
+            if device == "auto":
+                try:
+                    import torch
+
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                except ImportError:
+                    device = "cpu"
+            if compute_type == "auto":
+                compute_type = "float16" if device == "cuda" else "int8"
+
+            log.info("Loading model %s on %s (%s)...", self._model_name, device, compute_type)
+            self._model = WhisperModel(
+                self._model_name,
+                device=device,
+                compute_type=compute_type,
+            )
+            log.info("Model loaded")
+
+    def prepare(self) -> None:
+        """Load or reload model weights before the recording is released."""
+        with self._model_lock:
+            self._ensure_model()
+            self._last_used = time.monotonic()
+
+    def release_if_idle(self, idle_seconds: float) -> bool:
+        """Release model weights after a genuine idle window."""
+        if idle_seconds <= 0:
+            return False
+        with self._model_lock:
+            if (
+                self._model is None
+                or not self._model.model.model_is_loaded
+                or time.monotonic() - self._last_used < idle_seconds
+            ):
+                return False
+            self._model.model.unload_model()
+            log.info("Local model weights unloaded after %.0fs idle", idle_seconds)
+            return True
+'@
+Replace-Block `
+    "$site\engine\local.py" `
+    '    def _ensure_model(' `
+    '    def transcribe(' `
+    $canonicalLocalLifecycle `
+    "engine/local.py -- serialized local model lifecycle"
+
 $canonicalLocalTranscribe = @'
     def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
+        with self._model_lock:
+            try:
+                return self._transcribe(audio, sample_rate)
+            finally:
+                self._last_used = time.monotonic()
+
+    def _transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
         total_started = time.perf_counter()
         self._ensure_model()
 
@@ -1240,6 +1322,9 @@ $canonicalLocalTranscribe = @'
             **decoding_options(self._temperature),
         )
         primary_segments = list(segments)
+        detected_language = info.language
+        detected_confidence = info.language_probability
+        language_probabilities = getattr(info, "all_language_probs", None)
         audio_seconds = len(audio) / sample_rate
         if (
             info.language in {"en", "sl"}
@@ -1261,13 +1346,12 @@ $canonicalLocalTranscribe = @'
             recovery_segments = list(recovery_segments)
             if transcript_is_plausible(recovery_segments, audio_seconds):
                 primary_segments = recovery_segments
-                info = recovery_info
                 log.info("Same-language repetition recovery accepted")
         primary_seconds = time.perf_counter() - primary_started
         retry_seconds = 0.0
         segments = primary_segments
         primary_score = transcript_score(primary_segments)
-        language_probabilities = getattr(info, "all_language_probs", None)
+        retry_accepted = False
         if self._language is None and language_probabilities:
             supported_probabilities = dict(language_probabilities)
             log.info(
@@ -1278,8 +1362,8 @@ $canonicalLocalTranscribe = @'
             )
         retry_language = bilingual_retry_language(
             self._language_mode,
-            info.language,
-            info.language_probability,
+            detected_language,
+            detected_confidence,
             primary_score,
             language_probabilities,
             self._recent_language,
@@ -1288,8 +1372,8 @@ $canonicalLocalTranscribe = @'
         if retry_language:
             log.info(
                 "Auto detected %s (conf %.2f, score %.3f); testing %s",
-                info.language,
-                info.language_probability,
+                detected_language,
+                detected_confidence,
                 primary_score,
                 retry_language,
             )
@@ -1308,7 +1392,7 @@ $canonicalLocalTranscribe = @'
             retry_score = transcript_score(retry_segments)
             if transcript_is_plausible(retry_segments, audio_seconds) and prefer_bilingual_retry(
                 retry_language,
-                info.language,
+                detected_language,
                 primary_segments,
                 retry_segments,
                 language_probabilities=language_probabilities,
@@ -1316,6 +1400,7 @@ $canonicalLocalTranscribe = @'
             ):
                 segments = retry_segments
                 info = retry_info
+                retry_accepted = True
                 log.info(
                     "Bilingual retry accepted: %s score %.3f vs primary %.3f",
                     retry_language,
@@ -1333,8 +1418,14 @@ $canonicalLocalTranscribe = @'
 
         if not transcript_is_plausible(segments, audio_seconds):
             raise RuntimeError("Whisper produced an implausible repetitive transcript")
-        if info.language in {"en", "sl"}:
-            self._recent_language = info.language
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        self._recent_language = remember_recent_language(
+            self._recent_language,
+            info.language,
+            detected_confidence,
+            text,
+            retry_accepted,
+        )
         self.last_language = info.language
         total_seconds = time.perf_counter() - total_started
         log.info(
@@ -1349,7 +1440,6 @@ $canonicalLocalTranscribe = @'
             info.language_probability,
             len(segments),
         )
-        text = " ".join(seg.text.strip() for seg in segments).strip()
         if text:
             log.debug("Transcribed: %d chars", len(text))
         return text
@@ -1360,6 +1450,55 @@ Replace-Block `
     '    def is_available(' `
     $canonicalLocalTranscribe `
     "engine/local.py -- latency-bounded transcription"
+
+$importReadiness = @'
+    def is_available(self) -> bool:
+        try:
+            from faster_whisper import WhisperModel
+
+            return WhisperModel is not None
+        except ImportError as exc:
+            log.debug("Local engine not available: %s", exc)
+            return False
+
+    def close(self) -> None:
+        with self._model_lock:
+            if self._model is not None and self._model.model.model_is_loaded:
+                self._model.model.unload_model()
+            self._model = None
+'@
+$upstreamReadiness = @'
+    def is_available(self) -> bool:
+        try:
+            self._ensure_model()
+            return True
+        except Exception as e:
+            log.debug("Local engine not available: %s", e)
+            return False
+
+    def close(self) -> None:
+        if self._model is not None and hasattr(self._model, "close"):
+            self._model.close()
+        self._model = None
+'@
+$localReadinessSource = [System.IO.File]::ReadAllText("$site\engine\local.py")
+$readinessFind = if ($localReadinessSource.Contains("return WhisperModel is not None")) {
+    $importReadiness
+} else {
+    $upstreamReadiness
+}
+Apply-Patch "$site\engine\local.py" $readinessFind @'
+    def is_available(self) -> bool:
+        from importlib.util import find_spec
+
+        return find_spec("faster_whisper") is not None
+
+    def close(self) -> None:
+        with self._model_lock:
+            if self._model is not None and self._model.model.model_is_loaded:
+                self._model.model.unload_model()
+            self._model = None
+'@ "engine/local.py -- cheap readiness and native release" 'find_spec("faster_whisper") is not None'
 
 $canonicalClipboardGet = @'
 def _win_clipboard_api():
@@ -1572,6 +1711,15 @@ $canonicalDaemonInit = @'
         # One worker preserves speech-block and final-paste order and prevents
         # concurrent access to the faster-whisper model.
         self._transcribe_pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            self._model_idle_seconds = max(
+                0.0,
+                float(os.environ.get("VOICEPROMPT_MODEL_IDLE_SECONDS", "900")),
+            )
+        except ValueError:
+            self._model_idle_seconds = 900.0
+        self._next_idle_check = time.monotonic() + 30.0
+        self._idle_future = None
         self._last_ws_text: str = ""
         self._ws_repeat_count: int = 0
         self._WS_MAX_REPEATS: int = 2
@@ -1614,6 +1762,32 @@ Replace-Block `
     "daemon.py -- lossless buffered audio routing"
 
 $canonicalStreamingHandlers = @'
+    def _prepare_engine(self) -> None:
+        """Warm local model weights on the ordered transcription worker."""
+        prepare = getattr(self._engine, "prepare", None)
+        if prepare is None:
+            return
+        try:
+            prepare()
+        except Exception:
+            log.error("Local model preparation failed", exc_info=True)
+
+    def _release_engine_if_idle(self) -> None:
+        release = getattr(self._engine, "release_if_idle", None)
+        if release is not None:
+            release(self._model_idle_seconds)
+
+    def _schedule_idle_release(self) -> None:
+        if self._model_idle_seconds <= 0 or time.monotonic() < self._next_idle_check:
+            return
+        self._next_idle_check = time.monotonic() + 30.0
+        with self._lock:
+            if self._recording:
+                return
+        if self._idle_future is not None and not self._idle_future.done():
+            return
+        self._idle_future = self._transcribe_pool.submit(self._release_engine_if_idle)
+
     def _on_audio_chunk_streaming(self, audio: np.ndarray) -> None:
         """Upstream live mode: type each VAD-complete utterance immediately."""
         try:
@@ -1792,6 +1966,8 @@ $canonicalBufferedActivate = @'
             self._buffered_streaming,
             self.config.engine.type,
         )
+        if self.config.engine.type == "local":
+            self._transcribe_pool.submit(self._prepare_engine)
 
         ws_engine = None
         if self._use_ws:
@@ -1942,5 +2118,24 @@ Replace-Block `
     '    def _check_server_available(' `
     $canonicalBufferedDeactivate `
     "daemon.py -- finalize buffered recording"
+
+$canonicalDaemonWait = @'
+    def wait(self) -> None:
+        """Block until the daemon is stopped or a stop is requested."""
+        try:
+            self._running.wait()
+            while self._running.is_set():
+                if self._stop_event.wait(timeout=1.0):
+                    break
+                self._schedule_idle_release()
+        except KeyboardInterrupt:
+            log.info("Interrupted")
+'@
+Replace-Block `
+    "$site\daemon.py" `
+    '    def wait(' `
+    '    @property' `
+    $canonicalDaemonWait `
+    "daemon.py -- bounded idle model release scheduling"
 
 Write-Output "`nAll patches applied. Restart VoicePrompt to activate them."

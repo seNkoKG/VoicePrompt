@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.24.0] - 2026-08-20
+
+### Added
+
+- Add a 15-minute model idle window, hotkey prewarming, native weight unload/reload, and a startup readiness probe that does not load the model.
+- Add product-path bilingual benchmark coverage, exact misrouting regression cases, and a release-version consistency gate.
+- Add clear privacy status for local, encrypted remote, and unencrypted remote AI endpoints.
+
+### Changed
+
+- Preserve original automatic language evidence across repetition recovery and stabilize recent English/Slovenian memory against empty, weak, or forced results.
+- Keep valid English/Slovenian code-switch blocks in spoken order and cross-check English when a moderate Slovenian guess conflicts with credible recent English.
+- Finish standalone prose with boundary-aware capitalization and punctuation across chat, document, email, and general applications while leaving code and terminals unchanged.
+- Rename the visible Grammar writing mode to Polish and strengthen its same-language broken-speech repair instructions without enabling AI by default.
+
+### Fixed
+
+- Cap optional AI provider responses before JSON parsing and warn when transcript text or an API key would use unencrypted remote HTTP.
+- Avoid eager multi-gigabyte model allocation on Windows startup and serialize model preparation, transcription, idle release, and shutdown on one worker.
+
 ## [1.23.0] - 2026-08-19
 
 ### Added

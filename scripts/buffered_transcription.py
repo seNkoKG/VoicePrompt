@@ -98,7 +98,6 @@ class BufferedSession:
                 self._failed
                 or self.completed_batches != self.scheduled_batches
                 or not self._results
-                or len(self._languages) > 1
             )
 
     @property

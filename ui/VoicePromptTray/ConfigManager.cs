@@ -24,6 +24,7 @@ internal sealed class ConfigManager
         voice_commands = false
         smart_formatting = true
         context_awareness = true
+        model_idle_seconds = 900
 
         [hotkey]
         binding = "f1"

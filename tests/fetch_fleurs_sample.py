@@ -48,9 +48,11 @@ def build_sample(output: Path, languages: list[str], split: str, count: int) -> 
     manifest: list[dict[str, str]] = []
     with requests.Session() as session:
         session.headers["User-Agent"] = "VoicePrompt accuracy benchmark"
+        language_cases: list[list[dict[str, str]]] = []
         for config in languages:
             if config not in _LANGUAGE_CODES:
                 raise ValueError(f"unsupported FLEURS language: {config}")
+            cases: list[dict[str, str]] = []
             for index, value in enumerate(fetch_rows(config, split, count, session)):
                 row = value.get("row", {})
                 reference = row.get("transcription")
@@ -63,11 +65,20 @@ def build_sample(output: Path, languages: list[str], split: str, count: int) -> 
                     response.raise_for_status()
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_bytes(response.content)
-                manifest.append({
+                cases.append({
                     "audio": relative.as_posix(),
                     "reference": reference,
                     "expected_language": _LANGUAGE_CODES[config],
                 })
+            language_cases.append(cases)
+        # Alternate languages so VoicePrompt's recent-language state sees a
+        # realistic bilingual session instead of one artificial language block.
+        manifest.extend(
+            case
+            for index in range(count)
+            for cases in language_cases
+            for case in (cases[index],)
+        )
     path = output / "manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     (output / "SOURCE.txt").write_text(

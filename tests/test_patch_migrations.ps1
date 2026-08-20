@@ -113,8 +113,8 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         throw "$Name does not have exactly one latency instrumentation block."
     }
     if ([regex]::Matches($source, "self\._recent_language = None").Count -ne 1 -or
-        [regex]::Matches($source, "self\._recent_language,").Count -ne 1 -or
-        [regex]::Matches($source, "self\._recent_language = info\.language").Count -ne 1) {
+        [regex]::Matches($source, "self\._recent_language = remember_recent_language\(").Count -ne 1 -or
+        $source.Contains("self._recent_language = info.language")) {
         throw "$Name does not preserve recent-language evidence through the canonical runtime."
     }
     if ([regex]::Matches($source, "self\.last_language = None").Count -ne 1 -or
@@ -130,6 +130,14 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if ([regex]::Matches($source, "transcript_is_plausible\(").Count -ne 4 -or
         [regex]::Matches($source, "decoding_options\(0\.2\)").Count -ne 1) {
         throw "$Name does not guard impossible transcript expansion with one same-language recovery."
+    }
+    if ([regex]::Matches($source, "def prepare\(self\)").Count -ne 1 -or
+        [regex]::Matches($source, "def release_if_idle\(self, idle_seconds: float\)").Count -ne 1 -or
+        [regex]::Matches($source, "self\._model\.model\.unload_model\(\)").Count -ne 2 -or
+        [regex]::Matches($source, "self\._model\.model\.load_model\(\)").Count -ne 1 -or
+        -not $source.Contains('find_spec("faster_whisper") is not None') -or
+        $source.Contains("def is_available(self) -> bool:`n        try:`n            self._ensure_model()")) {
+        throw "$Name does not implement one serialized native model lifecycle."
     }
 
     $serverSource = [System.IO.File]::ReadAllText($serverEngine)
@@ -250,11 +258,27 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     if (-not $daemonSource.Contains("Audio capture ready in %.0f ms")) {
         throw "$Name does not measure microphone cold-start latency."
     }
+    if ([regex]::Matches($daemonSource, "def _prepare_engine\(self\)").Count -ne 1 -or
+        [regex]::Matches($daemonSource, "def _schedule_idle_release\(self\)").Count -ne 1 -or
+        [regex]::Matches($daemonSource, "self\._transcribe_pool\.submit\(self\._prepare_engine\)").Count -ne 1 -or
+        [regex]::Matches($daemonSource, "self\._schedule_idle_release\(\)").Count -ne 1) {
+        throw "$Name does not order model preparation and bounded idle release."
+    }
     $deactivateStart = $daemonSource.IndexOf("    def _on_deactivate(")
     $stopAudio = $daemonSource.IndexOf("            audio.stop()", $deactivateStart)
     $snapshotAudio = $daemonSource.IndexOf("            chunks = list(self._recorded_chunks)", $deactivateStart)
     if ($deactivateStart -lt 0 -or $stopAudio -lt 0 -or $snapshotAudio -lt 0 -or $snapshotAudio -lt $stopAudio) {
         throw "$Name snapshots audio before the final capture callback has stopped."
+    }
+    $previousPatchedSite = $env:VOICEPROMPT_PATCHED_SITE
+    try {
+        $env:VOICEPROMPT_PATCHED_SITE = $Module
+        & $Python -m unittest -v tests.test_patched_local_engine
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Name product-path local engine test failed."
+        }
+    } finally {
+        $env:VOICEPROMPT_PATCHED_SITE = $previousPatchedSite
     }
     Write-Output "PASS $Name"
 }

@@ -35,9 +35,9 @@ def _replace_spoken_marks(text: str) -> str:
     return value
 
 
-def _capitalize_sentences(text: str) -> str:
+def _capitalize_sentences(text: str, capitalize_first: bool = True) -> str:
     chars = list(text)
-    capitalize_next = True
+    capitalize_next = capitalize_first
     for index, character in enumerate(chars):
         if capitalize_next and character.isalpha():
             chars[index] = character.upper()
@@ -47,6 +47,15 @@ def _capitalize_sentences(text: str) -> str:
         elif not character.isspace() and character not in "\"'([{“‘":
             capitalize_next = False
     return "".join(chars)
+
+
+def _finish_sentence(text: str) -> str:
+    before_quote = text.rstrip('"”')
+    if before_quote and before_quote[-1] in ".!?;:":
+        return text
+    if before_quote != text:
+        return before_quote + "." + text[len(before_quote):]
+    return text + "."
 
 
 def _join_with_context(text: str, context: DictationContext) -> str:
@@ -93,14 +102,19 @@ def format_dictation(
     value = re.sub(r"[ \t]*\n[ \t]*", "\n", value)
     value = re.sub(r"[ \t]{2,}", " ", value).strip()
 
-    if context.app_kind not in {"code", "terminal"}:
-        value = _capitalize_sentences(value)
+    prose = context.app_kind not in {"code", "terminal"}
+    if prose:
+        before = context.before_text.rstrip(" \t")
+        value = _capitalize_sentences(
+            value,
+            capitalize_first=not before or before[-1] in ".!?\r\n",
+        )
     if (
-        context.app_kind in {"document", "email"}
-        and len(value) >= 12
-        and value[-1] not in ".!?;:)]}"
+        prose
+        and not context.after_text
+        and len(value.split()) >= 2
     ):
-        value += "."
+        value = _finish_sentence(value)
 
     value = _join_with_context(value, context)
     value = _join_before_following_text(value, context)

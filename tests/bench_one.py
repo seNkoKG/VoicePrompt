@@ -1,4 +1,4 @@
-"""Run a local model benchmark with optional reference transcript scoring."""
+"""Run VoicePrompt's local recognition path with optional reference scoring."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import sys
 import time
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 
 from accuracy_metrics import summarize
 
@@ -83,6 +84,12 @@ def main() -> int:
     parser.add_argument("paths", nargs="*")
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--language", default="sl", help="Whisper language code or 'auto'")
+    parser.add_argument(
+        "--pipeline",
+        choices=("voiceprompt", "raw"),
+        default="voiceprompt",
+        help="Exercise VoicePrompt routing by default; raw is a model-only diagnostic.",
+    )
     args = parser.parse_args()
     cases = load_cases(args.manifest, args.paths)
     if not cases:
@@ -91,34 +98,64 @@ def main() -> int:
     configure_cuda_paths()
     baseline = vram_mb()
     started = time.perf_counter()
-    from faster_whisper import WhisperModel
+    if args.pipeline == "voiceprompt":
+        from faster_whisper.audio import decode_audio
+        from whisper_dictation.engine.local import LocalEngine
 
-    model = WhisperModel(args.model, device="cuda", compute_type=args.compute_type)
+        engine = LocalEngine(
+            SimpleNamespace(
+                model=args.model,
+                language="" if args.language.casefold() == "auto" else args.language,
+                prompt="",
+                temperature=0.0,
+                hotwords="",
+            ),
+            SimpleNamespace(device="cuda", compute_type=args.compute_type),
+            SimpleNamespace(
+                threshold=0.6,
+                silence_ms=200,
+                min_speech_ms=250,
+                max_speech_s=180.0,
+            ),
+        )
+        engine.prepare()
+        model = None
+    else:
+        from faster_whisper import WhisperModel
+
+        model = WhisperModel(args.model, device="cuda", compute_type=args.compute_type)
+        engine = None
     loaded_vram = vram_mb()
     print(json.dumps({
         "event": "model_loaded",
         "seconds": round(time.perf_counter() - started, 3),
         "vram_mb": loaded_vram,
         "vram_delta_mb": loaded_vram - baseline if baseline >= 0 else -1,
+        "pipeline": args.pipeline,
     }), flush=True)
 
     records = []
     for case in cases:
         path = Path(case["audio"])
         started = time.perf_counter()
-        segments, info = model.transcribe(
-            str(path),
-            language=None if args.language.casefold() == "auto" else args.language,
-            beam_size=5,
-            temperature=0.0,
-            condition_on_previous_text=False,
-        )
-        transcript = " ".join(segment.text.strip() for segment in segments).strip()
+        if engine is not None:
+            transcript = engine.transcribe(decode_audio(str(path)), sample_rate=16000)
+            detected_language = engine.last_language
+        else:
+            segments, info = model.transcribe(
+                str(path),
+                language=None if args.language.casefold() == "auto" else args.language,
+                beam_size=5,
+                temperature=0.0,
+                condition_on_previous_text=False,
+            )
+            transcript = " ".join(segment.text.strip() for segment in segments).strip()
+            detected_language = info.language
         latency = time.perf_counter() - started
         record = {
             **case,
             "transcript": transcript,
-            "detected_language": info.language,
+            "detected_language": detected_language,
             "latency_seconds": latency,
             "audio_seconds": audio_duration(path),
             "vram_mb": vram_mb(),
@@ -133,7 +170,14 @@ def main() -> int:
         ])
         for language in languages
     }
-    print(json.dumps({"event": "summary", **summarize(records), "by_language": by_language}), flush=True)
+    print(json.dumps({
+        "event": "summary",
+        "pipeline": args.pipeline,
+        **summarize(records),
+        "by_language": by_language,
+    }), flush=True)
+    if engine is not None:
+        engine.close()
     return 0
 
 

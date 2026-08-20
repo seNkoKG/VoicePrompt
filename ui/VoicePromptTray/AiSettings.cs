@@ -94,7 +94,7 @@ internal static class AiSettingsStore
     public static string? Validate(AiSettings settings)
     {
         if (settings.Mode is not ("off" or "clean" or "grammar" or "prompt"))
-            return "Choose Verbatim, Clean, Grammar, or Prompt mode.";
+            return "Choose Verbatim, Clean, Polish, or Prompt mode.";
         if (settings.Mode == "off")
             return null;
         if (!Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out var endpoint) ||
@@ -105,6 +105,15 @@ internal static class AiSettingsStore
         if (settings.TimeoutMs is < 400 or > 3000)
             return "AI maximum wait must be between 400 and 3000 ms.";
         return null;
+    }
+
+    public static string PrivacyMessage(string value)
+    {
+        if (RecognitionServer.IsLoopback(value))
+            return "Local provider · completed text stays on this PC.";
+        if (Uri.TryCreate(value.Trim(), UriKind.Absolute, out Uri? uri) && uri.Scheme == "https")
+            return "Remote provider · completed text leaves this PC over HTTPS.";
+        return "Warning · remote HTTP sends completed text and any API key unencrypted.";
     }
 
     public static string ProtectApiKey(string apiKey)

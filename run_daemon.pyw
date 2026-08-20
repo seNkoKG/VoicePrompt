@@ -104,6 +104,14 @@ def context_awareness_enabled() -> bool:
     """Use only bounded local application context unless explicitly disabled."""
     return config_section("voiceprompt").get("context_awareness", True) is not False
 
+
+def model_idle_seconds() -> int:
+    """Unload local model weights after a bounded period of disuse."""
+    value = config_section("voiceprompt").get("model_idle_seconds", 900)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 900
+    return max(0, min(86400, int(value)))
+
 from whisper_dictation.cli import main  # noqa: E402
 
 sys.argv = [sys.argv[0], "start"]
@@ -111,6 +119,7 @@ os.environ["VOICEPROMPT_OUTPUT_MODE"] = transcript_output_mode()
 os.environ["VOICEPROMPT_VOICE_COMMANDS"] = "1" if voice_commands_enabled() else "0"
 os.environ["VOICEPROMPT_SMART_FORMATTING"] = "1" if smart_formatting_enabled() else "0"
 os.environ["VOICEPROMPT_CONTEXT_AWARENESS"] = "1" if context_awareness_enabled() else "0"
+os.environ["VOICEPROMPT_MODEL_IDLE_SECONDS"] = str(model_idle_seconds())
 if os.environ["VOICEPROMPT_OUTPUT_MODE"] == "clipboard":
     logging.getLogger(__name__).info("Copy-only transcript output enabled")
 if os.environ["VOICEPROMPT_VOICE_COMMANDS"] == "1":

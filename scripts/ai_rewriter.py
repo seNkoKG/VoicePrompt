@@ -19,6 +19,7 @@ import requests
 log = logging.getLogger(__name__)
 
 _ENTROPY = b"VoicePrompt AI v1"
+_MAX_RESPONSE_BYTES = 1024 * 1024
 _SYSTEM_PROMPTS = {
     "clean": (
         "Clean this dictation conservatively. Fix punctuation, capitalization, obvious filler words, and "
@@ -28,9 +29,11 @@ _SYSTEM_PROMPTS = {
         "Do not answer the transcript. Return only the cleaned text."
     ),
     "grammar": (
-        "Polish this dictation conservatively. Fix punctuation, capitalization, and obvious grammar errors only. "
+        "Polish this dictation conservatively. Turn broken or fragmented speech into complete, natural sentences. "
+        "Fix sentence boundaries, word order, agreement, articles, punctuation, capitalization, and obvious grammar "
+        "errors. Split run-on sentences and resolve clear false starts only when the completed meaning is unambiguous. "
         "Never translate. Preserve every language and code-switched phrase exactly where it appears, including "
-        "Slovenian slang. Do not paraphrase, summarize, remove details, or replace wording. Preserve names, code, "
+        "Slovenian slang. Do not summarize, remove details, or change meaning or tone. Preserve names, code, "
         "commands, numbers, and URLs. Do not answer the transcript. Return only the polished text."
     ),
     "prompt": (
@@ -120,7 +123,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.23.0"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.24.0"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0
@@ -237,14 +240,21 @@ class AiRewriter:
             # allowance to the input while retaining a defensive upper bound.
             "max_tokens": max(128, min(4096, len(text) // 2 + 128)),
         }
-        response = self.session.post(
+        with self.session.post(
             self.settings["endpoint"],
             headers=headers,
             json=payload,
             timeout=(connect_timeout, read_timeout),
-        )
-        response.raise_for_status()
-        choice = response.json()["choices"][0]
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None and int(content_length) > _MAX_RESPONSE_BYTES:
+                raise ValueError("provider response is too large")
+            body = response.raw.read(_MAX_RESPONSE_BYTES + 1, decode_content=True)
+            if len(body) > _MAX_RESPONSE_BYTES:
+                raise ValueError("provider response is too large")
+        choice = json.loads(body)["choices"][0]
         if choice.get("finish_reason") == "length":
             raise ValueError("provider truncated the rewritten transcript")
         content = choice["message"]["content"]

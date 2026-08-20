@@ -17,6 +17,7 @@ output_mode = "paste"                  # "paste" into focused app or leave text 
 voice_commands = false                 # exact whole-utterance commands; disabled by default
 smart_formatting = true                # local punctuation, casing, and conservative filler cleanup
 context_awareness = true               # local app type and bounded nearby-text spacing
+model_idle_seconds = 900                # release local model weights after 15 idle minutes; 0 keeps them loaded
 
 [hotkey]
 binding = "f1"                        # Hotkey: modifiers + key (e.g. "alt+v", "ctrl+shift+d", "f1")

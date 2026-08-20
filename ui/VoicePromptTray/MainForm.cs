@@ -837,11 +837,12 @@ internal sealed class MainForm : Form
         UpdateRecognitionEngineAvailability();
 
         _aiModeChoice = new ChoiceStrip(
-            new[] { "Verbatim", "Clean", "Grammar", "Prompt" },
+            new[] { "Verbatim", "Clean", "Polish", "Prompt" },
             new[] { "off", "clean", "grammar", "prompt" }) { Dock = DockStyle.Fill };
         _aiModeChoice.AccessibleName = "AI cleanup mode";
         _aiModeChoice.SelectedChanged += (_, _) => UpdateAiAvailability();
         _aiEndpointText = new TextBox { PlaceholderText = "http://127.0.0.1:11434/v1/chat/completions" };
+        _aiEndpointText.TextChanged += (_, _) => UpdateAiAvailability();
         _aiModelText = new TextBox { PlaceholderText = "qwen2.5:3b" };
         _aiTimeoutMs = MakeNumber(400, 3000, 100, 0, 148);
         _aiKeyText = new TextBox { UseSystemPasswordChar = true, PlaceholderText = "Optional for local providers" };
@@ -867,7 +868,7 @@ internal sealed class MainForm : Form
         _aiResult.Text = "Verbatim adds zero delay and sends no transcript anywhere.";
 
         var ai = new SectionBuilder("Optional AI cleanup", "Disabled by default. When enabled, only completed text is sent to the configured provider.");
-        ai.Add("Writing mode", "Clean removes speech clutter; Grammar repairs sentences; Prompt restructures without translating.", StackControl(_aiModeChoice, _aiResult, 64), 84);
+        ai.Add("Writing mode", "Clean removes speech clutter; Polish repairs broken sentences; Prompt restructures without translating.", StackControl(_aiModeChoice, _aiResult, 64), 84);
         ai.Add("Endpoint", "Any OpenAI-compatible chat completions endpoint, local or cloud.", new TextFieldFrame(_aiEndpointText) { Dock = DockStyle.Fill }, 64);
         ai.Add("Model", "The model name expected by your provider.", new TextFieldFrame(_aiModelText) { Dock = DockStyle.Fill }, 64);
         ai.Add("Maximum wait", "Strict live deadline in milliseconds; raw local text is pasted after a timeout.", LeftControl(_aiTimeoutMs), 62);
@@ -1975,7 +1976,12 @@ internal sealed class MainForm : Form
                 ? "Verbatim globally · matching application profiles use this provider."
                 : "Verbatim adds zero delay and sends no transcript anywhere.";
             _aiResult.ForeColor = Theme.Muted;
+            return;
         }
+        _aiResult.Text = AiSettingsStore.PrivacyMessage(_aiEndpointText.Text);
+        bool unsafeRemote = !RecognitionServer.IsLoopback(_aiEndpointText.Text) &&
+            _aiEndpointText.Text.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+        _aiResult.ForeColor = unsafeRemote ? Theme.Warn : Theme.TextSecondary;
     }
 
     private void UpdateRecognitionEngineAvailability()
@@ -2101,7 +2107,7 @@ internal sealed class MainForm : Form
             }
             if (profile is null)
             {
-                SetAiResult("Choose Clean, Grammar, Prompt, or an AI application profile before testing.", false);
+                SetAiResult("Choose Clean, Polish, Prompt, or an AI application profile before testing.", false);
                 return;
             }
             settings = new AiSettings

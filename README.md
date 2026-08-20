@@ -31,12 +31,12 @@ Advanced users can explicitly switch recognition to a self-hosted OpenAI-compati
 
 Measured on an RTX 5080:
 
-| Model | VRAM while idle | Load time | Per 8s utterance | Slovenian quality |
+| Model | Approx. active VRAM | Load time | Per 8s utterance | Slovenian quality |
 |---|---|---|---|---|
 | `large-v3-turbo` (fast) | ~2.2 GB | ~3 s | ~0.35 s | okay |
 | **`large-v3` (accuracy)** | ~4 GB | ~5 s | ~0.6 s | **best** |
 
-> Both run entirely locally on your GPU through **faster-whisper** (CTranslate2). The driving app is the open-source
+> Both run entirely locally on your GPU through **faster-whisper** (CTranslate2). After 15 minutes without dictation, VoicePrompt unloads model weights; the next hotkey press starts reloading them while you speak. Set `[voiceprompt] model_idle_seconds = 0` to keep weights loaded. The driving app is the open-source
 > [`faster-whisper-dictation`](https://github.com/bhargavchippada/faster-whisper-dictation) daemon.
 
 ## Architecture
@@ -63,13 +63,13 @@ Measured on an RTX 5080:
 - **VAD filtering**: silence/speech detection chops dead air before decoding.
 - **Personal vocabulary**: optional prompt and hotword fields can bias decoding toward names and exact technical terms without favoring one language by default.
 - **Personal corrections**: explicit `misheard => intended` rules fix recurring names and terms locally before optional AI cleanup.
-- **Daemonized**: runs headless via `pythonw`, survives reboot via the Startup shortcut.
+- **Low-cost idle daemon**: starts without importing or loading the model, runs headless via `pythonw`, and unloads inactive model weights after 15 minutes by default.
 
 ## Download and install
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.23.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.24.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -120,7 +120,7 @@ A responsive dark Windows tray app (C# / .NET 10 WinForms) that manages the whol
 - **Flexible output** — paste directly into the focused app by default, or use **Copy only** when a target blocks synthetic paste and place the completed transcript manually.
 - **Exact voice commands** — optionally speak a complete English or Slovenian command for a new line, new paragraph, bullet, undo, or cancel; normal sentences never trigger commands by substring.
 - **Reusable snippets** — save up to 50 local text templates and insert one by its exact English or Slovenian spoken name, including multi-line content without AI or network delay.
-- **Writing modes** — Verbatim stays fully local and instant; optional Clean, Grammar, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
+- **Writing modes** — Verbatim stays fully local and instant; optional Clean, Polish, and Prompt modes use a configured provider with a strict deadline, same-language instructions, and complete-original fallback.
 - **Application profiles** — optionally override writing and output mode for an exact running-app executable; unmatched apps inherit global settings with no process lookup or added delay.
 - **Recognition location** — keep the recommended local GPU engine, or explicitly use a self-hosted OpenAI-compatible transcription server with a no-audio health check and clear transport privacy status.
 - **Fast long recordings** — pre-transcribes complete speech blocks on the existing model worker, preserves the full recording for recovery, and produces one ordered paste after release.
@@ -153,6 +153,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 | `[server] prompt` | Optional personal names / exact vocabulary bias | empty (language-neutral) |
 | `[voiceprompt] slovenian_slang` | Saves the visible colloquial vocabulary profile | `true` / `false` |
 | `[voiceprompt] buffered_transcription` | Pre-transcribes long speech blocks; full-audio fallback and one final paste | `true` |
+| `[voiceprompt] model_idle_seconds` | Unloads local model weights after this idle window; `0` keeps them loaded | `900` |
 | `[voiceprompt] output_mode` | `"paste"` types into the focused app; `"clipboard"` sends no paste shortcut | `"paste"` |
 | `[voiceprompt] voice_commands` | Enables exact whole-utterance English and Slovenian commands | `false` |
 | `[vad] threshold` | Speech sensitivity (0–1) | `0.6` |
@@ -165,7 +166,7 @@ The tray UI edits the live config — `%LOCALAPPDATA%\faster-whisper-dictation\f
 
 **Auto** is intentionally optimized for the two languages this app targets. The primary pass stays language-neutral, so English cannot inherit Slovenian slang examples and Slovenian cannot inherit English instructions. Confident English and Slovenian remain a single-pass path, keeping normal dictation fast.
 
-A detected English result is never replaced by Slovenian. A moderate-confidence Slovenian guess that contradicts recent English or competing language evidence is cross-checked once as English, and the retry replaces it only when the combined evidence wins. If prepared blocks from one long recording disagree, VoicePrompt retries the retained complete recording instead of pasting mixed languages. Finnish, Spanish, Latin, and other unrelated Auto guesses remain constrained to one bounded English or Slovenian recovery pass. Slovenian recovery receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
+A detected English result is never replaced by Slovenian. A moderate-confidence Slovenian guess that contradicts recent English or competing language evidence is cross-checked once as English. VoicePrompt preserves the automatic detector evidence through repetition recovery and changes recent-language memory only from credible nonempty results, preventing one weak guess from steering later speech. Prepared English and Slovenian blocks remain in spoken order instead of forcing a valid code-switch through one language. Finnish, Spanish, Latin, and other unrelated Auto guesses remain constrained to one bounded English or Slovenian recovery pass. Slovenian recovery receives the compact colloquial profile for forms such as `dej`, `lohk`, `kva`, `tko`, `tle`, `zdej`, `pol`, `ful`, and `štima`.
 
 ### Additional languages
 
@@ -183,7 +184,7 @@ The **AI text cleanup** card supports four writing modes:
 
 - **Verbatim**: the default. No request, no per-utterance network or file access, and no added delay.
 - **Clean**: removes obvious filler words and immediate repetitions, then repairs punctuation and capitalization without changing grammar, phrasing, tone, language, or concrete details.
-- **Grammar**: conservatively fixes punctuation, capitalization, and obvious grammar without translating, paraphrasing, or removing wording.
+- **Polish**: conservatively turns broken or fragmented speech into complete same-language sentences, fixing punctuation, word order, articles, and obvious grammar without changing meaning or concrete details. The saved compatibility value remains `grammar`.
 - **Prompt**: turns rough speech into a concise, structured AI prompt while preserving requirements, names, code, numbers, and URLs.
 
 The endpoint can be any OpenAI-compatible `/v1/chat/completions` service. For a private local setup, install [Ollama for Windows](https://ollama.com/download/windows), run `ollama pull qwen2.5:3b`, and keep the default endpoint and model. Ollama documents its [OpenAI-compatible endpoint here](https://docs.ollama.com/api/openai-compatibility). A cloud provider also works by entering its endpoint, model, and API key.
@@ -263,12 +264,14 @@ The E2E harness simulates what a human does (no spoken voice needed):
 
 Verified end-to-end results (simulated): a clear English utterance landed **0.78 s** after key release; an ambiguous Slovenian utterance requiring the safety decode landed in **1.86 s**. The original batch path retained a **129.9-second** recording's opening sentence, all 18 checkpoints, and unique final sentence. With fast long recordings enabled, a real-time **99.2-second** English sample produced one ordered paste **0.49 s** after release and matched the full one-pass decode's measured **7.04% WER** on the same reference.
 
+The v1.24 product-path gate ran 10 freshly fetched, interleaved English/Slovenian FLEURS validation clips through patched `LocalEngine`: **100% language routing**, **0% repeated-phrase failures**, **14.71% aggregate WER** (English 6.33%, Slovenian 23.09%), **0.60 s median**, and **1.03 s p95** after model load. This is a small public release sample, not a promise for every microphone, accent, or GPU.
+
 Fetch and gate a fresh public English/Slovenian sample without waiting for a corpus export:
 
 ```powershell
 $python = "$env:USERPROFILE\.voice-typing\venv\Scripts\python.exe"
 & $python tests\fetch_fleurs_sample.py --output "$env:TEMP\VoicePrompt-FLEURS" --samples-per-language 10
-& $python tests\bench_one.py Systran/faster-whisper-large-v3 float16 --manifest "$env:TEMP\VoicePrompt-FLEURS\manifest.json" --language auto | Tee-Object "$env:TEMP\VoicePrompt-FLEURS\results.jsonl"
+& $python tests\bench_one.py Systran/faster-whisper-large-v3 float16 --manifest "$env:TEMP\VoicePrompt-FLEURS\manifest.json" --language auto --pipeline voiceprompt | Tee-Object "$env:TEMP\VoicePrompt-FLEURS\results.jsonl"
 & $python tests\benchmark_gate.py "$env:TEMP\VoicePrompt-FLEURS\results.jsonl"
 ```
 

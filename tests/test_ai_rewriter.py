@@ -38,7 +38,7 @@ class _Handler(BaseHTTPRequestHandler):
     def handle(self) -> None:
         try:
             super().handle()
-        except ConnectionAbortedError:
+        except (ConnectionAbortedError, ConnectionResetError):
             # Expected when the timeout test closes its socket first on Windows.
             pass
 
@@ -132,7 +132,8 @@ class AiRewriterTests(unittest.TestCase):
         system_prompt = request["messages"][0]["content"]
         self.assertIn("Never translate", system_prompt)
         self.assertIn("Slovenian slang", system_prompt)
-        self.assertIn("Do not paraphrase", system_prompt)
+        self.assertIn("broken or fragmented speech", system_prompt)
+        self.assertIn("Do not summarize", system_prompt)
         self.assertEqual(request["messages"][1]["content"], "um fix my english")
         self.assertFalse(rewriter.used_fallback)
         rewriter.close()
@@ -223,6 +224,15 @@ class AiRewriterTests(unittest.TestCase):
         source = "short request"
         self.assertEqual(rewriter.rewrite(source), source)
         self.assertTrue(rewriter.used_fallback)
+        rewriter.close()
+
+    def test_oversized_provider_response_returns_original(self) -> None:
+        self.provider.reply = "x" * (1024 * 1024 + 1)
+        rewriter = AiRewriter(self.config(timeout_ms=3000))
+        source = "keep this complete"
+        self.assertEqual(rewriter.rewrite(source), source)
+        self.assertTrue(rewriter.used_fallback)
+        self.assertIn("too large", rewriter.last_error)
         rewriter.close()
 
     def test_truncated_long_edit_returns_complete_original(self) -> None:

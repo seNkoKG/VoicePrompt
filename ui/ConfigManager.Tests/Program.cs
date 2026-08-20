@@ -103,6 +103,7 @@ Check("new config defaults to automatic paste", defaults.GetString("voiceprompt"
 Check("new config keeps voice commands opt-in", defaults.GetBool("voiceprompt", "voice_commands") == false);
 Check("new config enables local smart formatting", defaults.GetBool("voiceprompt", "smart_formatting") == true);
 Check("new config enables bounded context awareness", defaults.GetBool("voiceprompt", "context_awareness") == true);
+Check("new config unloads local weights after a balanced idle window", defaults.GetInt("voiceprompt", "model_idle_seconds") == 900);
 
 string legacyPath = Path.Combine(dir, "legacy.toml");
 const string legacyPrompt = "V kodi pišem Python funkcije, JavaScript handlerje in TypeScript interface. API endpoint vrača JSON preko HTTPS na REST API in branje iz SQL baze deluje. Preveri refresh token, authentication middleware, async in await, null in undefined. Uporabljam npm in pip, docker build, ssh na strežnik, git pull, git commit in git push origin main. Odpri terminal in preveri ta file, nato popravi funkcijo in naredi pull request.";
@@ -135,6 +136,10 @@ Check("AI settings round trip", aiReloaded.Mode == "grammar" && aiReloaded.Timeo
 Check("AI key is not stored as plaintext", !aiJson.Contains(secret, StringComparison.Ordinal));
 Check("AI key decrypts for current Windows user", VoicePromptTray.AiSettingsStore.UnprotectApiKey(aiReloaded.ApiKeyProtected) == secret);
 Check("AI settings validation accepts compatible endpoint", VoicePromptTray.AiSettingsStore.Validate(aiReloaded) == null);
+Check("AI provider privacy guidance distinguishes transport",
+    VoicePromptTray.AiSettingsStore.PrivacyMessage("http://127.0.0.1:11434/v1/chat/completions").Contains("stays on this PC") &&
+    VoicePromptTray.AiSettingsStore.PrivacyMessage("https://ai.example.test/v1/chat/completions").Contains("over HTTPS") &&
+    VoicePromptTray.AiSettingsStore.PrivacyMessage("http://ai.example.test/v1/chat/completions").StartsWith("Warning ·"));
 aiReloaded.Mode = "clean";
 Check("AI settings accept conservative Clean mode", VoicePromptTray.AiSettingsStore.Validate(aiReloaded) == null);
 aiReloaded.Mode = "grammar";

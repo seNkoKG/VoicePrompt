@@ -9,12 +9,14 @@ from typing import Any
 
 _UNSUPPORTED_LANGUAGE_MAX_LOSS = 0.05
 _RECENT_LANGUAGE_SWITCH_RATIO = 1.5
+_RECENT_ENGLISH_TO_SLOVENIAN_RATIO = 2.0
 _SUPPORTED_RETRY_MAX_SECONDS = 12.0
 _SUPPORTED_RETRY_MAX_CONFIDENCE = 0.70
 _SUPPORTED_RETRY_RATIO = 0.60
 _LANGUAGE_EVIDENCE_WEIGHT = 0.35
 _RECENT_LANGUAGE_BONUS = 0.08
 _SUPPORTED_RETRY_MIN_GAIN = 0.02
+_ENGLISH_RECOVERY_MIN_GAIN = 0.30
 _AUTO_MODES = {"", "auto", "sl-slang"}
 _SUPPORTED_LANGUAGES = {"en", "sl"}
 
@@ -63,7 +65,10 @@ def bilingual_retry_language(
         # Auto mode must avoid.
         if detected == "en":
             return None
-        if audio_seconds > _SUPPORTED_RETRY_MAX_SECONDS:
+        if (
+            audio_seconds > _SUPPORTED_RETRY_MAX_SECONDS
+            and not (detected == "sl" and recent_language == "en")
+        ):
             return None
         detected_probability = probabilities.get(detected, confidence)
         if detected_probability >= _SUPPORTED_RETRY_MAX_CONFIDENCE:
@@ -85,7 +90,12 @@ def bilingual_retry_language(
         other_language = "sl" if recent_language == "en" else "en"
         recent_probability = probabilities.get(recent_language, 0.0)
         other_probability = probabilities.get(other_language, 0.0)
-        if other_probability <= recent_probability * _RECENT_LANGUAGE_SWITCH_RATIO:
+        switch_ratio = (
+            _RECENT_ENGLISH_TO_SLOVENIAN_RATIO
+            if recent_language == "en"
+            else _RECENT_LANGUAGE_SWITCH_RATIO
+        )
+        if other_probability <= recent_probability * switch_ratio:
             return recent_language
     return "sl" if probabilities.get("sl", 0.0) > probabilities.get("en", 0.0) else "en"
 
@@ -174,6 +184,21 @@ def transcript_is_plausible(
     )
 
 
+def remember_recent_language(
+    recent_language: str | None,
+    language: str,
+    confidence: float,
+    text: str,
+    retry_accepted: bool = False,
+) -> str | None:
+    """Update language memory only from useful automatic evidence."""
+    if not text.strip() or language not in _SUPPORTED_LANGUAGES:
+        return recent_language
+    if retry_accepted:
+        return language if language == recent_language else recent_language
+    return language if confidence >= _SUPPORTED_RETRY_MAX_CONFIDENCE else recent_language
+
+
 def prefer_bilingual_retry(
     retry_language: str,
     detected: str,
@@ -196,6 +221,13 @@ def prefer_bilingual_retry(
         if detected_probability <= 0 or retry_probability <= 0:
             return False
         if not math.isfinite(original_score):
+            return True
+        if (
+            retry_language == "en"
+            and detected == "sl"
+            and recent_language == "en"
+            and retry_score - original_score >= _ENGLISH_RECOVERY_MIN_GAIN
+        ):
             return True
         original_evidence = original_score + _LANGUAGE_EVIDENCE_WEIGHT * math.log(
             detected_probability
