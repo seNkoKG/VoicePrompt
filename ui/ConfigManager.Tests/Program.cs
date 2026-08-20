@@ -835,6 +835,7 @@ static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
     string[] files =
     {
         "VoicePromptTray.exe", "install.ps1", "version.txt", "requirements.txt", "run_daemon.pyw",
+        "LICENSE.txt", "THIRD_PARTY_NOTICES.txt", "PRIVACY.md", "TERMS.md",
         "scripts/apply_patches.ps1", "scripts/shortcut_manager.ps1", "scripts/runtime_meter.py",
         "scripts/ai_rewriter.py", "scripts/transcript_history.py", "scripts/text_corrections.py",
         "scripts/slang_retry.py", "scripts/decoding_options.py", "scripts/buffered_transcription.py",

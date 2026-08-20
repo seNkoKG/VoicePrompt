@@ -96,3 +96,7 @@ jobs:
             dist/VoicePrompt-${{ github.ref_name }}-windows-x64.zip
             dist/VoicePromptTray.exe
             dist/VoicePrompt-${{ github.ref_name }}-SHA256SUMS.txt
+            LICENSE.txt
+            THIRD_PARTY_NOTICES.txt
+            PRIVACY.md
+            TERMS.md

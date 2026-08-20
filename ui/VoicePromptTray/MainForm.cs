@@ -1162,6 +1162,12 @@ internal sealed class MainForm : Form
         config.Click += (_, _) => OpenConfigFolder();
         var release = new ActionButton("Latest release", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
         release.Click += (_, _) => OpenExternal("https://github.com/seNkoKG/VoicePrompt/releases/latest");
+        var privacy = new ActionButton("Privacy", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
+        privacy.Click += (_, _) => OpenInstalledDocument("PRIVACY.md");
+        var terms = new ActionButton("Terms", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
+        terms.Click += (_, _) => OpenInstalledDocument("TERMS.md");
+        var licenses = new ActionButton("Licenses", ActionButtonStyle.Quiet) { BackColor = Theme.Surface };
+        licenses.Click += (_, _) => OpenInstalledDocument("THIRD_PARTY_NOTICES.txt");
         _updateChannelChoice = new ChoiceStrip(new[] { "Stable", "Preview" }, new[] { "stable", "preview" }) { Dock = DockStyle.Fill };
         _updateChannelChoice.AccessibleName = "Application update channel";
         _updateChannelChoice.SelectedChanged += (_, _) =>
@@ -1190,6 +1196,7 @@ internal sealed class MainForm : Form
         tools.Add("Update channel", "Stable is recommended. Preview also checks explicit prereleases; updates are always installed manually.", _updateChannelChoice, 62);
         tools.Add("Application updates", "Checks GitHub only when clicked. Downloads are SHA-256 verified before the existing installer starts.", HorizontalControl(_updateStatus, _updateButton), 62);
         tools.Add("Files & updates", "Open the live config directory or the public download page.", HorizontalControl(config, release), 62);
+        tools.Add("Legal & privacy", "Review the installed terms, privacy notice, and third-party licenses.", HorizontalControl(privacy, terms, licenses), 62);
         AddPageItem(body, tools.Build());
         ResetUpdateCheck();
 
@@ -2784,6 +2791,17 @@ internal sealed class MainForm : Form
     {
         Directory.CreateDirectory(_paths.ConfigDir);
         OpenExternal("explorer.exe", '"' + _paths.ConfigDir + '"');
+    }
+
+    private void OpenInstalledDocument(string fileName)
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, fileName);
+        if (!File.Exists(path))
+        {
+            ShowFooter("The installed document is missing · " + fileName, Theme.Warn);
+            return;
+        }
+        OpenExternal("notepad.exe", '"' + path + '"');
     }
 
     private void OpenExternal(string target, string? arguments = null)

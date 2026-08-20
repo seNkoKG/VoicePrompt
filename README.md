@@ -82,6 +82,10 @@ Future releases can be installed from **System → Application updates**: click 
 
 > The executable is not code-signed yet, so Windows may show an “unknown publisher” warning. Only run packages downloaded from this repository's official Releases page. The SHA-256 checksums are attached to every release.
 
+### Privacy and licensing
+
+VoicePrompt is currently distributed as a free preview with no account, subscription, or payment system. VoicePrompt-specific code and binaries are proprietary. Public source access does not grant redistribution or resale rights. Every release and installed copy includes the [license notice](LICENSE.txt), [privacy notice](PRIVACY.md), [free-preview terms](TERMS.md), and [third-party notices](THIRD_PARTY_NOTICES.txt). Third-party components keep their original licenses. If a paid version is offered later, its checkout will show the seller, price, and applicable purchase terms before payment.
+
 ### Build from source
 
 ```powershell
@@ -296,6 +300,8 @@ $python = "$env:USERPROFILE\.voice-typing\venv\Scripts\python.exe"
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — CTranslate2 whisper runtime (MIT)
 - [OpenAI Whisper large-v3](https://github.com/openai/whisper) — the model (MIT)
 - Logo artwork: generated for VoicePrompt; multi-resolution Windows icon packaged by `scripts/make_icon.ps1`
+
+Full copyright and dependency terms are recorded in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
 ## Roadmap
 

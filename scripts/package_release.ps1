@@ -27,6 +27,18 @@ $packageRoot = Join-Path $dist $packageName
 $zip = Join-Path $dist "$packageName.zip"
 $standaloneExe = Join-Path $dist "VoicePromptTray.exe"
 $checksums = Join-Path $dist "VoicePrompt-$tag-SHA256SUMS.txt"
+$legalFileNames = @(
+    "LICENSE.txt",
+    "THIRD_PARTY_NOTICES.txt",
+    "PRIVACY.md",
+    "TERMS.md"
+)
+foreach ($legalFileName in $legalFileNames) {
+    $legalPath = Join-Path $root $legalFileName
+    if (-not (Test-Path -LiteralPath $legalPath -PathType Leaf)) {
+        throw "Release file is missing: $legalFileName"
+    }
+}
 
 $resolvedRoot = [System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
 $resolvedDist = [System.IO.Path]::GetFullPath($dist)
@@ -55,6 +67,9 @@ Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination $packageRoo
 Copy-Item -LiteralPath (Join-Path $root "run_daemon.pyw") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "config.toml") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $root "requirements.txt") -Destination $packageRoot
+foreach ($legalFileName in $legalFileNames) {
+    Copy-Item -LiteralPath (Join-Path $root $legalFileName) -Destination $packageRoot
+}
 Copy-Item -LiteralPath (Join-Path $root "assets\logo.png") -Destination (Join-Path $packageRoot "assets")
 Copy-Item -LiteralPath (Join-Path $root "scripts\apply_patches.ps1") -Destination (Join-Path $packageRoot "scripts")
 Copy-Item -LiteralPath (Join-Path $root "scripts\shortcut_manager.ps1") -Destination (Join-Path $packageRoot "scripts")

@@ -1,0 +1,19 @@
+VoicePrompt Proprietary License Notice
+
+Copyright (c) 2026 seNkoKG. All rights reserved.
+
+VoicePrompt-specific source code, binaries, artwork, documentation, and other
+original material are proprietary. Public access to the source repository does
+not grant permission to copy, modify, redistribute, sublicense, or sell that
+material.
+
+A person who lawfully obtains VoicePrompt may install and use the unmodified
+application only under the end-user terms supplied with that copy. No other
+rights are granted except where applicable law requires them.
+
+This notice applies to versions distributed with it. It does not revoke rights
+that were expressly granted with an earlier copy.
+
+VoicePrompt includes or installs third-party components under their own
+licenses. Those components are not covered by this notice. See
+THIRD_PARTY_NOTICES.txt.

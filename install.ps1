@@ -102,7 +102,13 @@ $packageSelectionCommands = Join-Path $packageRoot "scripts\selection_commands.p
 $packageWindowsHotkey = Join-Path $packageRoot "scripts\windows_hotkey.py"
 $packageRunner = Join-Path $packageRoot "run_daemon.pyw"
 $packageRequirements = Join-Path $packageRoot "requirements.txt"
-foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageSmartFormatter, $packageWindowsContext, $packageSelectionCommands, $packageWindowsHotkey, $packageRunner, $packageRequirements)) {
+$packageLegalFiles = @(
+    "LICENSE.txt",
+    "THIRD_PARTY_NOTICES.txt",
+    "PRIVACY.md",
+    "TERMS.md"
+) | ForEach-Object { Join-Path $packageRoot $_ }
+foreach ($required in @($packageExe, $packagePatch, $packageShortcutManager, $packageMeter, $packageAi, $packageHistory, $packageCorrections, $packageSlangRetry, $packageDecodingOptions, $packageBuffered, $packageOutputMode, $packageAppProfiles, $packageTextSnippets, $packageVoiceCommands, $packageSmartFormatter, $packageWindowsContext, $packageSelectionCommands, $packageWindowsHotkey, $packageRunner, $packageRequirements) + $packageLegalFiles) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "The release package is incomplete. Missing: $required"
     }
@@ -190,6 +196,9 @@ Copy-Item -LiteralPath $packageWindowsHotkey -Destination (Join-Path $installScr
 Copy-Item -LiteralPath $packageRunner -Destination (Join-Path $installRoot "run_daemon.pyw") -Force
 Copy-Item -LiteralPath $packageRequirements -Destination (Join-Path $installRoot "requirements.txt") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "install.ps1") -Destination (Join-Path $installRoot "install.ps1") -Force
+foreach ($packageLegalFile in $packageLegalFiles) {
+    Copy-Item -LiteralPath $packageLegalFile -Destination $installRoot -Force
+}
 if (Test-Path -LiteralPath (Join-Path $packageRoot "README.md")) {
     Copy-Item -LiteralPath (Join-Path $packageRoot "README.md") -Destination (Join-Path $installRoot "README.md") -Force
 }
