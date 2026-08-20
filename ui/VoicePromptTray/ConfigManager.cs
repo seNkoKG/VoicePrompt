@@ -120,6 +120,16 @@ internal sealed class ConfigManager
             }
         }
 
+        // VoicePrompt's local Whisper and Silero VAD path is defined at 16 kHz.
+        // Older UI builds exposed rates that were either misinterpreted by
+        // faster-whisper or rejected by Silero's ONNX model.
+        if (string.Equals(GetString("engine", "type"), "local", StringComparison.Ordinal) &&
+            GetInt("audio", "sample_rate") != 16000)
+        {
+            Set("audio", "sample_rate", 16000);
+            changed = true;
+        }
+
         if (changed)
             Save();
     }

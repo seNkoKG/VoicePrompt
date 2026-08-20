@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.25.0] - 2026-08-20
+
+### Fixed
+
+- Pin local capture to Whisper and Silero's native 16 kHz contract, migrate incompatible saved rates, and reject unsupported direct or environment overrides before they can corrupt recognition.
+- Keep the hidden Audio page from polling the live meter, halve the recording overlay's idle polling rate while retaining a 25 ms active animation cadence, and reuse the captured foreground executable for per-app routing.
+- Preserve AI provider-test results, validate providers used only by application profiles, bound both AI settings and recognition-server responses, and refuse to send API keys over remote plain HTTP.
+- Surface recognition-server timeouts and invalid responses as transcription failures instead of reporting them as silence.
+- Report runtime restarts as successful only after the action completes and preserve unsaved dictionary edits when learning a correction from Recovery.
+- Require every formatter/context runtime file in staged updates and refuse recursive installer, build, or update cleanup through reparse-point roots.
+
+### Verified
+
+- Pass 20 fresh interleaved English/Slovenian FLEURS clips through the patched product path at 100% language routing, 0% repetition failures, 14.87% aggregate WER, 0.68 s median latency, and 1.16 s p95 after model load.
+
 ## [1.24.0] - 2026-08-20
 
 ### Added

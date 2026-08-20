@@ -81,6 +81,10 @@ Check("silence updated", Regex.IsMatch(after, @"silence_ms = 300"));
 Check("commented key uncommented", Regex.IsMatch(after, @"^temperature = 0\.2\r?$", RegexOptions.Multiline));
 Check("hotwords added + escaped", Regex.IsMatch(after, @"hotwords = \""python, null\"""));
 Check("inline comment preserved", after.Contains("WhisperLiveKit server URL"));
+var migratedSampleConfig = new VoicePromptTray.ConfigManager(path);
+Check("unsupported local sample rate migrates to Whisper native rate",
+    migratedSampleConfig.GetInt("audio", "sample_rate") == 16000 &&
+    Regex.IsMatch(File.ReadAllText(path), @"sample_rate = 16000"));
 Check("VoicePrompt profile section added", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "slovenian_slang") == true);
 Check("copy-only output setting round trips", new VoicePromptTray.ConfigManager(path).GetString("voiceprompt", "output_mode") == "clipboard");
 Check("voice-command setting round trips", new VoicePromptTray.ConfigManager(path).GetBool("voiceprompt", "voice_commands") == true);
@@ -142,11 +146,26 @@ Check("AI provider privacy guidance distinguishes transport",
     VoicePromptTray.AiSettingsStore.PrivacyMessage("http://ai.example.test/v1/chat/completions").StartsWith("Warning ·"));
 aiReloaded.Mode = "clean";
 Check("AI settings accept conservative Clean mode", VoicePromptTray.AiSettingsStore.Validate(aiReloaded) == null);
+var unsafeRemoteAi = new VoicePromptTray.AiSettings
+{
+    Mode = "grammar",
+    Endpoint = "http://ai.example.test/v1/chat/completions",
+    Model = "remote-model",
+    TimeoutMs = 900,
+    ApiKeyProtected = aiReloaded.ApiKeyProtected,
+};
+Check("AI credentials require encrypted remote transport",
+    VoicePromptTray.AiSettingsStore.Validate(unsafeRemoteAi)?.Contains("HTTPS") == true);
+unsafeRemoteAi.Mode = "off";
+Check("AI application profiles validate dormant provider settings",
+    VoicePromptTray.AiSettingsStore.Validate(unsafeRemoteAi, requireProvider: true)?.Contains("HTTPS") == true);
 aiReloaded.Mode = "grammar";
 aiReloaded.TimeoutMs = 200;
 Check("AI settings reject unsafe wait", VoicePromptTray.AiSettingsStore.Validate(aiReloaded)?.Contains("400") == true);
 File.WriteAllText(aiPath, "{broken");
 Check("broken AI settings fall back safely", VoicePromptTray.AiSettingsStore.Load(aiPath).Mode == "off");
+File.WriteAllText(aiPath, new string('x', 128 * 1024 + 1));
+Check("oversized AI settings fall back safely", VoicePromptTray.AiSettingsStore.Load(aiPath).Mode == "off");
 File.WriteAllText(aiPath, """{"mode":"unknown","endpoint":null,"model":null,"timeout_ms":0}""");
 var normalizedAi = VoicePromptTray.AiSettingsStore.Load(aiPath);
 Check("AI settings normalize hand-edited values", normalizedAi.Mode == "off" && normalizedAi.TimeoutMs == 400 && normalizedAi.Endpoint.StartsWith("http"));
@@ -177,6 +196,13 @@ dictionary.AddOrReplace("codecks", "Codex");
 Check("personal corrections learn immediately",
     dictionary.LoadText().Contains("polly market => Polymarket app") &&
     dictionary.LoadText().Contains("codecks => Codex"));
+string mergedCorrections = VoicePromptTray.PersonalDictionaryStore.AddOrReplaceText(
+    "unsaved phrase => Preserved\ncodecks => Old",
+    "codecks",
+    "Codex");
+Check("correction learning preserves unsaved dictionary edits",
+    mergedCorrections.Contains("unsaved phrase => Preserved") &&
+    mergedCorrections.Contains("codecks => Codex"));
 File.WriteAllText(correctionsPath, new string('x', 128 * 1024 + 1));
 Check("oversized personal corrections fail closed", dictionary.LoadText() == "");
 dictionary.SaveText("polly market => Polymarket\nžabar => Ljubljančan");
@@ -678,6 +704,16 @@ bool unsafeArchiveRejected = await RejectsInvalidDataAsync(() =>
     new VoicePromptTray.UpdateInstaller(unsafeClient).PrepareAsync(unsafeRelease));
 Check("updater blocks ZIP path traversal", unsafeArchiveRejected);
 
+string incompleteArchivePath = Path.Combine(dir, "incomplete-update.zip");
+File.WriteAllBytes(
+    incompleteArchivePath,
+    BuildUpdateArchive(stagedVersion, omitEntry: "scripts/smart_formatter.py"));
+Check("updater rejects packages missing runtime formatter files",
+    ThrowsInvalidData(() => VoicePromptTray.UpdateInstaller.ExtractVerifiedArchive(
+        incompleteArchivePath,
+        Path.Combine(dir, "incomplete-update"),
+        new VoicePromptTray.ReleaseVersion(new Version(stagedVersion)))));
+
 Check("checksum parser rejects duplicate package entries",
     ThrowsInvalidData(() => VoicePromptTray.UpdateInstaller.ReadChecksum(
         $"{updateHash}  {archiveName}\n{updateHash}  {archiveName}\n",
@@ -835,7 +871,10 @@ static string BuildReleaseJson(
     });
 }
 
-static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
+static byte[] BuildUpdateArchive(
+    string version,
+    string? extraEntry = null,
+    string? omitEntry = null)
 {
     string[] files =
     {
@@ -851,7 +890,9 @@ static byte[] BuildUpdateArchive(string version, string? extraEntry = null)
     using var buffer = new MemoryStream();
     using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
     {
-        foreach (string file in files.Append(extraEntry).Where(value => value is not null)!)
+        foreach (string file in files
+            .Append(extraEntry)
+            .Where(value => value is not null && value != omitEntry)!)
         {
             ZipArchiveEntry entry = archive.CreateEntry(file!, CompressionLevel.Fastest);
             using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));

@@ -576,6 +576,14 @@ using (var overlay = new RecordingOverlay
     Opacity = 0.96,
 })
 {
+    var overlayTimer = (System.Windows.Forms.Timer)typeof(RecordingOverlay)
+        .GetField("_timer", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .GetValue(overlay)!;
+    if (overlayTimer.Interval != 50)
+    {
+        behaviorFailures++;
+        failures.AppendLine($"PERFORMANCE hidden overlay polls every {overlayTimer.Interval}ms instead of 50ms");
+    }
     using (var map = MemoryMappedFile.CreateOrOpen(AudioMeterReader.MapName, AudioMeterReader.MapSize))
     using (var view = map.CreateViewAccessor())
     {
@@ -597,6 +605,11 @@ using (var overlay = new RecordingOverlay
     {
         behaviorFailures++;
         failures.AppendLine($"BEHAVIOR overlay cold activation took {overlayActivationMs}ms at opacity {overlay.Opacity:0.00}");
+    }
+    if (overlayTimer.Interval != 25)
+    {
+        behaviorFailures++;
+        failures.AppendLine($"PERFORMANCE active overlay animates every {overlayTimer.Interval}ms instead of 25ms");
     }
     if (overlay.Width > 190)
     {
@@ -679,6 +692,66 @@ if (!inputMeter.Listening || inputMeter.DisplayLevel < 0.20f)
 }
 string inputTestPath = Path.Combine(Path.GetTempPath(), "voiceprompt_ui_input_test.png");
 SaveClientScreenshot(inputTestPath);
+form.Hide();
+Application.DoEvents();
+if (inputMeter.Active)
+{
+    behaviorFailures++;
+    failures.AppendLine("PERFORMANCE hidden settings window kept the input-level reader active");
+}
+form.ShowPageForDiagnostics("audio");
+Application.DoEvents();
+if (inputMeter.Active)
+{
+    behaviorFailures++;
+    failures.AppendLine("PERFORMANCE selecting Audio while hidden started the input-level reader");
+}
+form.Show();
+Application.DoEvents();
+if (!inputMeter.Active)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR showing the Audio page did not resume the input-level reader");
+}
+
+var sampleRateChoice = (ChoiceStrip)typeof(MainForm)
+    .GetField("_sampleRateChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+if (sampleRateChoice.SelectedValue != "16000")
+{
+    behaviorFailures++;
+    failures.AppendLine($"BEHAVIOR local audio rate is not pinned to 16 kHz: {sampleRateChoice.SelectedValue}");
+}
+
+var setAiResult = typeof(MainForm).GetMethod("SetAiResult", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var setBusy = typeof(MainForm).GetMethod("SetBusy", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var aiResult = (Label)typeof(MainForm)
+    .GetField("_aiResult", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+setAiResult.Invoke(form, new object[] { "Provider result remains visible", true });
+setBusy.Invoke(form, new object[] { false });
+if (aiResult.Text != "Provider result remains visible")
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR AI provider result was overwritten when busy state cleared");
+}
+
+var runDaemonAction = typeof(MainForm).GetMethod(
+    "RunDaemonActionAsync",
+    BindingFlags.Instance | BindingFlags.NonPublic)!;
+var failedDaemonTask = (Task<bool>)runDaemonAction.Invoke(
+    form,
+    new object[] { (Action)(() => throw new InvalidOperationException("expected diagnostic failure")), "unexpected success" })!;
+while (!failedDaemonTask.IsCompleted)
+{
+    Application.DoEvents();
+    Thread.Sleep(10);
+}
+if (failedDaemonTask.GetAwaiter().GetResult())
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR failed runtime action reported success");
+}
 
 using (var recorder = new HotkeyRecorder { Binding = "f1" })
 {

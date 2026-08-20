@@ -43,7 +43,9 @@ internal sealed class RecordingOverlay : Form
         Opacity = 0;
 
         SelectStyle(style);
-        _timer = new System.Windows.Forms.Timer { Interval = 25 };
+        // Poll gently while idle, then switch to the smooth animation cadence
+        // as soon as a recording signal arrives.
+        _timer = new System.Windows.Forms.Timer { Interval = 50 };
         _timer.Tick += (_, _) => UpdateMeter();
         _timer.Start();
     }
@@ -124,6 +126,7 @@ internal sealed class RecordingOverlay : Form
                 _recording = false;
                 _level = 0;
                 Hide();
+                _timer.Interval = 50;
             }
             return;
         }
@@ -135,6 +138,7 @@ internal sealed class RecordingOverlay : Form
         }
 
         bool recording = meterSample.Recording && _lastSignal != 0 && now - _lastSignal < 3000;
+        _timer.Interval = recording || Visible ? 25 : 50;
         float targetLevel = recording ? meterSample.Level : 0f;
         float levelResponse = targetLevel > _level ? 0.46f : 0.20f;
         _level += (targetLevel - _level) * levelResponse;
@@ -166,6 +170,7 @@ internal sealed class RecordingOverlay : Form
         if (!recording && Opacity <= 0.01)
         {
             Hide();
+            _timer.Interval = 50;
             return;
         }
         Invalidate();

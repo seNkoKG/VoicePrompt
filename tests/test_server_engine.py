@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import Mock
 
@@ -21,7 +22,8 @@ class ServerEngineTests(unittest.TestCase):
         )
         engine = ServerEngine(config)
         response = Mock()
-        response.json.return_value = {"text": "  Pozdravljen svet.  "}
+        response.headers = {}
+        response.iter_content.return_value = [json.dumps({"text": "  Pozdravljen svet.  "}).encode()]
         response.raise_for_status.return_value = None
         session = Mock()
         session.post.return_value = response
@@ -33,6 +35,7 @@ class ServerEngineTests(unittest.TestCase):
         args, kwargs = session.post.call_args
         self.assertEqual("https://speech.example.test/v1/audio/transcriptions", args[0])
         self.assertEqual(45, kwargs["timeout"])
+        self.assertTrue(kwargs["stream"])
         self.assertEqual("Systran/faster-whisper-large-v3", kwargs["data"]["model"])
         self.assertEqual("sl", kwargs["data"]["language"])
         self.assertEqual("Imena: Žan", kwargs["data"]["prompt"])
@@ -48,12 +51,14 @@ class ServerEngineTests(unittest.TestCase):
         session.post.side_effect = requests.Timeout("late")
         engine._session = session
 
-        self.assertEqual("", engine.transcribe(np.zeros(160, dtype=np.float32), 16000))
+        with self.assertRaisesRegex(RuntimeError, "timed out"):
+            engine.transcribe(np.zeros(160, dtype=np.float32), 16000)
 
     def test_server_language_routes_slang_profile_without_leaking_internal_mode(self):
         engine = ServerEngine(ServerConfig(url="http://localhost:8000", language="sl-slang"))
         response = Mock()
-        response.json.return_value = {"text": "Živjo."}
+        response.headers = {}
+        response.iter_content.return_value = [json.dumps({"text": "Živjo."}).encode()]
         response.raise_for_status.return_value = None
         session = Mock()
         session.post.return_value = response
@@ -72,13 +77,42 @@ class ServerEngineTests(unittest.TestCase):
     def test_invalid_json_fails_closed_without_pasting_error_text(self):
         engine = ServerEngine(ServerConfig(url="http://localhost:8000", timeout=5))
         response = Mock()
+        response.headers = {}
         response.raise_for_status.return_value = None
-        response.json.side_effect = ValueError("invalid JSON")
+        response.iter_content.return_value = [b"invalid JSON"]
         session = Mock()
         session.post.return_value = response
         engine._session = session
 
-        self.assertEqual("", engine.transcribe(np.zeros(160, dtype=np.float32), 16000))
+        with self.assertRaisesRegex(RuntimeError, "Invalid transcription server response"):
+            engine.transcribe(np.zeros(160, dtype=np.float32), 16000)
+
+    def test_oversized_response_is_rejected_before_json_parsing(self):
+        engine = ServerEngine(ServerConfig(url="http://localhost:8000", timeout=5))
+        response = Mock()
+        response.headers = {"Content-Length": str(1024 * 1024 + 1)}
+        response.raise_for_status.return_value = None
+        response.iter_content.return_value = []
+        session = Mock()
+        session.post.return_value = response
+        engine._session = session
+
+        with self.assertRaisesRegex(RuntimeError, "response is too large"):
+            engine.transcribe(np.zeros(160, dtype=np.float32), 16000)
+        response.close.assert_called_once()
+
+    def test_non_object_json_response_is_rejected(self):
+        engine = ServerEngine(ServerConfig(url="http://localhost:8000", timeout=5))
+        response = Mock()
+        response.headers = {}
+        response.raise_for_status.return_value = None
+        response.iter_content.return_value = [b"[]"]
+        session = Mock()
+        session.post.return_value = response
+        engine._session = session
+
+        with self.assertRaisesRegex(RuntimeError, "response root is not an object"):
+            engine.transcribe(np.zeros(160, dtype=np.float32), 16000)
 
 
 if __name__ == "__main__":

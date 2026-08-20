@@ -734,14 +734,14 @@ internal sealed class MainForm : Form
         var microphoneRow = HorizontalControl(_microphoneCombo, refresh, sound);
 
         _sampleRateChoice = new ChoiceStrip(
-            new[] { "8 kHz", "16 kHz", "22 kHz", "44.1 kHz", "48 kHz" },
-            new[] { "8000", "16000", "22050", "44100", "48000" })
+            new[] { "16 kHz" },
+            new[] { "16000" })
         { Dock = DockStyle.Fill };
         _sampleRateChoice.AccessibleName = "Audio sample rate";
 
         var input = new SectionBuilder("Input device", "VoicePrompt records mono audio and keeps it on this computer.");
         input.Add("Microphone", "System default follows the current Windows input device.", microphoneRow, 68);
-        input.Add("Sample rate", "16 kHz is Whisper's native rate and the recommended setting.", _sampleRateChoice, 64);
+        input.Add("Sample rate", "Whisper and local voice detection run natively at 16 kHz for consistent accuracy.", _sampleRateChoice, 64);
         _inputLevelMeter = new InputLevelMeter { Dock = DockStyle.Fill };
         input.Add("Input test", "Hold your configured hotkey and speak. This reuses the live recording stream and never opens a second microphone capture.", _inputLevelMeter, 66);
         AddPageItem(body, input.Build());
@@ -1479,7 +1479,7 @@ internal sealed class MainForm : Form
             LoadHistory();
         if (key == AdvancedPage)
             RefreshPerformanceSnapshot();
-        _inputLevelMeter.SetActive(key == AudioPage);
+        _inputLevelMeter.SetActive(Visible && key == AudioPage);
         if (persist)
             SavePreferences();
     }
@@ -1957,7 +1957,7 @@ internal sealed class MainForm : Form
         };
     }
 
-    private void UpdateAiAvailability()
+    private void UpdateAiAvailability(bool updateMessage = true)
     {
         if (_aiModeChoice == null)
             return;
@@ -1970,15 +1970,18 @@ internal sealed class MainForm : Form
         _aiTestButton.Enabled = enabled && !_busy;
         _aiClearKeyButton.Enabled = enabled && !_busy &&
             (!string.IsNullOrEmpty(_aiSettings.ApiKeyProtected) || _aiKeyText.TextLength > 0);
-        if (_aiModeChoice.SelectedValue == "off")
+        if (!updateMessage)
+            return;
+        if (_aiModeChoice.SelectedValue == "off" && !profileUsesAi)
         {
-            _aiResult.Text = profileUsesAi
-                ? "Verbatim globally · matching application profiles use this provider."
-                : "Verbatim adds zero delay and sends no transcript anywhere.";
+            _aiResult.Text = "Verbatim adds zero delay and sends no transcript anywhere.";
             _aiResult.ForeColor = Theme.Muted;
             return;
         }
-        _aiResult.Text = AiSettingsStore.PrivacyMessage(_aiEndpointText.Text);
+        string privacyMessage = AiSettingsStore.PrivacyMessage(_aiEndpointText.Text);
+        _aiResult.Text = _aiModeChoice.SelectedValue == "off"
+            ? "Application profiles · " + privacyMessage
+            : privacyMessage;
         bool unsafeRemote = !RecognitionServer.IsLoopback(_aiEndpointText.Text) &&
             _aiEndpointText.Text.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase);
         _aiResult.ForeColor = unsafeRemote ? Theme.Warn : Theme.TextSecondary;
@@ -2120,6 +2123,13 @@ internal sealed class MainForm : Form
             };
         }
 
+        validation = AiSettingsStore.Validate(settings, requireProvider: true);
+        if (validation != null)
+        {
+            SetAiResult(validation, false);
+            return;
+        }
+
         SetBusy(true);
         SetAiResult("Testing provider…", true);
         string temporary = _paths.AiConfigPath + ".test";
@@ -2193,9 +2203,10 @@ internal sealed class MainForm : Form
         }
 
         string appProfiles = _appProfilesText.Text;
+        IReadOnlyList<AppProfileEntry> parsedAppProfiles;
         try
         {
-            AppProfileStore.Parse(appProfiles);
+            parsedAppProfiles = AppProfileStore.Parse(appProfiles);
         }
         catch (InvalidDataException ex)
         {
@@ -2217,7 +2228,9 @@ internal sealed class MainForm : Form
             return;
         }
 
-        string? aiValidation = AiSettingsStore.Validate(aiSettings);
+        bool profileUsesAi = parsedAppProfiles.Any(profile =>
+            profile.WritingMode is "clean" or "grammar" or "prompt");
+        string? aiValidation = AiSettingsStore.Validate(aiSettings, requireProvider: profileUsesAi);
         if (aiValidation != null)
         {
             ShowPage(IntelligencePage);
@@ -2231,14 +2244,22 @@ internal sealed class MainForm : Form
         string? recognitionServerValidation = RecognitionServer.Validate(
             recognitionServerUrl,
             recognitionServerTimeout);
-        if (recognitionServerValidation != null)
+        if (recognitionEngine == "server" && recognitionServerValidation != null)
         {
             ShowPage(IntelligencePage);
             _recognitionServerUrl.Focus();
             ShowFooter(recognitionServerValidation, Theme.Err);
             return;
         }
-        recognitionServerUrl = RecognitionServer.NormalizeUrl(recognitionServerUrl);
+        if (recognitionServerValidation != null)
+        {
+            recognitionServerUrl = "http://localhost:8000";
+            recognitionServerTimeout = 60;
+        }
+        else
+        {
+            recognitionServerUrl = RecognitionServer.NormalizeUrl(recognitionServerUrl);
+        }
 
         string activation = _activationChoice.SelectedValue;
         string language = SelectedLanguageCode();
@@ -2362,14 +2383,14 @@ internal sealed class MainForm : Form
 
     private async Task RestartDaemonAsync()
     {
-        await RunDaemonActionAsync(_daemon.Restart, "Runtime restarted and ready");
-        DaemonRestarted?.Invoke();
+        if (await RunDaemonActionAsync(_daemon.Restart, "Runtime restarted and ready"))
+            DaemonRestarted?.Invoke();
     }
 
-    private async Task RunDaemonActionAsync(Action action, string success)
+    private async Task<bool> RunDaemonActionAsync(Action action, string success)
     {
         if (_busy)
-            return;
+            return false;
         SetBusy(true);
         ShowFooter("Working…", Theme.Accent);
         try
@@ -2377,10 +2398,12 @@ internal sealed class MainForm : Form
             await Task.Run(action);
             UpdateStatus(_daemon.Refresh(true));
             ShowFooter(success, Theme.Ok);
+            return true;
         }
         catch (Exception ex)
         {
             ShowFooter(ShortMessage(ex.Message), Theme.Err);
+            return false;
         }
         finally
         {
@@ -2397,7 +2420,7 @@ internal sealed class MainForm : Form
         _daemonToggleButton.Enabled = !busy;
         _daemonRestartButton.Enabled = !busy && _daemon.Info.State == DaemonState.Running;
         UpdateRecognitionEngineAvailability();
-        UpdateAiAvailability();
+        UpdateAiAvailability(updateMessage: false);
     }
 
     public void UpdateStatus(DaemonInfo info)
@@ -2534,8 +2557,12 @@ internal sealed class MainForm : Form
             return;
         try
         {
-            _dictionaryStore.AddOrReplace(dialog.Heard, dialog.Replacement);
-            _correctionsText.Text = _dictionaryStore.LoadText();
+            string merged = PersonalDictionaryStore.AddOrReplaceText(
+                _correctionsText.Text,
+                dialog.Heard,
+                dialog.Replacement);
+            _dictionaryStore.SaveText(merged);
+            _correctionsText.Text = merged;
             ShowFooter("Correction learned · applies to the next dictation", Theme.Ok);
         }
         catch (InvalidDataException ex)

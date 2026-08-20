@@ -87,6 +87,17 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         $configSource.Contains('1[0-9]|2[0-4]')) {
         throw "$Name does not have one canonical native Windows hotkey contract."
     }
+    if ([regex]::Matches($configSource, 'local recognition requires audio.sample_rate = 16000').Count -ne 1) {
+        throw "$Name does not reject unsupported local audio rates."
+    }
+
+    $serverSource = [System.IO.File]::ReadAllText($serverEngine)
+    if ([regex]::Matches($serverSource, "_MAX_TRANSCRIPTION_RESPONSE_BYTES = 1024 \* 1024").Count -ne 1 -or
+        [regex]::Matches($serverSource, "stream=True").Count -ne 1 -or
+        -not $serverSource.Contains("Transcription server timed out") -or
+        $serverSource.Contains('return ""')) {
+        throw "$Name does not bound and surface recognition-server failures."
+    }
 
     $source = [System.IO.File]::ReadAllText($localEngine)
     if ($source.Contains("if should_retry_as_slovenian(")) {
@@ -183,7 +194,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if (-not (Test-Path -LiteralPath $appProfiles) -or
         [regex]::Matches($typerSource, "from \.app_profiles import resolve_app_profile").Count -ne 1 -or
-        [regex]::Matches($typerSource, "profile = resolve_app_profile\(\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "profile = resolve_app_profile\(context\.executable\)").Count -ne 1 -or
         [regex]::Matches($typerSource, "rewrite_text\(text, mode_override=writing_override\)").Count -ne 1) {
         throw "$Name is missing the exact application-aware override router."
     }

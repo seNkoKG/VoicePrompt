@@ -69,7 +69,7 @@ Measured on an RTX 5080:
 
 Requirements: **64-bit Windows 11**, **Python 3.11+**, an **NVIDIA GPU with a current driver**, and roughly **10 GB of free disk space** for the runtime and model.
 
-1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.24.0-windows-x64.zip`.
+1. Open the [latest VoicePrompt release](https://github.com/seNkoKG/VoicePrompt/releases/latest) and download `VoicePrompt-v1.25.0-windows-x64.zip`.
 2. Extract the ZIP, open PowerShell in that folder, and run:
 
 ```powershell
@@ -255,7 +255,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 - `tests/test_buffered_transcription.py` — verifies speech-block ordering, one-result assembly, short-recording compatibility, and complete-audio fallback triggers.
 - `tests/test_output_mode.py` — verifies safe defaults and proves Copy-only delivery cannot call the synthetic-paste route.
 - `tests/test_voice_commands.py` — verifies default-off behavior, exact English/Slovenian recognition, Unicode output, and substring false-positive protection.
-- `tests/test_server_engine.py` — verifies bounded OpenAI-compatible WAV requests, Slovenian/Auto language routing, and empty-result fallback on timeouts or malformed responses.
+- `tests/test_server_engine.py` — verifies bounded OpenAI-compatible WAV requests and responses, Slovenian/Auto routing, and observable timeout or malformed-response failures.
 - `tests/test_text_snippets.py` — verifies bounded Unicode snippet loading, bilingual exact resolution, malformed-data fallback, and false-positive protection.
 - `tests/test_windows_hotkey.py` — verifies shortcut parsing plus native Windows press/release delivery after idle and across repeated activations.
 - `tests/test_patch_migrations.ps1` — verifies clean, legacy, and immediately previous release upgrades compile and remain byte-for-byte idempotent when the patcher is reapplied.
@@ -264,7 +264,7 @@ The E2E harness simulates what a human does (no spoken voice needed):
 
 Verified end-to-end results (simulated): a clear English utterance landed **0.78 s** after key release; an ambiguous Slovenian utterance requiring the safety decode landed in **1.86 s**. The original batch path retained a **129.9-second** recording's opening sentence, all 18 checkpoints, and unique final sentence. With fast long recordings enabled, a real-time **99.2-second** English sample produced one ordered paste **0.49 s** after release and matched the full one-pass decode's measured **7.04% WER** on the same reference.
 
-The v1.24 product-path gate ran 10 freshly fetched, interleaved English/Slovenian FLEURS validation clips through patched `LocalEngine`: **100% language routing**, **0% repeated-phrase failures**, **14.71% aggregate WER** (English 6.33%, Slovenian 23.09%), **0.60 s median**, and **1.03 s p95** after model load. This is a small public release sample, not a promise for every microphone, accent, or GPU.
+The v1.25 product-path gate ran 20 freshly fetched, interleaved English/Slovenian FLEURS validation clips through patched `LocalEngine`: **100% language routing**, **0% repeated-phrase failures**, **14.87% aggregate WER** (English 5.38%, Slovenian 24.37%), **0.68 s median**, and **1.16 s p95** after model load. This is a small public release sample, not a promise for every microphone, accent, or GPU.
 
 Fetch and gate a fresh public English/Slovenian sample without waiting for a corpus export:
 

@@ -16,6 +16,7 @@ internal sealed class AiSettings
 
 internal static class AiSettingsStore
 {
+    private const int MaximumSettingsBytes = 128 * 1024;
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("VoicePrompt AI v1");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -61,9 +62,11 @@ internal static class AiSettingsStore
             return new AiSettings();
         try
         {
-            return Normalize(JsonSerializer.Deserialize<AiSettings>(File.ReadAllText(path), JsonOptions));
+            return Normalize(JsonSerializer.Deserialize<AiSettings>(
+                BoundedLocalFile.ReadUtf8(path, MaximumSettingsBytes),
+                JsonOptions));
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             return new AiSettings();
         }
@@ -91,15 +94,19 @@ internal static class AiSettingsStore
         File.Move(temporary, path, true);
     }
 
-    public static string? Validate(AiSettings settings)
+    public static string? Validate(AiSettings settings, bool requireProvider = false)
     {
         if (settings.Mode is not ("off" or "clean" or "grammar" or "prompt"))
             return "Choose Verbatim, Clean, Polish, or Prompt mode.";
-        if (settings.Mode == "off")
+        if (settings.Mode == "off" && !requireProvider)
             return null;
         if (!Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out var endpoint) ||
             endpoint.Scheme is not ("http" or "https"))
             return "AI endpoint must be a complete HTTP or HTTPS URL.";
+        if (!string.IsNullOrEmpty(settings.ApiKeyProtected) &&
+            endpoint.Scheme == Uri.UriSchemeHttp &&
+            !RecognitionServer.IsLoopback(settings.Endpoint))
+            return "API keys require HTTPS for remote AI providers.";
         if (string.IsNullOrWhiteSpace(settings.Model))
             return "Enter the AI model name exposed by your provider.";
         if (settings.TimeoutMs is < 400 or > 3000)

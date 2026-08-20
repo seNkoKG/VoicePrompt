@@ -123,11 +123,83 @@ Copy-Item -LiteralPath $runnerSource -Destination $runnerTarget -Force
 Write-Output "[SYNCED  ] run_daemon.pyw -- launcher settings"
 
 $serverEngine = "$site\engine\server.py"
+Apply-Patch $serverEngine @'
+import logging
+'@ @'
+import json
+import logging
+'@ "engine/server.py -- bounded JSON parsing" 'import json'
+Apply-Patch $serverEngine @'
+log = logging.getLogger(__name__)
+'@ @'
+log = logging.getLogger(__name__)
+_MAX_TRANSCRIPTION_RESPONSE_BYTES = 1024 * 1024
+'@ "engine/server.py -- response size ceiling" '_MAX_TRANSCRIPTION_RESPONSE_BYTES = 1024 * 1024'
 Apply-Patch $serverEngine '                    "language": self.config.language,' @'
                     "language": (
                         "sl" if self.config.language == "sl-slang" else self.config.language
                     ) or None,
 '@ "engine/server.py -- safe language routing" '"sl" if self.config.language == "sl-slang"'
+
+$canonicalServerTranscribe = @'
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
+        wav_data = audio_to_wav(audio, sample_rate)
+
+        try:
+            response = self._session.post(
+                self._url,
+                files={"file": ("audio.wav", wav_data, "audio/wav")},
+                data={
+                    key: value
+                    for key, value in {
+                        "model": self.config.model,
+                        "language": (
+                            "sl" if self.config.language == "sl-slang" else self.config.language
+                        ) or None,
+                        "prompt": self.config.prompt or None,
+                        "temperature": str(self.config.temperature),
+                        "hotwords": self.config.hotwords or None,
+                    }.items()
+                    if value is not None
+                },
+                timeout=self.config.timeout,
+                stream=True,
+            )
+            try:
+                response.raise_for_status()
+                content_length = response.headers.get("Content-Length")
+                if content_length is not None and int(content_length) > _MAX_TRANSCRIPTION_RESPONSE_BYTES:
+                    raise ValueError("response is too large")
+                body = bytearray()
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    body.extend(chunk)
+                    if len(body) > _MAX_TRANSCRIPTION_RESPONSE_BYTES:
+                        raise ValueError("response is too large")
+            finally:
+                response.close()
+            payload = json.loads(body)
+            if not isinstance(payload, dict):
+                raise TypeError("response root is not an object")
+            text = payload.get("text", "")
+            if not isinstance(text, str):
+                raise TypeError("text is not a string")
+            text = text.strip()
+            if text:
+                log.debug("Transcribed: %d chars", len(text))
+            return text
+        except requests.Timeout as exc:
+            raise RuntimeError("Transcription server timed out") from exc
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Transcription server request failed: {exc}") from exc
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Invalid transcription server response: {exc}") from exc
+'@
+Replace-Block `
+    $serverEngine `
+    '    def transcribe(' `
+    '    def is_available(' `
+    $canonicalServerTranscribe `
+    "engine/server.py -- bounded observable transcription failures"
 
 $audio = "$site\audio.py"
 Apply-Patch $audio @'
@@ -808,6 +880,15 @@ Replace-Block `
     'def validate(' `
     $canonicalHotkeyValidation `
     "config.py -- canonical native hotkey validation"
+Apply-Patch $config @'
+    if config.audio.sample_rate <= 0:
+        errors.append(f"audio.sample_rate must be positive, got {config.audio.sample_rate}")
+'@ @'
+    if config.audio.sample_rate <= 0:
+        errors.append(f"audio.sample_rate must be positive, got {config.audio.sample_rate}")
+    if config.engine.type == "local" and config.audio.sample_rate != 16000:
+        errors.append("local recognition requires audio.sample_rate = 16000")
+'@ "config.py -- native local sample rate" 'local recognition requires audio.sample_rate = 16000'
 
 # 8. Windows hotkey listener - use the OS-managed global-hotkey queue instead
 # of a low-level keyboard hook that Windows may silently remove.
@@ -1072,7 +1153,7 @@ def type_text(text: str) -> str:
     context = capture_context()
     text = apply_corrections(text)
     text = format_dictation(text, context)
-    profile = resolve_app_profile()
+    profile = resolve_app_profile(context.executable)
     output_override = profile.output_override if profile is not None else None
     writing_override = profile.writing_override if profile is not None else None
     if profile is not None:

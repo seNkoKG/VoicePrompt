@@ -47,6 +47,9 @@ internal sealed class UpdateInstaller
         "scripts/app_profiles.py",
         "scripts/text_snippets.py",
         "scripts/voice_commands.py",
+        "scripts/smart_formatter.py",
+        "scripts/windows_context.py",
+        "scripts/selection_commands.py",
         "scripts/windows_hotkey.py",
     };
 
@@ -459,8 +462,12 @@ internal sealed class UpdateInstaller
     {
         try
         {
-            if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
+            if (!Directory.Exists(path))
+                return;
+            var directory = new DirectoryInfo(path);
+            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                return;
+            Directory.Delete(directory.FullName, recursive: true);
         }
         catch
         {

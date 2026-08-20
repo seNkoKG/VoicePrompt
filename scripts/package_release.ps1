@@ -46,6 +46,12 @@ if (-not $resolvedDist.StartsWith($resolvedRoot, [System.StringComparison]::Ordi
     throw "Refusing to clean release directory outside the repository: $resolvedDist"
 }
 if (Test-Path -LiteralPath $resolvedDist) {
+    $expectedDist = [System.IO.Path]::GetFullPath((Join-Path $root "dist"))
+    $distItem = Get-Item -LiteralPath $resolvedDist -Force -ErrorAction Stop
+    if (-not $resolvedDist.Equals($expectedDist, [System.StringComparison]::OrdinalIgnoreCase) -or
+        (($distItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
+        throw "Refusing to clean an unexpected or linked release directory: $resolvedDist"
+    }
     Remove-Item -LiteralPath $resolvedDist -Recurse -Force
 }
 New-Item -ItemType Directory -Path $publish, (Join-Path $packageRoot "scripts"), (Join-Path $packageRoot "assets") -Force | Out-Null

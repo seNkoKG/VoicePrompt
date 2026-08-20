@@ -235,7 +235,11 @@ if ((Test-Path -LiteralPath $venvRoot) -and -not $venvIsCompatible) {
     Write-Step "Rebuilding an outdated or incomplete local runtime"
     $resolvedRuntimeRoot = [System.IO.Path]::GetFullPath($runtimeRoot).TrimEnd('\') + '\'
     $resolvedVenvRoot = [System.IO.Path]::GetFullPath($venvRoot)
-    if (-not $resolvedVenvRoot.StartsWith($resolvedRuntimeRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $expectedVenvRoot = [System.IO.Path]::GetFullPath((Join-Path $runtimeRoot "venv"))
+    $venvItem = Get-Item -LiteralPath $resolvedVenvRoot -Force -ErrorAction Stop
+    if (-not $resolvedVenvRoot.StartsWith($resolvedRuntimeRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not $resolvedVenvRoot.Equals($expectedVenvRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        (($venvItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw "Refusing to rebuild a runtime outside the VoicePrompt data directory: $resolvedVenvRoot"
     }
     Remove-Item -LiteralPath $resolvedVenvRoot -Recurse -Force

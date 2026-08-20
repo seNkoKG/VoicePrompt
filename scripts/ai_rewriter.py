@@ -12,13 +12,16 @@ import sys
 import threading
 import time
 from ctypes import wintypes
+from ipaddress import ip_address
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 
 log = logging.getLogger(__name__)
 
 _ENTROPY = b"VoicePrompt AI v1"
+_MAX_SETTINGS_BYTES = 128 * 1024
 _MAX_RESPONSE_BYTES = 1024 * 1024
 _SYSTEM_PROMPTS = {
     "clean": (
@@ -61,7 +64,11 @@ def _load_settings(path: Path) -> dict:
         "api_key_protected": "",
     }
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as stream:
+            raw = stream.read(_MAX_SETTINGS_BYTES + 1)
+        if len(raw) > _MAX_SETTINGS_BYTES:
+            raise ValueError("AI settings are unexpectedly large")
+        loaded = json.loads(raw.decode("utf-8"))
         if isinstance(loaded, dict):
             defaults.update(loaded)
     except FileNotFoundError:
@@ -81,6 +88,18 @@ def _load_settings(path: Path) -> dict:
     except (TypeError, ValueError):
         defaults["timeout_ms"] = 900
     return defaults
+
+
+def _is_loopback_endpoint(value: str) -> bool:
+    try:
+        host = urlsplit(value).hostname
+        if not host:
+            return False
+        if host.casefold() == "localhost":
+            return True
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 class _DataBlob(ctypes.Structure):
@@ -123,7 +142,7 @@ class AiRewriter:
     def __init__(self, config_path: str | Path | None = None):
         self.settings = _load_settings(Path(config_path) if config_path else _default_config_path())
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "VoicePrompt/1.24.0"})
+        self.session.headers.update({"User-Agent": "VoicePrompt/1.25.0"})
         self._lock = threading.Lock()
         self.last_error = ""
         self.last_latency_ms = 0
@@ -223,6 +242,13 @@ class AiRewriter:
         protected = str(self.settings.get("api_key_protected", ""))
         if not api_key and protected:
             api_key = _unprotect_api_key(protected)
+        endpoint = self.settings["endpoint"]
+        if (
+            api_key
+            and urlsplit(endpoint).scheme.casefold() == "http"
+            and not _is_loopback_endpoint(endpoint)
+        ):
+            raise ValueError("API keys require HTTPS for remote AI providers")
 
         headers = {"Content-Type": "application/json"}
         if api_key:
@@ -241,7 +267,7 @@ class AiRewriter:
             "max_tokens": max(128, min(4096, len(text) // 2 + 128)),
         }
         with self.session.post(
-            self.settings["endpoint"],
+            endpoint,
             headers=headers,
             json=payload,
             timeout=(connect_timeout, read_timeout),

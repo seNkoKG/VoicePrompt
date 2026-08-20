@@ -159,17 +159,22 @@ internal sealed class PersonalDictionaryStore
 
     public void AddOrReplace(string heard, string replacement)
     {
+        SaveText(AddOrReplaceText(LoadText(), heard, replacement));
+    }
+
+    public static string AddOrReplaceText(string currentText, string heard, string replacement)
+    {
         string normalizedHeard = heard.Trim();
         string normalizedReplacement = replacement.Trim();
         _ = Parse($"{normalizedHeard} => {normalizedReplacement}");
-        var entries = Parse(LoadText()).ToList();
+        var entries = Parse(currentText).ToList();
         int index = entries.FindIndex(entry => entry.Heard.Equals(normalizedHeard, StringComparison.OrdinalIgnoreCase));
         var value = new CorrectionEntry(normalizedHeard, normalizedReplacement);
         if (index >= 0)
             entries[index] = value;
         else
             entries.Add(value);
-        SaveText(string.Join(Environment.NewLine, entries.Select(entry => $"{entry.Heard} => {entry.Replacement}")));
+        return string.Join(Environment.NewLine, entries.Select(entry => $"{entry.Heard} => {entry.Replacement}"));
     }
 
     public static IReadOnlyList<CorrectionEntry> Parse(string text)

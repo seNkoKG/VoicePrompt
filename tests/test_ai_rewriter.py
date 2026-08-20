@@ -122,6 +122,14 @@ class AiRewriterTests(unittest.TestCase):
         self.assertEqual(rewriter.settings["timeout_ms"], 900)
         rewriter.close()
 
+    def test_oversized_settings_fail_closed(self) -> None:
+        path = Path(self.temp.name) / "ai.json"
+        path.write_bytes(b"{" + b"x" * (128 * 1024))
+        rewriter = AiRewriter(path)
+        self.assertFalse(rewriter.enabled)
+        self.assertEqual(rewriter.settings["endpoint"], "http://127.0.0.1:11434/v1/chat/completions")
+        rewriter.close()
+
     def test_grammar_request_preserves_outer_whitespace(self) -> None:
         rewriter = AiRewriter(self.config())
         result = rewriter.rewrite("  um fix my english  ")
@@ -193,6 +201,20 @@ class AiRewriterTests(unittest.TestCase):
         with patch.dict(os.environ, {"VOICEPROMPT_AI_API_KEY": "test-token"}):
             rewriter.rewrite("hello")
         self.assertEqual(self.provider.authorizations, ["Bearer test-token"])
+        rewriter.close()
+
+    def test_remote_http_api_key_fails_closed_before_network(self) -> None:
+        path = self.config()
+        settings = json.loads(path.read_text(encoding="utf-8"))
+        settings["endpoint"] = "http://ai.example.test/v1/chat/completions"
+        path.write_text(json.dumps(settings), encoding="utf-8")
+        rewriter = AiRewriter(path)
+        source = "never expose this transcript"
+        with patch.dict(os.environ, {"VOICEPROMPT_AI_API_KEY": "test-token"}):
+            self.assertEqual(rewriter.rewrite(source), source)
+        self.assertTrue(rewriter.used_fallback)
+        self.assertIn("HTTPS", rewriter.last_error)
+        self.assertEqual(self.provider.requests, [])
         rewriter.close()
 
     def test_http_and_json_failures_return_original_text(self) -> None:
