@@ -96,6 +96,30 @@ string savedOnce = File.ReadAllText(path);
 new VoicePromptTray.ConfigManager(path).Save();
 Check("repeated save is stable", File.ReadAllText(path) == savedOnce);
 
+string annotatedHeaderPath = Path.Combine(dir, "annotated.toml");
+File.WriteAllText(annotatedHeaderPath, """
+    [engine] # active engine
+    type = "local"
+
+    [audio]
+    sample_rate = 16000
+    """, System.Text.Encoding.UTF8);
+var annotated = new VoicePromptTray.ConfigManager(annotatedHeaderPath);
+annotated.Set("engine", "device", "cuda");
+annotated.Save();
+Check("annotated section header does not duplicate",
+    Regex.Matches(File.ReadAllText(annotatedHeaderPath), @"\[engine\]").Count == 1 &&
+    new VoicePromptTray.ConfigManager(annotatedHeaderPath).GetString("engine", "device") == "cuda");
+
+string lockedPath = Path.Combine(dir, "locked.toml");
+File.WriteAllText(lockedPath, "[hotkey]\nbinding = \"f9\"\n");
+using (var held = File.Open(lockedPath, FileMode.Open, FileAccess.Read, FileShare.None))
+{
+    var lockedCfg = new VoicePromptTray.ConfigManager(lockedPath);
+    Check("locked config falls back to defaults instead of crashing startup",
+        lockedCfg.GetString("hotkey", "binding") == "f1");
+}
+
 string newPath = Path.Combine(dir, "new", "config.toml");
 var defaults = new VoicePromptTray.ConfigManager(newPath);
 Check("new config is written immediately", File.Exists(newPath) && File.ReadAllText(newPath).Contains("[hotkey]"));

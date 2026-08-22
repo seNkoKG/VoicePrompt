@@ -79,17 +79,14 @@ internal sealed class ConfigManager
     private void Load()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        Exists = true;
         string raw;
         if (File.Exists(_path))
         {
-            Exists = true;
-            if (new FileInfo(_path).Length > MaximumConfigBytes)
-                throw new InvalidDataException("VoicePrompt configuration is unexpectedly large.");
-            raw = File.ReadAllText(_path, Encoding.UTF8);
+            raw = ReadConfig();
         }
         else
         {
-            Exists = true;
             raw = DefaultToml;
             WriteAtomic(raw);
         }
@@ -102,6 +99,21 @@ internal sealed class ConfigManager
 
         Parse();
         MigrateLegacyDefaults();
+    }
+
+    private string ReadConfig()
+    {
+        try
+        {
+            if (new FileInfo(_path).Length > MaximumConfigBytes)
+                throw new InvalidDataException("VoicePrompt configuration is unexpectedly large.");
+            return File.ReadAllText(_path, Encoding.UTF8);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // unreadable or corrupt config must not take down startup; defaults stay in memory only
+            return DefaultToml;
+        }
     }
 
     private void MigrateLegacyDefaults()
@@ -296,7 +308,7 @@ internal sealed class ConfigManager
         int header = -1;
         for (int i = 0; i < _lines.Count; i++)
         {
-            if (Regex.IsMatch(_lines[i], $@"^\s*\[{Regex.Escape(section)}\]\s*$"))
+            if (Regex.IsMatch(_lines[i], $@"^\s*\[{Regex.Escape(section)}\]"))
             {
                 header = i;
                 break;
@@ -346,23 +358,6 @@ internal sealed class ConfigManager
         WriteAtomic(string.Join(_eol, _lines) + _eol);
     }
 
-    private void WriteAtomic(string content)
-    {
-        string temporary = _path + ".tmp";
-        try
-        {
-            File.WriteAllText(temporary, content, new UTF8Encoding(false));
-            File.Move(temporary, _path, true);
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(temporary);
-            }
-            catch
-            {
-            }
-        }
-    }
+    private void WriteAtomic(string content) =>
+        BoundedLocalFile.WriteAtomicUtf8(_path, content);
 }

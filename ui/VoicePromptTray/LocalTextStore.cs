@@ -12,6 +12,28 @@ internal static class BoundedLocalFile
             throw new InvalidDataException($"Local VoicePrompt file exceeds {maximumBytes} bytes.");
         return File.ReadAllText(path, Encoding.UTF8);
     }
+
+    public static void WriteAtomicUtf8(string path, string content)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporary, content, new UTF8Encoding(false));
+            File.Move(temporary, path, true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch
+            {
+            }
+            throw;
+        }
+    }
 }
 
 internal sealed record TranscriptEntry
@@ -74,7 +96,7 @@ internal sealed class TranscriptHistoryStore
     }
 
     public void SaveSettings(bool enabled, int limit) =>
-        WriteAtomic(_settingsPath, JsonSerializer.Serialize(new HistorySettings
+        BoundedLocalFile.WriteAtomicUtf8(_settingsPath, JsonSerializer.Serialize(new HistorySettings
         {
             Enabled = enabled,
             Limit = Math.Clamp(limit, 5, 100),
@@ -108,15 +130,7 @@ internal sealed class TranscriptHistoryStore
     public void Clear() => WriteHistory([]);
 
     private void WriteHistory(IReadOnlyList<TranscriptEntry> items) =>
-        WriteAtomic(_historyPath, JsonSerializer.Serialize(new { version = 1, items }));
-
-    private static void WriteAtomic(string path, string json)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string temp = path + ".tmp";
-        File.WriteAllText(temp, json, new UTF8Encoding(false));
-        File.Move(temp, path, true);
-    }
+        BoundedLocalFile.WriteAtomicUtf8(_historyPath, JsonSerializer.Serialize(new { version = 1, items }));
 }
 
 internal sealed record CorrectionEntry(
@@ -150,11 +164,7 @@ internal sealed class PersonalDictionaryStore
     public void SaveText(string text)
     {
         var entries = Parse(text);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        string temp = _path + ".tmp";
-        string json = JsonSerializer.Serialize(new { version = 1, items = entries });
-        File.WriteAllText(temp, json, new UTF8Encoding(false));
-        File.Move(temp, _path, true);
+        BoundedLocalFile.WriteAtomicUtf8(_path, JsonSerializer.Serialize(new { version = 1, items = entries }));
     }
 
     public void AddOrReplace(string heard, string replacement)
@@ -235,11 +245,7 @@ internal sealed class TextSnippetStore
     public void SaveText(string text)
     {
         var entries = Parse(text);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        string temp = _path + ".tmp";
-        string json = JsonSerializer.Serialize(new { version = 1, items = entries });
-        File.WriteAllText(temp, json, new UTF8Encoding(false));
-        File.Move(temp, _path, true);
+        BoundedLocalFile.WriteAtomicUtf8(_path, JsonSerializer.Serialize(new { version = 1, items = entries }));
     }
 
     public static IReadOnlyList<TextSnippetEntry> Parse(string text)

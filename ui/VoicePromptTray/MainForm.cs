@@ -2532,7 +2532,15 @@ internal sealed class MainForm : Form
             return;
         if (MessageBox.Show(this, "Delete the selected local transcript?", "Delete transcript", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
-        _historyStore.Delete(selected.Entry.Id);
+        try
+        {
+            _historyStore.Delete(selected.Entry.Id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ShowFooter("Could not delete transcript · " + ShortMessage(ex.Message), Theme.Err);
+            return;
+        }
         LoadHistory();
         ShowFooter("Transcript deleted", Theme.Muted);
     }
@@ -2565,7 +2573,7 @@ internal sealed class MainForm : Form
             _correctionsText.Text = merged;
             ShowFooter("Correction learned · applies to the next dictation", Theme.Ok);
         }
-        catch (InvalidDataException ex)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             ShowFooter(ShortMessage(ex.Message), Theme.Err);
         }
@@ -2577,7 +2585,15 @@ internal sealed class MainForm : Form
             return;
         if (MessageBox.Show(this, "Delete every locally saved transcript? This cannot be undone.", "Clear recovery history", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
-        _historyStore.Clear();
+        try
+        {
+            _historyStore.Clear();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ShowFooter("Could not clear history · " + ShortMessage(ex.Message), Theme.Err);
+            return;
+        }
         LoadHistory();
         ShowFooter("Recovery history cleared", Theme.Muted);
     }

@@ -222,8 +222,15 @@ if (Test-Path -LiteralPath $daemonExe) {
 
 $venvIsCompatible = $false
 if (Test-Path -LiteralPath $venvPython) {
-    $venvVersionOutput = & $venvPython -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>$null | Select-Object -Last 1
-    if ($LASTEXITCODE -eq 0 -and $venvVersionOutput) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $venvVersionOutput = & $venvPython -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>$null | Select-Object -Last 1
+        $venvProbeExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($venvProbeExitCode -eq 0 -and $venvVersionOutput) {
         try {
             $venvIsCompatible = [version]$venvVersionOutput.Trim() -ge [version]"3.11"
         } catch {

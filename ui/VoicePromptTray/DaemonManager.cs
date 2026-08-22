@@ -122,6 +122,14 @@ internal sealed class DaemonManager
             if (_last.State == DaemonState.Running)
                 return;
         }
+
+        try
+        {
+            started.Kill(true);
+        }
+        catch
+        {
+        }
         throw new InvalidOperationException($"Daemon did not start. Check {_paths.LogPath}");
     }
 
@@ -139,7 +147,46 @@ internal sealed class DaemonManager
             if (_last.State != DaemonState.Running)
                 return;
         }
-        throw new TimeoutException("Daemon did not stop within 8 seconds.");
+
+        ForceStop(_last.Pid);
+        throw new TimeoutException($"Daemon did not stop cleanly. Check {_paths.LogPath}.");
+    }
+
+    private void ForceStop(int pid)
+    {
+        if (pid <= 0)
+            return;
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (!IsManagedRuntimeProcess(process))
+                return;
+            process.Kill(true);
+            process.WaitForExit(5000);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // process already exited or cannot be inspected; nothing to force-stop
+        }
+    }
+
+    private bool IsManagedRuntimeProcess(Process process)
+    {
+        string? executable;
+        try
+        {
+            executable = process.MainModule?.FileName;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(executable))
+            return false;
+        string scriptsDirectory = Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(_paths.Pythonw)!);
+        return Path.GetFullPath(executable).StartsWith(
+            Path.GetFullPath(scriptsDirectory) + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     public void Restart()

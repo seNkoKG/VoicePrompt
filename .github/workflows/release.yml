@@ -81,8 +81,10 @@ jobs:
 
       - name: Build release package
         shell: pwsh
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
-          $version = "${{ github.ref_name }}".Substring(1)
+          $version = $env:RELEASE_REF.Substring(1)
           ./scripts/package_release.ps1 -Version $version
 
       - name: Publish GitHub release

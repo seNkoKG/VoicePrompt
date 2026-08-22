@@ -42,7 +42,10 @@ def _capitalize_sentences(text: str, capitalize_first: bool = True) -> str:
         if capitalize_next and character.isalpha():
             chars[index] = character.upper()
             capitalize_next = False
-        elif character in ".!?\n":
+        # only sentence-ending marks followed by whitespace start a new sentence (not 3.14)
+        elif character == "\n":
+            capitalize_next = True
+        elif character in ".!?" and (index + 1 >= len(chars) or chars[index + 1].isspace()):
             capitalize_next = True
         elif not character.isspace() and character not in "\"'([{“‘":
             capitalize_next = False
@@ -97,8 +100,9 @@ def format_dictation(
     value = re.sub(rf"(?i)(^|(?<=[.!?])\s+)(?:{_FILLERS})[,\s]+", r"\1", value)
     value = re.sub(rf"(?i)\b({_FILLERS})(?:[,\s]+\1)+\b", r"\1", value)
     value = re.sub(r"[ \t]+([,.;:!?])", r"\1", value)
-    value = re.sub(r"([,;:!?])(?=\S)", r"\1 ", value)
-    value = re.sub(r"\.(?=[^\s.])", ". ", value)
+    value = re.sub(r"(?<!\d)([,;:!?])(?=[^\s/\d])", r"\1 ", value)
+    # sentence boundary only: lowercase word, period, capital word (never 3.14 or config.toml)
+    value = re.sub(r"(?<=[a-z])\.(?=[A-Z])", ". ", value)
     value = re.sub(r"[ \t]*\n[ \t]*", "\n", value)
     value = re.sub(r"[ \t]{2,}", " ", value).strip()
 

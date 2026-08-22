@@ -28,6 +28,14 @@ class SmartFormatterTests(unittest.TestCase):
     def test_ordinary_use_of_period_is_not_destroyed(self) -> None:
         self.assertEqual(format_dictation("during this period we improved"), "During this period we improved.")
 
+    def test_numbers_filenames_urls_and_runons_survive_punctuation_spacing(self) -> None:
+        self.assertEqual(format_dictation("pi equals 3.14 exactly"), "Pi equals 3.14 exactly.")
+        self.assertEqual(format_dictation("open config.toml now"), "Open config.toml now.")
+        self.assertEqual(format_dictation("visit https://example.com/path today"), "Visit https://example.com/path today.")
+        self.assertEqual(format_dictation("total was 1,000 dollars"), "Total was 1,000 dollars.")
+        self.assertEqual(format_dictation("meet at 12:30 sharp"), "Meet at 12:30 sharp.")
+        self.assertEqual(format_dictation("done.Next step"), "Done. Next step.")
+
     def test_standalone_prose_finishes_sentence_but_code_does_not(self) -> None:
         self.assertEqual(
             format_dictation("this is a complete thought", DictationContext(app_kind="document")),

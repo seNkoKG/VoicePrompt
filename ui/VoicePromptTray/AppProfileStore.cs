@@ -41,11 +41,9 @@ internal sealed class AppProfileStore
     public void SaveText(string text)
     {
         IReadOnlyList<AppProfileEntry> profiles = Parse(text);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        string temporary = _path + ".tmp";
-        string json = JsonSerializer.Serialize(new { version = 1, items = profiles });
-        File.WriteAllText(temporary, json, new UTF8Encoding(false));
-        File.Move(temporary, _path, true);
+        BoundedLocalFile.WriteAtomicUtf8(
+            _path,
+            JsonSerializer.Serialize(new { version = 1, items = profiles }));
     }
 
     public static IReadOnlyList<AppProfileEntry> Parse(string text)
