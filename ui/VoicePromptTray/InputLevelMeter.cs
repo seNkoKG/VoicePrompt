@@ -7,6 +7,7 @@ internal sealed class InputLevelMeter : Control
 {
     private readonly AudioMeterReader _reader = new();
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly Font _statusFont;
     private readonly byte[] _waveform = new byte[AudioMeterReader.WaveSamples];
     private int _lastSequence;
     private long _lastSignal;
@@ -37,6 +38,7 @@ internal sealed class InputLevelMeter : Control
             ControlStyles.UserPaint,
             true);
 
+        _statusFont = Theme.Font(8.8f, FontStyle.Bold);
         _timer = new System.Windows.Forms.Timer { Interval = 33 };
         _timer.Tick += (_, _) => UpdateLevel();
     }
@@ -111,7 +113,7 @@ internal sealed class InputLevelMeter : Control
         TextRenderer.DrawText(
             e.Graphics,
             status,
-            Theme.Font(8.8f, FontStyle.Bold),
+            _statusFont,
             textBounds,
             statusColor,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
@@ -140,6 +142,7 @@ internal sealed class InputLevelMeter : Control
         {
             _timer.Stop();
             _timer.Dispose();
+            _statusFont.Dispose();
             _reader.Dispose();
         }
         base.Dispose(disposing);

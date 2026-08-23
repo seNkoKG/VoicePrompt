@@ -14,6 +14,12 @@ class SmartFormatterTests(unittest.TestCase):
         )
         self.assertEqual(format_dictation("živjo vejica kako si vprašaj"), "Živjo, kako si?")
 
+    def test_exact_spoken_layout_marks_are_not_stripped_to_empty_text(self) -> None:
+        self.assertEqual(format_dictation("new line"), "\n")
+        self.assertEqual(format_dictation("nov odstavek"), "\n\n")
+        self.assertEqual(format_dictation("new line."), "\n")
+        self.assertEqual(format_dictation("“nov odstavek!”"), "\n\n")
+
     def test_only_boundary_fillers_and_immediate_filler_repeats_are_cleaned(self) -> None:
         self.assertEqual(format_dictation("um, send umami and uh uh wait"), "Send umami and uh wait.")
 

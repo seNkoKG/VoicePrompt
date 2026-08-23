@@ -30,11 +30,11 @@
 
   <text x="72" y="205" fill="#f3f5f1" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="700" letter-spacing="-3">Speak naturally.</text>
   <text x="72" y="269" fill="#bdc5be" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="700" letter-spacing="-3">Type anywhere.</text>
-  <text x="74" y="321" fill="#8f9891" font-family="Segoe UI,Arial,sans-serif" font-size="17">Private, GPU-accelerated voice typing for Windows.</text>
+  <text x="74" y="321" fill="#8f9891" font-family="Segoe UI,Arial,sans-serif" font-size="17">Private, local-first voice typing for Windows.</text>
   <g transform="translate(74 364)" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="600">
     <rect width="112" height="34" rx="17" fill="#222823" stroke="#475149"/><circle cx="17" cy="17" r="4" fill="#cddad1"/><text x="29" y="21" fill="#dbe0da">Local-first</text>
     <rect x="122" width="158" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="155" y="21" fill="#b9c0ba">100 languages</text>
-    <rect x="290" width="105" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="309" y="21" fill="#b9c0ba">Open source</text>
+    <rect x="290" width="128" height="34" rx="17" fill="#191d20" stroke="#353d43"/><text x="304" y="21" fill="#b9c0ba">Source available</text>
   </g>
 
   <g transform="translate(660 72)" filter="url(#shadow)">

@@ -113,6 +113,8 @@ internal sealed class MainForm : Form
     private Label _recognitionServerResult = null!;
     private ChoiceStrip _computeChoice = null!;
     private ChoiceStrip _processorChoice = null!;
+    private ChoiceStrip _modelRetentionChoice = null!;
+    private Label _modelRetentionHint = null!;
     private NumericUpDown _temperature = null!;
     private TextBox _hotwordsText = null!;
     private ToggleSwitch _bufferedTranscriptionToggle = null!;
@@ -137,6 +139,9 @@ internal sealed class MainForm : Form
     private bool _dirty;
     private bool _busy;
     private bool _hotkeyWasMigrated;
+    private int _loadedModelIdleSeconds = 900;
+    private int _pendingModelIdleSeconds = 900;
+    private bool _modelRetentionChanged;
     private string _selectedPage = OverviewPage;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -811,8 +816,36 @@ internal sealed class MainForm : Form
         });
         _processorChoice = new ChoiceStrip(new[] { "Automatic", "NVIDIA GPU", "CPU" }, new[] { "auto", "cuda", "cpu" }) { Dock = DockStyle.Fill };
         _computeChoice = new ChoiceStrip(new[] { "Automatic", "FP16", "INT8" }, new[] { "auto", "float16", "int8" }) { Dock = DockStyle.Fill };
+        _modelRetentionChoice = new ChoiceStrip(
+            new[] { "Release after 15 min", "Keep loaded" },
+            new[] { "900", "0" }) { Dock = DockStyle.Fill };
         _processorChoice.AccessibleName = "Recognition processor";
         _computeChoice.AccessibleName = "Recognition precision";
+        _modelRetentionChoice.AccessibleName = "Recognition model memory retention";
+        _modelRetentionHint = BuildInlineHint(Theme.Surface);
+        _modelRetentionChoice.SelectedChanged += (_, _) =>
+        {
+            if (!_loading)
+            {
+                _pendingModelIdleSeconds = _modelRetentionChoice.SelectedValue == "0" ? 0 : 900;
+                _modelRetentionChanged = _pendingModelIdleSeconds != _loadedModelIdleSeconds;
+            }
+            UpdateModelRetentionHint();
+        };
+        _modelRetentionChoice.SelectionInvoked += (_, _) =>
+        {
+            if (_loading)
+                return;
+            int selectedSeconds = _modelRetentionChoice.SelectedValue == "0" ? 0 : 900;
+            bool selectedChanged = selectedSeconds != _pendingModelIdleSeconds;
+            bool retentionChanged = selectedSeconds != _loadedModelIdleSeconds;
+            if (!selectedChanged && retentionChanged == _modelRetentionChanged)
+                return;
+            _pendingModelIdleSeconds = selectedSeconds;
+            _modelRetentionChanged = retentionChanged;
+            UpdateModelRetentionHint();
+            MarkDirty();
+        };
         _temperature = MakeNumber(0m, 1m, 0.1m, 1, 148);
         _hotwordsText = new TextBox { PlaceholderText = "Comma-separated terms: OpenAI, Codex, Ljubljana…" };
         _temperature.AccessibleName = "Recognition temperature";
@@ -830,6 +863,7 @@ internal sealed class MainForm : Form
         engine.Add("Model", "large-v3 gives the best Slovenian accuracy; Turbo trades some accuracy for speed.", _recognitionModelCombo, 64);
         engine.Add("Processor", "Use NVIDIA GPU for the fastest local transcription.", _processorChoice, 64);
         engine.Add("Precision", "FP16 is recommended on modern NVIDIA GPUs; INT8 is useful on CPU.", _computeChoice, 64);
+        engine.Add("Model memory", "Keep loaded removes idle reload delays but retains model memory in GPU VRAM or system RAM.", StackControl(_modelRetentionChoice, _modelRetentionHint, 64), 84);
         engine.Add("Temperature", "0 uses deterministic decoding with automatic fallback only when quality checks fail.", LeftControl(_temperature), 62);
         engine.Add("Hotwords", "Extra words to boost. Built-in English/Slovenian vocabulary is added automatically in Auto.", hotwordsFrame, 64);
         engine.Add("Fast long recordings", "Decodes complete speech blocks in the background, pastes once on release, and keeps full audio for automatic fallback.", _bufferedTranscriptionToggle, 64);
@@ -1366,6 +1400,7 @@ internal sealed class MainForm : Form
             _recognitionEngineChoice,
             _computeChoice,
             _processorChoice,
+            _modelRetentionChoice,
         })
             choice.SelectedChanged += (_, _) => MarkDirty();
 
@@ -1690,6 +1725,9 @@ internal sealed class MainForm : Form
                 ComputeType = _computeChoice.SelectedValue,
                 Temperature = (double)_temperature.Value,
                 BufferedTranscription = _bufferedTranscriptionToggle.Checked,
+                ModelIdleSeconds = _modelRetentionChanged
+                    ? _pendingModelIdleSeconds
+                    : _loadedModelIdleSeconds,
             },
             Audio = new BackupAudioSettings
             {
@@ -1746,6 +1784,9 @@ internal sealed class MainForm : Form
             _computeChoice.SelectValue(backup.Recognition.ComputeType);
             _temperature.Value = (decimal)backup.Recognition.Temperature;
             _bufferedTranscriptionToggle.Checked = backup.Recognition.BufferedTranscription;
+            _pendingModelIdleSeconds = backup.Recognition.ModelIdleSeconds;
+            _modelRetentionChanged = _pendingModelIdleSeconds != _loadedModelIdleSeconds;
+            _modelRetentionChoice.SelectValue(_pendingModelIdleSeconds == 0 ? "0" : "900");
 
             _sampleRateChoice.SelectValue(backup.Audio.SampleRate.ToString(System.Globalization.CultureInfo.InvariantCulture));
             _threshold.Value = (decimal)backup.Audio.Threshold;
@@ -1886,6 +1927,14 @@ internal sealed class MainForm : Form
             ? _config.GetString("voiceprompt", "base_hotwords") ?? _config.GetString("server", "hotwords") ?? ""
             : _config.GetString("server", "hotwords") ?? "";
         _bufferedTranscriptionToggle.Checked = _config.GetBool("voiceprompt", "buffered_transcription") ?? true;
+        _loadedModelIdleSeconds = Math.Clamp(
+            _config.GetInt("voiceprompt", "model_idle_seconds") ?? 900,
+            0,
+            86_400);
+        _pendingModelIdleSeconds = _loadedModelIdleSeconds;
+        _modelRetentionChanged = false;
+        _modelRetentionChoice.SelectValue(_loadedModelIdleSeconds == 0 ? "0" : "900");
+        UpdateModelRetentionHint();
 
         _threshold.Value = Clamp((decimal)(_config.GetDouble("vad", "threshold") ?? 0.60), _threshold);
         _silenceMs.Value = Clamp(_config.GetInt("vad", "silence_ms") ?? 250, _silenceMs);
@@ -1997,7 +2046,9 @@ internal sealed class MainForm : Form
         _recognitionServerTestButton.Enabled = server && !_busy;
         _processorChoice.Enabled = !server;
         _computeChoice.Enabled = !server;
+        _modelRetentionChoice.Enabled = !server && !_busy;
         _bufferedTranscriptionToggle.Enabled = !server;
+        UpdateModelRetentionHint();
 
         if (!server)
         {
@@ -2010,6 +2061,45 @@ internal sealed class MainForm : Form
         bool unsafeRemote = !RecognitionServer.IsLoopback(_recognitionServerUrl.Text) &&
             _recognitionServerUrl.Text.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase);
         _recognitionServerResult.ForeColor = unsafeRemote ? Theme.Warn : Theme.TextSecondary;
+    }
+
+    private void UpdateModelRetentionHint()
+    {
+        if (_modelRetentionHint == null || _recognitionEngineChoice == null)
+            return;
+        if (_recognitionEngineChoice.SelectedValue == "server")
+        {
+            _modelRetentionHint.Text = "Server mode manages model memory on the server.";
+            _modelRetentionChoice.AccessibleDescription = _modelRetentionHint.Text;
+            _modelRetentionHint.ForeColor = Theme.Muted;
+            return;
+        }
+
+        int seconds = _modelRetentionChanged ? _pendingModelIdleSeconds : _loadedModelIdleSeconds;
+        if (seconds == 0)
+        {
+            _modelRetentionHint.Text = "Fastest next dictation · model memory stays allocated.";
+        }
+        else if (seconds == 900)
+        {
+            _modelRetentionHint.Text = "Balanced · frees model memory after 15 idle minutes.";
+        }
+        else
+        {
+            string action = _modelRetentionChanged ? "will be saved" : "is preserved";
+            _modelRetentionHint.Text = $"Custom {FormatRetentionDuration(seconds)} timeout {action}.";
+        }
+        _modelRetentionChoice.AccessibleDescription = _modelRetentionHint.Text;
+        _modelRetentionHint.ForeColor = Theme.Muted;
+    }
+
+    private static string FormatRetentionDuration(int seconds)
+    {
+        if (seconds % 3600 == 0)
+            return $"{seconds / 3600}-hour";
+        if (seconds % 60 == 0)
+            return $"{seconds / 60}-minute";
+        return $"{seconds}-second";
     }
 
     private async Task TestRecognitionServerAsync()
@@ -2288,6 +2378,9 @@ internal sealed class MainForm : Form
         bool historyEnabled = _historyEnabled.Checked;
         int historyLimit = (int)_historyLimit.Value;
         bool bufferedTranscription = _bufferedTranscriptionToggle.Checked;
+        int modelIdleSeconds = _modelRetentionChanged
+            ? _pendingModelIdleSeconds
+            : _loadedModelIdleSeconds;
         string outputMode = _outputChoice.SelectedValue;
         bool voiceCommands = _voiceCommandsToggle.Checked;
         bool smartFormatting = _smartFormattingToggle.Checked;
@@ -2312,6 +2405,7 @@ internal sealed class MainForm : Form
                 _config.Set("voiceprompt", "base_prompt", basePrompt);
                 _config.Set("voiceprompt", "base_hotwords", baseHotwords);
                 _config.Set("voiceprompt", "buffered_transcription", bufferedTranscription);
+                _config.Set("voiceprompt", "model_idle_seconds", modelIdleSeconds);
                 _config.Set("voiceprompt", "output_mode", outputMode);
                 _config.Set("voiceprompt", "voice_commands", voiceCommands);
                 _config.Set("voiceprompt", "smart_formatting", smartFormatting);
@@ -2340,6 +2434,10 @@ internal sealed class MainForm : Form
             _loading = false;
             string? startupWarning = ApplyAutoStart();
             SavePreferences();
+            _loadedModelIdleSeconds = modelIdleSeconds;
+            _pendingModelIdleSeconds = modelIdleSeconds;
+            _modelRetentionChanged = false;
+            UpdateModelRetentionHint();
             SetDirty(false);
             ShowFooter(
                 startupWarning ?? "Saved · runtime restarted and ready",
@@ -2623,6 +2721,10 @@ internal sealed class MainForm : Form
         _computeChoice.SelectValue("float16");
         _temperature.Value = 0;
         _bufferedTranscriptionToggle.Checked = true;
+        _pendingModelIdleSeconds = 900;
+        _modelRetentionChanged = _loadedModelIdleSeconds != 900;
+        _modelRetentionChoice.SelectValue("900");
+        UpdateModelRetentionHint();
         _smartFormattingToggle.Checked = true;
         _contextAwarenessToggle.Checked = true;
         MarkDirty();

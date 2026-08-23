@@ -723,7 +723,7 @@ Apply-Patch "$site\daemon.py" @'
                 log.debug("Typed: %d chars", len(text))
 '@ @'
             if text:
-                type_text(text + " ")
+                type_text(text)
                 log.info("Paste shortcut sent: %d chars", len(text))
 '@ "daemon.py -- observable successful paste" 'Paste shortcut sent: %d chars'
 
@@ -743,7 +743,7 @@ $canonicalTranscribeAndType = @'
             return
 
         try:
-            delivery = type_text(text + " ")
+            delivery = type_text(text)
             if delivery == "cancelled":
                 log.info("Voice command cancelled transcript")
             elif delivery == "command":
@@ -1111,13 +1111,21 @@ from .transcript_history import remember_transcript
 '@ @'
 from .transcript_history import remember_transcript
 from .output_mode import deliver_text
-'@ "typer.py -- transcript output routing" 'from .output_mode import deliver_text'
+'@ "typer.py -- transcript output routing" @(
+    'from .output_mode import deliver_text',
+    'from .output_mode import configured_output_mode, deliver_text, normalize_output_mode'
+)
 Apply-Patch $typer @'
 from .output_mode import deliver_text
 '@ @'
 from .output_mode import deliver_text
 from .app_profiles import resolve_app_profile
 '@ "typer.py -- application profile routing" 'from .app_profiles import resolve_app_profile'
+Apply-Patch $typer @'
+from .output_mode import deliver_text
+'@ @'
+from .output_mode import configured_output_mode, deliver_text, normalize_output_mode
+'@ "typer.py -- paste-only transcript boundary" 'from .output_mode import configured_output_mode, deliver_text, normalize_output_mode'
 Apply-Patch $typer @'
 from .app_profiles import resolve_app_profile
 '@ @'
@@ -1144,7 +1152,7 @@ from .selection_commands import resolve_selection_command
 '@ "typer.py -- explicit selection-command routing" 'from .selection_commands import resolve_selection_command'
 
 $canonicalTypeText = @'
-def type_text(text: str) -> str:
+def type_text(text: str, paste_boundary: bool = True) -> str:
     """Normalize, recover, and deliver text without risking the transcript."""
     if not text:
         return "paste"
@@ -1152,7 +1160,6 @@ def type_text(text: str) -> str:
     original_text = text
     context = capture_context()
     text = apply_corrections(text)
-    text = format_dictation(text, context)
     profile = resolve_app_profile(context.executable)
     output_override = profile.output_override if profile is not None else None
     writing_override = profile.writing_override if profile is not None else None
@@ -1185,12 +1192,38 @@ def type_text(text: str) -> str:
                 )
         return execute_voice_command(command, deliver_command, _send_ctrl_z)
 
+    text = format_dictation(text, context)
     text = rewrite_text(text, mode_override=writing_override)
     remember_transcript(original_text, text)
+    if not text:
+        log.debug("Dictation became empty after formatting; nothing to deliver")
+        return "paste"
     log.debug("Typing %d chars", len(text))
 
+    selected_output = (
+        configured_output_mode()
+        if output_override is None
+        else normalize_output_mode(output_override)
+    )
+    delivered_text = text
+    following = context.after_text[:1]
+    if (
+        paste_boundary
+        and selected_output == "paste"
+        and text
+        and not text[-1].isspace()
+        and (
+            not following
+            or (not following.isspace() and following not in ".,!?;:)]}")
+        )
+    ):
+        # Automatic paste keeps a word boundary for the next dictation even
+        # when the target control cannot expose nearby text. Copy-only output
+        # and streamed fragments remain byte-for-byte exact.
+        delivered_text += " "
+
     with _clipboard_lock:
-        return deliver_text(text, _copy_text_impl, _type_text_impl, mode=output_override)
+        return deliver_text(delivered_text, _copy_text_impl, _type_text_impl, mode=output_override)
 '@
 Replace-Block `
     $typer `
@@ -1270,6 +1303,148 @@ def _copy_text_impl(text: str) -> None:
 
 def _type_windows(text: str) -> None:
 '@ "typer.py -- copy-only delivery implementation" 'def _copy_text_impl(text: str) -> None:'
+
+$canonicalVadPrepare = @'
+    def _ensure_model(self) -> None:
+        if not self._model_loaded:
+            _load_model()
+            self._model_loaded = True
+
+    def prepare(self) -> None:
+        """Load and exercise voice detection before audio callbacks start."""
+        self._ensure_model()
+        silent_frame = np.zeros(self.chunk_size, dtype=np.float32)
+        with self._lock:
+            _model(silent_frame, self.sample_rate)
+            if hasattr(_model, "reset_states"):
+                _model.reset_states()
+'@
+Replace-Block `
+    "$site\vad.py" `
+    '    def _ensure_model(self) -> None:' `
+    '    def reset(self) -> None:' `
+    $canonicalVadPrepare `
+    "vad.py -- exercised voice detection warm-up"
+
+Apply-Patch "$site\vad.py" @'
+import threading
+'@ @'
+import threading
+import time
+'@ "vad.py -- monotonic download deadline" "import threading`nimport time"
+
+Apply-Patch "$site\vad.py" @'
+_VERIFY_HASH = os.environ.get("DICTATION_VAD_VERIFY_HASH", "").lower() in ("1", "true", "yes")
+'@ @'
+_VERIFY_HASH = os.environ.get("DICTATION_VAD_VERIFY_HASH", "").lower() in ("1", "true", "yes")
+_VAD_DOWNLOAD_DEADLINE_SECONDS = 8.0
+_VAD_DOWNLOAD_SOCKET_TIMEOUT_SECONDS = 2.0
+'@ "vad.py -- configurable bounded download timing" '_VAD_DOWNLOAD_DEADLINE_SECONDS = 8.0'
+
+$canonicalVadDownload = @'
+            _MAX_MODEL_BYTES = 50 * 1024 * 1024  # 50 MB (real model is ~2 MB)
+            deadline = time.monotonic() + _VAD_DOWNLOAD_DEADLINE_SECONDS
+            downloaded: list[bytes] = []
+            download_errors: list[Exception] = []
+            open_url = urllib.request.urlopen
+
+            def download_model_bytes() -> None:
+                try:
+                    with open_url(
+                        _ONNX_MODEL_URL,
+                        timeout=min(
+                            _VAD_DOWNLOAD_SOCKET_TIMEOUT_SECONDS,
+                            _VAD_DOWNLOAD_DEADLINE_SECONDS,
+                        ),
+                    ) as resp:
+                        # read1 performs at most one underlying receive. This
+                        # lets us re-check the deadline while bytes trickle in.
+                        read_chunk = getattr(resp, "read1", None)
+                        raw_socket = getattr(
+                            getattr(getattr(resp, "fp", None), "raw", None),
+                            "_sock",
+                            None,
+                        )
+                        if read_chunk is None or raw_socket is None:
+                            raise RuntimeError(
+                                "VAD download transport does not support bounded reads"
+                            )
+                        chunks: list[bytes] = []
+                        total = 0
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError(
+                                    "VAD model download exceeded "
+                                    f"{_VAD_DOWNLOAD_DEADLINE_SECONDS:g} seconds"
+                                )
+                            deadline_limited_read = (
+                                remaining <= _VAD_DOWNLOAD_SOCKET_TIMEOUT_SECONDS
+                            )
+                            read_timeout = max(
+                                0.001,
+                                min(_VAD_DOWNLOAD_SOCKET_TIMEOUT_SECONDS, remaining),
+                            )
+                            raw_socket.settimeout(read_timeout)
+                            try:
+                                chunk = read_chunk(65536)
+                            except TimeoutError as exc:
+                                if not deadline_limited_read:
+                                    raise
+                                raise TimeoutError(
+                                    "VAD model download exceeded "
+                                    f"{_VAD_DOWNLOAD_DEADLINE_SECONDS:g} seconds"
+                                ) from exc
+                            if not chunk:
+                                break
+                            total += len(chunk)
+                            if total > _MAX_MODEL_BYTES:
+                                raise RuntimeError(
+                                    f"Model download exceeds {_MAX_MODEL_BYTES} byte limit"
+                                )
+                            chunks.append(chunk)
+                        downloaded.append(b"".join(chunks))
+                except Exception as exc:
+                    download_errors.append(exc)
+
+            # DNS and redirect handling happen inside urlopen and cannot be
+            # interrupted reliably. Run the entire open/read phase in a daemon
+            # thread so startup itself still observes the absolute deadline;
+            # the worker never writes a file after its caller stops waiting.
+            download_thread = threading.Thread(
+                target=download_model_bytes,
+                name="voiceprompt-vad-download",
+                daemon=True,
+            )
+            download_thread.start()
+            download_thread.join(max(0.0, deadline - time.monotonic()))
+            if download_thread.is_alive():
+                raise TimeoutError(
+                    "VAD model download exceeded "
+                    f"{_VAD_DOWNLOAD_DEADLINE_SECONDS:g} seconds"
+                )
+            if download_errors:
+                raise download_errors[0]
+            if not downloaded:
+                raise RuntimeError("VAD model download ended without data")
+            tmp.write_bytes(downloaded[0])
+'@
+Replace-Block `
+    "$site\vad.py" `
+    '            _MAX_MODEL_BYTES = 50 * 1024 * 1024' `
+    '            if _VERIFY_HASH:' `
+    $canonicalVadDownload `
+    "vad.py -- bounded cold-start model download"
+
+Apply-Patch "$site\vad.py" @'
+        self.session = ort.InferenceSession(model_path, sess_options=opts)
+'@ @'
+        self.session = ort.InferenceSession(
+            model_path,
+            sess_options=opts,
+            providers=["CPUExecutionProvider"],
+        )
+'@ "vad.py -- keep streaming detection on the CPU" 'providers=["CPUExecutionProvider"]'
 
 # Canonicalize methods that accumulated duplicate statements across upgrades.
 # The dependency is pinned to 0.2.0, so replacing these small blocks is safer
@@ -1752,6 +1927,43 @@ from .audio import AudioStream
 from .buffered_transcription import BufferedSession
 '@ "daemon.py -- buffered session import" 'from .buffered_transcription import BufferedSession'
 
+Apply-Patch "$site\daemon.py" @'
+        # Start hotkey listener
+'@ @'
+        # The first VAD load may take hundreds of milliseconds. Complete it
+        # before registering the hotkey so the audio callback never blocks and
+        # clips the beginning of a recording. If it is unavailable, switch to
+        # lossless batch mode, which retains every microphone chunk.
+        if self.streaming and not self._use_ws:
+            try:
+                self._vad.prepare()
+            except Exception:
+                self.streaming = False
+                self._buffered_streaming = False
+                log.error(
+                    "Streaming VAD unavailable; using lossless batch mode",
+                    exc_info=True,
+                )
+                notify(
+                    "Voice detection unavailable",
+                    "Using accurate batch transcription for this session",
+                )
+
+        # Start hotkey listener
+'@ "daemon.py -- warm VAD before accepting recordings" 'Streaming VAD unavailable; using lossless batch mode'
+
+Apply-Patch "$site\daemon.py" @'
+        # Start hotkey listener
+'@ @'
+        # Keeping the local model loaded is an explicit performance choice.
+        # Start its first load on the ordered worker without delaying hotkey
+        # registration; any recording waits behind the same serialized task.
+        if self.config.engine.type == "local" and self._model_idle_seconds <= 0:
+            self._preload_future = self._transcribe_pool.submit(self._prepare_engine)
+
+        # Start hotkey listener
+'@ "daemon.py -- preload retained local model" 'self._preload_future = self._transcribe_pool.submit(self._prepare_engine)'
+
 $canonicalDaemonInit = @'
     def __init__(self, config: Config, streaming: bool = False):
         self.config = config
@@ -1801,8 +2013,10 @@ $canonicalDaemonInit = @'
             self._model_idle_seconds = 900.0
         self._next_idle_check = time.monotonic() + 30.0
         self._idle_future = None
+        self._preload_future = None
         self._last_ws_text: str = ""
         self._ws_repeat_count: int = 0
+        self._ws_output_started: bool = False
         self._WS_MAX_REPEATS: int = 2
 '@
 Replace-Block `
@@ -1969,7 +2183,7 @@ $canonicalTranscriptionHandlers = @'
             log.info("No speech detected")
             return
         try:
-            delivery = type_text(text + " ")
+            delivery = type_text(text)
             if delivery == "cancelled":
                 log.info("Voice command cancelled transcript")
             elif delivery == "command":
@@ -1996,7 +2210,7 @@ $canonicalTranscriptionHandlers = @'
             return
 
         try:
-            delivery = type_text(text + " ")
+            delivery = type_text(text)
             if delivery == "cancelled":
                 log.info("Voice command cancelled transcript")
             elif delivery == "command":
@@ -2039,6 +2253,7 @@ $canonicalBufferedActivate = @'
             self._recording_start = time.monotonic()
             self._last_ws_text = ""
             self._ws_repeat_count = 0
+            self._ws_output_started = False
         publish_state(True)
         log.info(
             "Recording started (use_ws=%s, streaming=%s, buffered=%s, engine=%s)",
@@ -2218,5 +2433,40 @@ Replace-Block `
     '    @property' `
     $canonicalDaemonWait `
     "daemon.py -- bounded idle model release scheduling"
+
+Apply-Patch "$site\daemon.py" @'
+    def _on_ws_text(self, text: str) -> None:
+'@ @'
+    def _join_ws_text(self, text: str) -> str:
+        """Join streamed fragments without leaving a trailing clipboard space."""
+        with self._lock:
+            separator = " " if self._ws_output_started else ""
+            self._ws_output_started = True
+        return separator + text.strip()
+
+    def _on_ws_text(self, text: str) -> None:
+'@ "daemon.py -- prefix streamed transcript separators" 'def _join_ws_text(self, text: str) -> str:'
+
+Apply-Patch "$site\daemon.py" @'
+            type_text(cleaned + " ")
+'@ @'
+            type_text(self._join_ws_text(cleaned), paste_boundary=False)
+'@ "daemon.py -- avoid trailing space in streamed text" 'type_text(self._join_ws_text(cleaned), paste_boundary=False)'
+
+Apply-Patch "$site\daemon.py" @'
+                    type_text(pending.strip() + " ")
+'@ @'
+                    type_text(self._join_ws_text(pending), paste_boundary=False)
+'@ "daemon.py -- avoid trailing space in pending streamed text" 'type_text(self._join_ws_text(pending), paste_boundary=False)'
+
+Apply-Patch "$site\daemon.py" @'
+            if text:
+                type_text(text + " ")
+                log.debug("WS batch typed: %d chars", len(text))
+'@ @'
+            if text:
+                type_text(text)
+                log.debug("WS batch typed: %d chars", len(text))
+'@ "daemon.py -- avoid trailing space in WebSocket batch text"
 
 Write-Output "`nAll patches applied. Restart VoicePrompt to activate them."

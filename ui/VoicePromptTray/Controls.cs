@@ -823,6 +823,7 @@ internal sealed class ChoiceStrip : Control
     private int _hoverIndex = -1;
 
     public event EventHandler? SelectedChanged;
+    public event EventHandler? SelectionInvoked;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int SelectedIndex
@@ -835,6 +836,11 @@ internal sealed class ChoiceStrip : Control
             _selectedIndex = value;
             Invalidate();
             SelectedChanged?.Invoke(this, EventArgs.Empty);
+            if (IsHandleCreated)
+            {
+                AccessibilityNotifyClients(AccessibleEvents.Selection, _selectedIndex + 1);
+                AccessibilityNotifyClients(AccessibleEvents.ValueChange, -1);
+            }
         }
     }
 
@@ -867,6 +873,93 @@ internal sealed class ChoiceStrip : Control
         int index = Array.IndexOf(_values, value);
         if (index >= 0)
             SelectedIndex = index;
+    }
+
+    private void InvokeSelection() => SelectionInvoked?.Invoke(this, EventArgs.Empty);
+
+    protected override AccessibleObject CreateAccessibilityInstance() =>
+        new ChoiceStripAccessibleObject(this);
+
+    private sealed class ChoiceStripAccessibleObject : ControlAccessibleObject
+    {
+        private readonly ChoiceStrip _owner;
+        private readonly AccessibleObject[] _children;
+
+        public ChoiceStripAccessibleObject(ChoiceStrip owner) : base(owner)
+        {
+            _owner = owner;
+            _children = Enumerable.Range(0, owner._labels.Length)
+                .Select(index => (AccessibleObject)new ChoiceItemAccessibleObject(this, owner, index))
+                .ToArray();
+        }
+
+        public override AccessibleRole Role => AccessibleRole.PageTabList;
+
+        public override string? Value
+        {
+            get => _owner._labels[_owner._selectedIndex];
+            set
+            {
+                if (value == null || !_owner.Enabled)
+                    return;
+                int index = Array.FindIndex(
+                    _owner._labels,
+                    label => string.Equals(label, value, StringComparison.OrdinalIgnoreCase));
+                if (index >= 0)
+                {
+                    _owner.SelectedIndex = index;
+                    _owner.InvokeSelection();
+                }
+            }
+        }
+
+        public override int GetChildCount() => _children.Length;
+
+        public override AccessibleObject? GetChild(int index) =>
+            index >= 0 && index < _children.Length ? _children[index] : null;
+    }
+
+    private sealed class ChoiceItemAccessibleObject : AccessibleObject
+    {
+        private readonly AccessibleObject _parent;
+        private readonly ChoiceStrip _owner;
+        private readonly int _index;
+
+        public ChoiceItemAccessibleObject(AccessibleObject parent, ChoiceStrip owner, int index)
+        {
+            _parent = parent;
+            _owner = owner;
+            _index = index;
+        }
+
+        public override Rectangle Bounds => _owner.RectangleToScreen(_owner.ItemBounds(_index));
+        public override string? DefaultAction => "Select";
+        public override string? Name { get => _owner._labels[_index]; set { } }
+        public override AccessibleObject? Parent => _parent;
+        public override AccessibleRole Role => AccessibleRole.PageTab;
+        public override AccessibleStates State
+        {
+            get
+            {
+                AccessibleStates state = AccessibleStates.Focusable | AccessibleStates.Selectable;
+                if (!_owner.Enabled)
+                    state |= AccessibleStates.Unavailable;
+                if (_owner._selectedIndex == _index)
+                    state |= AccessibleStates.Selected;
+                if (_owner.Focused && _owner._selectedIndex == _index)
+                    state |= AccessibleStates.Focused;
+                return state;
+            }
+        }
+
+        public override void DoDefaultAction()
+        {
+            if (_owner.Enabled)
+            {
+                _owner.SelectedIndex = _index;
+                _owner.InvokeSelection();
+            }
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -941,6 +1034,7 @@ internal sealed class ChoiceStrip : Control
         {
             Focus();
             SelectedIndex = HitIndex(e.X);
+            InvokeSelection();
         }
         base.OnMouseDown(e);
     }
@@ -955,6 +1049,11 @@ internal sealed class ChoiceStrip : Control
         else if (e.KeyCode is Keys.Right or Keys.Down)
         {
             SelectedIndex = (_selectedIndex + 1) % _labels.Length;
+            e.Handled = true;
+        }
+        else if (e.KeyCode is Keys.Enter or Keys.Space)
+        {
+            InvokeSelection();
             e.Handled = true;
         }
         base.OnKeyDown(e);

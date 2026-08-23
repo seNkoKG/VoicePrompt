@@ -35,6 +35,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $serverEngine = Join-Path $Module "engine\server.py"
     $typer = Join-Path $Module "typer.py"
     $daemon = Join-Path $Module "daemon.py"
+    $vad = Join-Path $Module "vad.py"
     $history = Join-Path $Module "transcript_history.py"
     $corrections = Join-Path $Module "text_corrections.py"
     $buffered = Join-Path $Module "buffered_transcription.py"
@@ -48,7 +49,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $windowsHotkey = Join-Path $Module "windows_hotkey.py"
     $listener = Join-Path $Module "hotkey\listener.py"
     $config = Join-Path $Module "config.py"
-    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon $listener (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands $smartFormatter $windowsContext $selectionCommands $windowsHotkey
+    & $Python -m py_compile $cli $audio $localEngine $serverEngine $typer $daemon $vad $listener (Join-Path $Module "slang_retry.py") $history $corrections $buffered $outputMode $appProfiles $textSnippets $voiceCommands $smartFormatter $windowsContext $selectionCommands $windowsHotkey
     if ($LASTEXITCODE -ne 0) {
         throw "$Name runtime does not compile."
     }
@@ -188,7 +189,10 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         throw "$Name can load an unbounded local text file in the dictation path."
     }
     if (-not (Test-Path -LiteralPath $outputMode) -or
-        [regex]::Matches($typerSource, "deliver_text\(text, _copy_text_impl, _type_text_impl, mode=output_override\)").Count -ne 1 -or
+        [regex]::Matches($typerSource, "deliver_text\(delivered_text, _copy_text_impl, _type_text_impl, mode=output_override\)").Count -ne 1 -or
+        -not $typerSource.Contains("def type_text(text: str, paste_boundary: bool = True)") -or
+        -not $typerSource.Contains('selected_output == "paste"') -or
+        -not $typerSource.Contains('delivered_text += " "') -or
         [regex]::Matches($typerSource, "def _copy_text_impl\(").Count -ne 1) {
         throw "$Name is missing the exactly-once transcript output router."
     }
@@ -218,6 +222,14 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
         [regex]::Matches($typerSource, "def _capture_selected_text\(\)").Count -ne 1) {
         throw "$Name is missing selected-text command mode."
     }
+    $correctionIndex = $typerSource.IndexOf("text = apply_corrections(text)")
+    $selectionIndex = $typerSource.IndexOf("selection_instruction = resolve_selection_command(text)")
+    $commandIndex = $typerSource.IndexOf("command = resolve_voice_command(text)")
+    $formatIndex = $typerSource.IndexOf("text = format_dictation(text, context)")
+    if ($correctionIndex -lt 0 -or $selectionIndex -lt $correctionIndex -or
+        $commandIndex -lt $selectionIndex -or $formatIndex -lt $commandIndex) {
+        throw "$Name formats exact voice commands before routing them."
+    }
 
     $audioSource = [System.IO.File]::ReadAllText($audio)
     if ([regex]::Matches($audioSource, "Using default audio input").Count -ne 2 -or
@@ -226,6 +238,16 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
 
     $daemonSource = [System.IO.File]::ReadAllText($daemon)
+    $vadSource = [System.IO.File]::ReadAllText($vad)
+    if ([regex]::Matches($vadSource, "def prepare\(self\) -> None:").Count -ne 1 -or
+        -not $vadSource.Contains('_VAD_DOWNLOAD_DEADLINE_SECONDS = 8.0') -or
+        -not $vadSource.Contains('deadline = time.monotonic() + _VAD_DOWNLOAD_DEADLINE_SECONDS') -or
+        -not $vadSource.Contains('read_chunk = getattr(resp, "read1", None)') -or
+        -not $vadSource.Contains('raw_socket.settimeout(') -or
+        -not $vadSource.Contains('silent_frame = np.zeros(self.chunk_size, dtype=np.float32)') -or
+        -not $vadSource.Contains('providers=["CPUExecutionProvider"]')) {
+        throw "$Name does not provide bounded, exercised, CPU-only VAD warm-up."
+    }
     if ($daemonSource.Contains("_max_batch_chunks") -or $daemonSource.Contains("drop chunk silently")) {
         throw "$Name still truncates held recordings."
     }
@@ -247,6 +269,13 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if (-not $daemonSource.Contains("Paste shortcut sent: %d chars")) {
         throw "$Name does not expose a privacy-safe successful-paste signal."
+    }
+    if ($daemonSource.Contains('type_text(text + " ")') -or
+        $daemonSource.Contains('type_text(cleaned + " ")') -or
+        $daemonSource.Contains('type_text(pending.strip() + " ")') -or
+        [regex]::Matches($daemonSource, "def _join_ws_text\(self, text: str\) -> str:").Count -ne 1 -or
+        [regex]::Matches($daemonSource, "type_text\(self\._join_ws_text\(").Count -ne 2) {
+        throw "$Name can still append a synthetic trailing space to delivered text."
     }
     if (-not $daemonSource.Contains("Transcript copied to clipboard: %d chars")) {
         throw "$Name does not expose a privacy-safe copy-only success signal."
@@ -271,9 +300,20 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     }
     if ([regex]::Matches($daemonSource, "def _prepare_engine\(self\)").Count -ne 1 -or
         [regex]::Matches($daemonSource, "def _schedule_idle_release\(self\)").Count -ne 1 -or
-        [regex]::Matches($daemonSource, "self\._transcribe_pool\.submit\(self\._prepare_engine\)").Count -ne 1 -or
+        [regex]::Matches($daemonSource, "self\._transcribe_pool\.submit\(self\._prepare_engine\)").Count -ne 2 -or
+        -not $daemonSource.Contains('self.config.engine.type == "local" and self._model_idle_seconds <= 0') -or
         [regex]::Matches($daemonSource, "self\._schedule_idle_release\(\)").Count -ne 1) {
-        throw "$Name does not order model preparation and bounded idle release."
+        throw "$Name does not order opt-in model preload and bounded idle release."
+    }
+    $startIndex = $daemonSource.IndexOf("    def start(self) -> None:")
+    $vadPrepareIndex = $daemonSource.IndexOf("self._vad.prepare()", $startIndex)
+    $hotkeyStartIndex = $daemonSource.IndexOf("self._hotkey.start()", $startIndex)
+    if ($startIndex -lt 0 -or $vadPrepareIndex -lt $startIndex -or
+        $hotkeyStartIndex -lt $vadPrepareIndex -or
+        -not $daemonSource.Contains("self.streaming = False") -or
+        -not $daemonSource.Contains("self._buffered_streaming = False") -or
+        -not $daemonSource.Contains("Streaming VAD unavailable; using lossless batch mode")) {
+        throw "$Name can accept recordings before VAD is ready or cannot fall back losslessly."
     }
     $deactivateStart = $daemonSource.IndexOf("    def _on_deactivate(")
     $stopAudio = $daemonSource.IndexOf("            audio.stop()", $deactivateStart)
@@ -284,7 +324,7 @@ function Assert-CurrentRuntime([string]$Module, [string]$Name) {
     $previousPatchedSite = $env:VOICEPROMPT_PATCHED_SITE
     try {
         $env:VOICEPROMPT_PATCHED_SITE = $Module
-        & $Python -m unittest -v tests.test_patched_local_engine
+        & $Python -m unittest -v tests.test_patched_local_engine tests.test_patched_text_pipeline tests.test_patched_daemon
         if ($LASTEXITCODE -ne 0) {
             throw "$Name product-path local engine test failed."
         }
@@ -298,12 +338,18 @@ $cleanModule = New-UpstreamRuntime "clean"
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-first"
 $cleanFirstHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash
 $cleanListenerHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "hotkey\listener.py") -Algorithm SHA256).Hash
+$cleanTyperHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "typer.py") -Algorithm SHA256).Hash
+$cleanVadHash = (Get-FileHash -LiteralPath (Join-Path $cleanModule "vad.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $cleanModule "clean-second"
 if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "daemon.py") -Algorithm SHA256).Hash -ne $cleanFirstHash) {
     throw "Clean install patching is not byte-for-byte idempotent."
 }
 if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "hotkey\listener.py") -Algorithm SHA256).Hash -ne $cleanListenerHash) {
     throw "Clean hotkey patching is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $cleanModule "typer.py") -Algorithm SHA256).Hash -ne $cleanTyperHash -or
+    (Get-FileHash -LiteralPath (Join-Path $cleanModule "vad.py") -Algorithm SHA256).Hash -ne $cleanVadHash) {
+    throw "Clean text/VAD patching is not byte-for-byte idempotent."
 }
 Assert-CurrentRuntime $cleanModule "clean install"
 
@@ -324,12 +370,18 @@ Invoke-RuntimePatch $oldPatch $upgradeModule "v1.1.2"
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-first"
 $upgradeFirstHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash
 $upgradeListenerHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "hotkey\listener.py") -Algorithm SHA256).Hash
+$upgradeTyperHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "typer.py") -Algorithm SHA256).Hash
+$upgradeVadHash = (Get-FileHash -LiteralPath (Join-Path $upgradeModule "vad.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $upgradeModule "upgrade-second"
 if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "daemon.py") -Algorithm SHA256).Hash -ne $upgradeFirstHash) {
     throw "Upgrade patching is not byte-for-byte idempotent."
 }
 if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "hotkey\listener.py") -Algorithm SHA256).Hash -ne $upgradeListenerHash) {
     throw "Upgrade hotkey patching is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $upgradeModule "typer.py") -Algorithm SHA256).Hash -ne $upgradeTyperHash -or
+    (Get-FileHash -LiteralPath (Join-Path $upgradeModule "vad.py") -Algorithm SHA256).Hash -ne $upgradeVadHash) {
+    throw "Upgrade text/VAD patching is not byte-for-byte idempotent."
 }
 Assert-CurrentRuntime $upgradeModule "v1.1.2 upgrade"
 
@@ -345,9 +397,23 @@ $previousModule = New-UpstreamRuntime "previous"
 Invoke-RuntimePatch $previousPatch $previousModule "v1.21.1"
 Invoke-RuntimePatch $currentPatch $previousModule "previous-first"
 $previousConfigHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "config.py") -Algorithm SHA256).Hash
+$previousDaemonHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "daemon.py") -Algorithm SHA256).Hash
+$previousListenerHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "hotkey\listener.py") -Algorithm SHA256).Hash
+$previousTyperHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "typer.py") -Algorithm SHA256).Hash
+$previousVadHash = (Get-FileHash -LiteralPath (Join-Path $previousModule "vad.py") -Algorithm SHA256).Hash
 Invoke-RuntimePatch $currentPatch $previousModule "previous-second"
 if ((Get-FileHash -LiteralPath (Join-Path $previousModule "config.py") -Algorithm SHA256).Hash -ne $previousConfigHash) {
     throw "Previous-release hotkey migration is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $previousModule "daemon.py") -Algorithm SHA256).Hash -ne $previousDaemonHash) {
+    throw "Previous-release daemon migration is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $previousModule "hotkey\listener.py") -Algorithm SHA256).Hash -ne $previousListenerHash) {
+    throw "Previous-release listener migration is not byte-for-byte idempotent."
+}
+if ((Get-FileHash -LiteralPath (Join-Path $previousModule "typer.py") -Algorithm SHA256).Hash -ne $previousTyperHash -or
+    (Get-FileHash -LiteralPath (Join-Path $previousModule "vad.py") -Algorithm SHA256).Hash -ne $previousVadHash) {
+    throw "Previous-release text/VAD migration is not byte-for-byte idempotent."
 }
 Assert-CurrentRuntime $previousModule "v1.21.1 upgrade"
 

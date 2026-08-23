@@ -44,6 +44,8 @@ internal sealed record BackupRecognitionSettings
     public double Temperature { get; init; }
     [JsonPropertyName("buffered_transcription")]
     public bool BufferedTranscription { get; init; } = true;
+    [JsonPropertyName("model_idle_seconds")]
+    public int ModelIdleSeconds { get; init; } = 900;
 }
 
 internal sealed record BackupAudioSettings
@@ -202,6 +204,8 @@ internal static class AppBackupStore
             throw new InvalidDataException("The backup contains an invalid recognition precision.");
         if (recognition.Temperature is < 0 or > 1)
             throw new InvalidDataException("The backup contains an invalid recognition temperature.");
+        if (recognition.ModelIdleSeconds is < 0 or > 86_400)
+            throw new InvalidDataException("The backup contains an invalid model-retention timeout.");
 
         if (audio.SampleRate is not (8000 or 16000 or 22050 or 44100 or 48000) ||
             audio.Threshold is < 0 or > 1 ||

@@ -309,6 +309,7 @@ var portableBackup = new VoicePromptTray.VoicePromptBackupDocument
         Processor = "cuda",
         ComputeType = "float16",
         BufferedTranscription = true,
+        ModelIdleSeconds = 3600,
     },
     Audio = new VoicePromptTray.BackupAudioSettings(),
     Writing = new VoicePromptTray.BackupWritingSettings
@@ -332,6 +333,7 @@ Check("settings backup preserves portable Unicode values",
     restoredBackup.Recognition.EngineType == "server" &&
     restoredBackup.Recognition.ServerUrl == "https://speech.example.test" &&
     restoredBackup.Recognition.ServerTimeoutSeconds == 90 &&
+    restoredBackup.Recognition.ModelIdleSeconds == 3600 &&
     restoredBackup.Dictation.OutputMode == "clipboard" &&
     !restoredBackup.Dictation.SmartFormatting &&
     !restoredBackup.Dictation.ContextAwareness);
@@ -341,6 +343,9 @@ Check("settings backup excludes microphone identity", !backupJson.Contains("micr
 string backupPath = Path.Combine(dir, "portable", "VoicePrompt-settings-backup.json");
 VoicePromptTray.AppBackupStore.Save(backupPath, portableBackup);
 Check("settings backup file round trip", VoicePromptTray.AppBackupStore.Load(backupPath).Snippets.Count == 2);
+Check("older settings backups default to balanced model retention",
+    VoicePromptTray.AppBackupStore.Deserialize("{\"format\":\"voiceprompt-settings-backup\",\"version\":1}")
+        .Recognition.ModelIdleSeconds == 900);
 try
 {
     VoicePromptTray.AppBackupStore.Serialize(portableBackup with
@@ -384,6 +389,18 @@ try
 catch (InvalidDataException)
 {
     Check("settings backup rejects invalid recognition server", true);
+}
+try
+{
+    VoicePromptTray.AppBackupStore.Serialize(portableBackup with
+    {
+        Recognition = portableBackup.Recognition with { ModelIdleSeconds = 86_401 },
+    });
+    Check("settings backup bounds model retention", false);
+}
+catch (InvalidDataException)
+{
+    Check("settings backup bounds model retention", true);
 }
 
 string historyPath = Path.Combine(dir, "local", "history.json");

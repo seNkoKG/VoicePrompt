@@ -96,7 +96,20 @@ def format_dictation(
     if not value:
         return text
 
+    layout_only = re.fullmatch(
+        r'''(?i)[\s.,!?;:…"'“”‘’]*(new paragraph|nov odstavek|new line|nova vrstica)[\s.,!?;:…"'“”‘’]*''',
+        value,
+    )
+    if layout_only:
+        phrase = layout_only.group(1).casefold()
+        return "\n\n" if phrase in {"new paragraph", "nov odstavek"} else "\n"
+
     value = _replace_spoken_marks(value)
+    if value and not value.strip():
+        # An exact spoken layout mark (for example, "new line") consists
+        # entirely of whitespace after replacement. Preserve the control
+        # characters instead of stripping the intended output to nothing.
+        return re.sub(r"[ \t]*\n[ \t]*", "\n", value)
     value = re.sub(rf"(?i)(^|(?<=[.!?])\s+)(?:{_FILLERS})[,\s]+", r"\1", value)
     value = re.sub(rf"(?i)\b({_FILLERS})(?:[,\s]+\1)+\b", r"\1", value)
     value = re.sub(r"[ \t]+([,.;:!?])", r"\1", value)

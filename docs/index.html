@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0c0e10">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="VoicePrompt is private, GPU-accelerated voice typing for Windows with 100 Whisper languages, smart local formatting, app context, correction learning, and explicit AI commands.">
+  <meta name="description" content="VoicePrompt is private, local-first voice typing for Windows with 100 Whisper languages, smart formatting, model-memory control, correction learning, and explicit AI commands.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="VoicePrompt — private voice typing for Windows">
-  <meta property="og:description" content="Dictate in any of 100 Whisper languages with local smart formatting, app-aware context, correction learning, and tuned English and Slovenian Auto.">
+  <meta property="og:description" content="Dictate in any of 100 Whisper languages with local smart formatting, app-aware context, model-memory control, and tuned English and Slovenian Auto.">
   <meta property="og:url" content="https://senkokg.github.io/VoicePrompt/">
   <meta property="og:image" content="https://raw.githubusercontent.com/seNkoKG/VoicePrompt/main/assets/logo.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -23,11 +23,12 @@
     "name": "VoicePrompt",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Windows 11",
-    "description": "Private, GPU-accelerated voice-to-text dictation for Windows with 100 supported Whisper languages.",
-    "downloadUrl": "https://senkokg.github.io/VoicePrompt/downloads/VoicePrompt-v1.25.0-windows-x64.zip",
+    "description": "Private, local-first voice-to-text dictation for Windows with 100 supported Whisper languages.",
+    "softwareVersion": "1.26.0",
+    "downloadUrl": "https://senkokg.github.io/VoicePrompt/downloads/VoicePrompt-v1.26.0-windows-x64.zip",
     "isAccessibleForFree": true,
-    "softwareRequirements": "Windows 11, Python 3.11 or newer, NVIDIA GPU",
-    "featureList": "100 Whisper languages, English and Slovenian Auto, local smart formatting, bounded application context, correction learning, selected-text AI commands, resilient global push-to-talk hotkeys, long-recording buffering, transcript recovery, reusable snippets, application profiles, verified in-app updates"
+    "softwareRequirements": "Windows 11 x64, Python 3.11 or newer; NVIDIA GPU recommended, CPU supported",
+    "featureList": "100 Whisper languages, English and Slovenian Auto, local smart formatting, bounded application context, model-memory policy, safe full-audio recording fallback, correction learning, selected-text AI commands, resilient global push-to-talk hotkeys, long-recording buffering, transcript recovery, reusable snippets, application profiles, verified in-app updates"
   }
   </script>
 </head>
@@ -51,7 +52,7 @@
         <a href="#features">Features</a>
         <a href="#privacy">Privacy</a>
         <a href="https://github.com/seNkoKG/VoicePrompt" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
-        <a class="button button-small button-light" href="downloads/VoicePrompt-v1.25.0-windows-x64.zip" download>Download</a>
+        <a class="button button-small button-light" href="downloads/VoicePrompt-v1.26.0-windows-x64.zip" download>Download</a>
       </div>
     </nav>
   </header>
@@ -63,7 +64,7 @@
         <h1>Speak naturally.<br><span>Type anywhere.</span></h1>
         <p class="hero-lede">Hold one key, say what you mean, and release. VoicePrompt recognizes any of Whisper's 100 languages, formats the result for the active app, and puts it where you are already working.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="downloads/VoicePrompt-v1.25.0-windows-x64.zip" download>
+          <a class="button button-primary" href="downloads/VoicePrompt-v1.26.0-windows-x64.zip" download>
             <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M10 2v10m0 0 4-4m-4 4L6 8M3 15.5h14"/></svg>
             Download for Windows
           </a>
@@ -95,7 +96,7 @@
 
     <section class="trust-strip shell reveal" aria-label="Product highlights">
       <div><strong>Local-first</strong><span>Private audio pipeline</span></div>
-      <div><strong>Low idle use</strong><span>Weights release after 15 min</span></div>
+      <div><strong>Model memory control</strong><span>Release after 15 min or keep loaded</span></div>
       <div><strong>100 languages</strong><span>EN + SL Auto by default</span></div>
       <div><strong>Release gated</strong><span>Verified before publishing</span></div>
     </section>
@@ -166,7 +167,7 @@
             </div>
             <span class="card-tag">Local by default</span>
             <h3>Your microphone is not a cloud service.</h3>
-            <p>Speech recognition runs on your GPU. Audio is never stored. Optional text cleanup and self-hosted server modes are explicit choices.</p>
+            <p>Speech recognition runs on your PC using the local processor you select. Audio is never stored. Optional text cleanup and self-hosted server modes are explicit choices.</p>
           </article>
 
           <article class="bento-card bento-wave reveal">
@@ -191,6 +192,7 @@
               <div><i>04</i><span><strong>Selected-text commands</strong><small>Say “Command …” or “Ukaz …” for an explicit AI transformation.</small></span></div>
               <div><i>05</i><span><strong>Four writing modes</strong><small>Verbatim, Clean, Polish, or structured Prompt.</small></span></div>
               <div><i>06</i><span><strong>Recovery comparison</strong><small>Copy the delivered result or untouched original.</small></span></div>
+              <div><i>07</i><span><strong>Model memory control</strong><small>Release weights after 15 idle minutes or keep the same model ready.</small></span></div>
             </div>
           </article>
         </div>
@@ -206,8 +208,8 @@
       <div class="interface-showcase reveal" data-interface-showcase>
         <div class="interface-tabs" role="tablist" aria-label="VoicePrompt interface views">
           <button type="button" role="tab" aria-controls="interface-panel" aria-selected="true" data-shot="assets/app-overview.png" data-alt="VoicePrompt Overview with readiness and setup cards" data-title="Readiness at a glance" data-copy="Confirm the runtime, hotkey, microphone, language, and recognition engine from one screen.">Overview</button>
-          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-languages.png" data-alt="VoicePrompt Dictation page with automatic English and Slovenian detection plus an additional-language catalog" data-title="100 language profiles" data-copy="Keep fast English + Slovenian Auto as the default, or add any of Whisper's 98 other languages with portable context and corrections.">Languages</button>
-          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-writing.png" data-alt="VoicePrompt Engine and AI page with Verbatim, Clean, Polish, and Prompt writing modes" data-title="Local first, optional intelligence" data-copy="Verbatim adds no provider delay. Clean, Polish, and Prompt are explicit text-only options with strict fallback.">Writing modes</button>
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-languages.png" data-alt="VoicePrompt Dictation page with English and Slovenian Auto, an additional-language picker, recognition context, and corrections" data-title="100 language profiles" data-copy="Keep fast English + Slovenian Auto as the default, or choose any of Whisper's 98 other languages with portable context and corrections.">Languages</button>
+          <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-writing.png" data-alt="VoicePrompt Engine and AI page with precision, model-memory, and optional writing-mode controls" data-title="Speed, memory, and optional AI" data-copy="Tune local precision, release or retain the same model after idle, and keep text-only cleanup explicitly opt-in.">Engine &amp; AI</button>
           <button type="button" role="tab" aria-controls="interface-panel" aria-selected="false" tabindex="-1" data-shot="assets/app-system.png" data-alt="VoicePrompt System page showing local diagnostics and manual verified application updates" data-title="Diagnostics and safe updates" data-copy="Inspect local runtime health, choose Stable or Preview, and install a SHA-256-verified release without leaving VoicePrompt.">System</button>
         </div>
         <div class="interface-stage" id="interface-panel" role="tabpanel">
@@ -231,6 +233,9 @@
         <li><strong>Hold or toggle</strong><span>Two activation styles</span></li>
         <li><strong>Paste or Copy only</strong><span>Reliable output choices</span></li>
         <li><strong>Buffered long prompts</strong><span>One ordered result</span></li>
+        <li><strong>Model memory policy</strong><span>Balanced or keep loaded</span></li>
+        <li><strong>Safe recording fallback</strong><span>Complete audio retained if streaming setup fails</span></li>
+        <li><strong>Exact voice commands</strong><span>Routed before prose formatting</span></li>
         <li><strong>Live input test</strong><span>No second audio capture</span></li>
         <li><strong>Smart formatting and context</strong><span>Local, bounded, configurable</span></li>
         <li><strong>Correction learning</strong><span>Immediate deterministic fixes</span></li>
@@ -248,7 +253,7 @@
         <div class="privacy-copy">
           <p class="kicker">A privacy model you can explain</p>
           <h2>Local audio.<br>Visible choices.</h2>
-          <p>The default path is microphone to local GPU to focused app. There is no account, analytics SDK, hidden upload, or saved recording.</p>
+          <p>The default path is microphone to local engine to focused app. There is no account, analytics SDK, hidden upload, or saved recording.</p>
           <ul class="privacy-details">
             <li>Optional AI cleanup sends completed text only; selected text is sent only after an explicit Command or Ukaz action.</li>
             <li>Compatible server mode sends audio only to the server you configure.</li>
@@ -259,7 +264,7 @@
         <div class="privacy-flow" aria-label="Private data flow">
           <div class="flow-node"><span class="flow-icon">◉</span><strong>Microphone</strong><small>16 kHz mono</small></div>
           <div class="flow-line"><i></i><span>on device</span></div>
-          <div class="flow-node featured"><img src="assets/mark.svg" alt="" width="32" height="32"><strong>VoicePrompt</strong><small>Local GPU</small></div>
+          <div class="flow-node featured"><img src="assets/mark.svg" alt="" width="32" height="32"><strong>VoicePrompt</strong><small>Local engine</small></div>
           <div class="flow-line"><i></i><span>one paste</span></div>
           <div class="flow-node"><span class="flow-icon">Aa</span><strong>Your app</strong><small>Focused window</small></div>
         </div>
@@ -272,7 +277,7 @@
           <p class="kicker">Start in a few minutes</p>
           <h2>One download.<br>One install command.</h2>
           <p>VoicePrompt installs its private Python environment, pinned speech runtime, tray interface, and Windows integration fixes. The multilingual model downloads once on first start.</p>
-          <div class="requirements"><span>Windows 11 x64</span><span>Python 3.11+</span><span>NVIDIA GPU</span></div>
+          <div class="requirements"><span>Windows 11 x64</span><span>Python 3.11+</span><span>NVIDIA GPU recommended · CPU supported</span></div>
         </div>
         <div class="install-card reveal reveal-delay-one">
           <div class="terminal-bar"><span>PowerShell</span><i></i></div>
@@ -295,7 +300,7 @@
       <h2>Your next sentence is faster out loud.</h2>
       <p>Download VoicePrompt, choose from 100 languages, and keep your hands on the work that matters.</p>
       <div class="hero-actions centered">
-        <a class="button button-primary" href="downloads/VoicePrompt-v1.25.0-windows-x64.zip" download>Download latest release</a>
+        <a class="button button-primary" href="downloads/VoicePrompt-v1.26.0-windows-x64.zip" download>Download latest release</a>
         <a class="button button-ghost" href="https://github.com/seNkoKG/VoicePrompt">Star on GitHub <span aria-hidden="true">↗</span></a>
       </div>
     </section>
@@ -308,7 +313,7 @@
         <p>Local-first voice typing in 100 languages.</p>
       </div>
       <div class="footer-links">
-        <a href="downloads/VoicePrompt-v1.25.0-windows-x64.zip" download>Download</a>
+        <a href="downloads/VoicePrompt-v1.26.0-windows-x64.zip" download>Download</a>
         <a href="https://github.com/seNkoKG/VoicePrompt">Source</a>
         <a href="https://github.com/seNkoKG/VoicePrompt/issues">Issues</a>
         <a href="https://github.com/seNkoKG/VoicePrompt/blob/main/README.md">Documentation</a>

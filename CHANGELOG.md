@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.26.0] - 2026-08-23
+
+The transcription models and decoding-quality settings are unchanged in this release.
+
+### Added
+
+- Add an accessible **Model memory** setting for balanced 15-minute release or keep-loaded operation while preserving custom configuration timeouts until they are explicitly changed.
+- Add keyboard and screen-reader activation semantics to segmented choice controls.
+
+### Changed
+
+- Warm CPU-based voice detection before enabling the hotkey, enforce one eight-second deadline across connection setup and slow response reads, and fall back to lossless full-audio batch transcription when warm-up fails.
+- Begin local model preparation on the ordered background worker when **Keep loaded** is selected, removing idle reload delay without blocking hotkey registration.
+- Route exact selection and voice commands before prose formatting or optional AI rewriting.
+
+### Fixed
+
+- Preserve spoken layout-only commands such as “new line” and safely ignore formatter results that contain no deliverable text.
+- Remove synthetic trailing spaces while retaining automatic-paste word boundaries around existing text and exact Copy-only or streamed output.
+- Reuse the input meter status font instead of allocating a new GDI font on every frame.
+
+### Verified
+
+- Pass the 145-test Python suite, 15 generated product-path tests across clean and supported upgrade fixtures, byte-idempotent runtime migrations, configuration tests, and zero-failure Windows layout and behavior checks.
+
 ## [1.25.0] - 2026-08-20
 
 ### Fixed

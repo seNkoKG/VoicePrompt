@@ -432,16 +432,36 @@ var processorChoice = (ChoiceStrip)typeof(MainForm)
 var bufferedTranscription = (ToggleSwitch)typeof(MainForm)
     .GetField("_bufferedTranscriptionToggle", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;
+var modelRetention = (ChoiceStrip)typeof(MainForm)
+    .GetField("_modelRetentionChoice", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
+var modelRetentionHint = (Label)typeof(MainForm)
+    .GetField("_modelRetentionHint", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .GetValue(form)!;
 var recognitionServerResult = (Label)typeof(MainForm)
     .GetField("_recognitionServerResult", BindingFlags.Instance | BindingFlags.NonPublic)!
     .GetValue(form)!;
+AccessibleObject modelRetentionAccessibility = modelRetention.AccessibilityObject;
+AccessibleObject? selectedRetentionAccessibility =
+    modelRetentionAccessibility.GetChild(modelRetention.SelectedIndex);
+if (modelRetentionAccessibility.GetChildCount() != 2 ||
+    modelRetentionAccessibility.Value != (modelRetention.SelectedValue == "0" ? "Keep loaded" : "Release after 15 min") ||
+    selectedRetentionAccessibility == null ||
+    !selectedRetentionAccessibility.State.HasFlag(AccessibleStates.Selected))
+{
+    behaviorFailures++;
+    failures.AppendLine("ACCESSIBILITY model retention does not expose its options and selected value");
+}
 string originalRecognitionEngine = recognitionEngine.SelectedValue;
 recognitionEngine.SelectValue("server");
 recognitionServerUrl.Text = "http://speech.example.test";
 recognitionServerTimeout.Value = 90;
 Application.DoEvents();
+string disabledRetentionValue = modelRetention.SelectedValue;
+modelRetentionAccessibility.Value = disabledRetentionValue == "0" ? "Release after 15 min" : "Keep loaded";
 if (!form.HasUnsavedChanges || !recognitionServerUrl.Enabled || !recognitionServerTimeout.Enabled ||
-    processorChoice.Enabled || bufferedTranscription.Enabled ||
+    processorChoice.Enabled || bufferedTranscription.Enabled || modelRetention.Enabled ||
+    modelRetention.SelectedValue != disabledRetentionValue ||
     !recognitionServerResult.Text.StartsWith("Warning ·", StringComparison.Ordinal))
 {
     behaviorFailures++;
@@ -460,6 +480,20 @@ if (form.HasUnsavedChanges || recognitionEngine.SelectedValue != originalRecogni
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR Discard did not restore the recognition engine");
 }
+recognitionEngine.SelectValue("local");
+typeof(MainForm).GetMethod("SetBusy", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, new object[] { true });
+Application.DoEvents();
+if (modelRetention.Enabled)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR model retention remained editable during an active save/restart operation");
+}
+typeof(MainForm).GetMethod("SetBusy", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, new object[] { false });
+typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>());
+Application.DoEvents();
 
 var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
     VoicePromptTray.AppBackupStore.Serialize(new VoicePromptBackupDocument
@@ -479,6 +513,7 @@ var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
             EngineType = "server",
             ServerUrl = "https://speech.example.test",
             ServerTimeoutSeconds = 75,
+            ModelIdleSeconds = 3600,
         },
         Audio = new BackupAudioSettings(),
         Writing = new BackupWritingSettings { Mode = "clean" },
@@ -490,16 +525,32 @@ var importedBackup = VoicePromptTray.AppBackupStore.Deserialize(
 typeof(MainForm).GetMethod("ApplyAppBackup", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, new object[] { importedBackup });
 Application.DoEvents();
+var reviewedBackup = (VoicePromptBackupDocument)typeof(MainForm)
+    .GetMethod("BuildAppBackup", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>())!;
 string backupLanguage = (string)typeof(MainForm)
     .GetMethod("SelectedLanguageCode", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>())!;
 if (!form.HasUnsavedChanges || backupLanguage != "en" || outputChoice.SelectedValue != "clipboard" ||
     !voiceCommands.Checked || aiModeChoice.SelectedValue != "clean" || !snippetsText.Text.Contains("reply => Thank you") ||
     !appProfilesText.Text.Contains("Code.exe => prompt, inherit") || recognitionEngine.SelectedValue != "server" ||
-    recognitionServerUrl.Text != "https://speech.example.test" || recognitionServerTimeout.Value != 75)
+    recognitionServerUrl.Text != "https://speech.example.test" || recognitionServerTimeout.Value != 75 ||
+    reviewedBackup.Recognition.ModelIdleSeconds != 3600 || modelRetention.Enabled ||
+    modelRetentionHint.Text != "Server mode manages model memory on the server.")
 {
     behaviorFailures++;
     failures.AppendLine("BEHAVIOR imported settings backup did not populate reviewable portable fields");
+}
+recognitionEngine.SelectValue("local");
+typeof(ChoiceStrip).GetMethod("OnMouseDown", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(modelRetention, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 1, 10, 0) });
+var normalizedRetentionBackup = (VoicePromptBackupDocument)typeof(MainForm)
+    .GetMethod("BuildAppBackup", BindingFlags.Instance | BindingFlags.NonPublic)!
+    .Invoke(form, Array.Empty<object>())!;
+if (normalizedRetentionBackup.Recognition.ModelIdleSeconds != 900)
+{
+    behaviorFailures++;
+    failures.AppendLine("BEHAVIOR clicking the displayed 15-minute option did not normalize a preserved custom timeout");
 }
 typeof(MainForm).GetMethod("DiscardChanges", BindingFlags.Instance | BindingFlags.NonPublic)!
     .Invoke(form, Array.Empty<object>());
